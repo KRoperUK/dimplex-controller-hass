@@ -1,12 +1,16 @@
 {
   "domain": "dimplex",
   "name": "Dimplex Hub",
-  "codeowners": ["@kroperuk"],
+  "codeowners": [
+    "@kroperuk"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/kroperuk/dimplex-controller-hass",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/kroperuk/dimplex-controller-hass/issues",
-  "requirements": ["dimplex-controller>=0.2.0"],
-  "version": "0.0.0"
+  "requirements": [
+    "dimplex-controller>=0.2.0"
+  ],
+  "version": "1.0.0"
 }
