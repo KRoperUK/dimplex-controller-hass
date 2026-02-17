@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "dimplex_controller",
+        "description": "Hvis du trenger hjep til konfigurasjon ta en titt her: https://github.com/kroperuk/dimplex-controller-hass",
+        "data": {
+          "username": "Brukernavn",
+          "password": "Passord"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kunne ikke koble til Dimplex-tjenesten.",
+      "invalid_auth": "Autentisering feilet. Sjekk legitimasjonen.",
+      "unknown": "En uventet feil oppstod."
+    },
+    "abort": {
+      "single_instance_allowed": "Denne integrasjonen kan kun konfigureres en gang."
+    }
+  },
+  "options": {
+    "step": {
+      "user": {
+        "data": {
+          "binary_sensor": "Binær sensor aktivert",
+          "sensor": "Sensor aktivert",
+          "switch": "Bryter aktivert"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "dimplex_controller",
+        "description": "Si vous avez besoin d'aide pour la configuration, regardez ici: https://github.com/kroperuk/dimplex-controller-hass",
+        "data": {
+          "username": "Identifiant",
+          "password": "Mot de Passe"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Échec de connexion au service Dimplex.",
+      "invalid_auth": "Échec de l'authentification. Vérifiez vos identifiants.",
+      "unknown": "Une erreur inattendue est survenue."
+    },
+    "abort": {
+      "single_instance_allowed": "Une seule instance est autorisée."
+    }
+  },
+  "options": {
+    "step": {
+      "user": {
+        "data": {
+          "binary_sensor": "Capteur binaire activé",
+          "sensor": "Capteur activé",
+          "switch": "Interrupteur activé"
+        }
+      }
+    }
+  }
+}
