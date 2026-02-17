@@ -20,6 +20,16 @@ repos:
         language: system
         types: [python]
         require_serial: true
+      - id: check-ha-manifest-key-order
+        name: check Home Assistant manifest key order
+        entry: >
+          bash -c 'for file in "$@"; do
+          jq -e '\''type == "object" and ((keys_unsorted) as $keys | ($keys[:2] == ["domain","name"]) and ($keys == (["domain","name"] + (($keys - ["domain","name"]) | sort))))'\'' "$file" > /dev/null
+          || { echo "$file: manifest keys must be domain, name, then alphabetical order"; exit 1; };
+          done' --
+        language: system
+        files: ^custom_components/[^/]+/manifest\.json$
+        pass_filenames: true
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: v2.2.1
     hooks:

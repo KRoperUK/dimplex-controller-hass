@@ -32,7 +32,7 @@ jobs:
 
       - name: Install Python modules
         run: |
-          pip install requirements_test.txt
+          pip install -r requirements_test.txt
 
       - name: Run pre-commit on all files
         run: |
