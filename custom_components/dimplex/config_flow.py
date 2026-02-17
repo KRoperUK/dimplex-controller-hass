@@ -66,9 +66,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                     title=info["title"],
                     data={
                         CONF_USERNAME: user_input[CONF_USERNAME],
-                        CONF_REFRESH_TOKEN: info["token_data"].get(
-                            CONF_REFRESH_TOKEN
-                        ),
+                        CONF_REFRESH_TOKEN: info["token_data"].get(CONF_REFRESH_TOKEN),
                         CONF_ACCESS_TOKEN: info["token_data"].get(CONF_ACCESS_TOKEN),
                         CONF_EXPIRES_AT: info["token_data"].get(CONF_EXPIRES_AT, 0),
                     },
@@ -92,6 +90,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             errors=self._errors,
         )
+
 
 class DimplexOptionsFlowHandler(config_entries.OptionsFlow):
     """Config flow options handler for dimplex."""

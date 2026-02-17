@@ -1,4 +1,5 @@
 """Test dimplex_controller config flow."""
+
 from unittest.mock import patch
 
 import pytest
@@ -25,7 +26,10 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture(autouse=True)
 def bypass_setup_fixture():
     """Prevent setup."""
-    with patch("custom_components.dimplex.async_setup", return_value=True,), patch(
+    with patch(
+        "custom_components.dimplex.async_setup",
+        return_value=True,
+    ), patch(
         "custom_components.dimplex.async_setup_entry",
         return_value=True,
     ):
@@ -135,7 +139,9 @@ async def test_options_flow(hass):
     # Enter some fake data into the form
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        user_input={platform.value: platform.value != "sensor" for platform in PLATFORMS},
+        user_input={
+            platform.value: platform.value != "sensor" for platform in PLATFORMS
+        },
     )
 
     # Verify that the flow finishes

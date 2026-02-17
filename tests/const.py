@@ -1,4 +1,5 @@
 """Constants for dimplex_controller tests."""
+
 from custom_components.dimplex.const import (
     CONF_ACCESS_TOKEN,
 )

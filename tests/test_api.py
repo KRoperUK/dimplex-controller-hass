@@ -89,7 +89,9 @@ async def test_async_get_data_maps_appliances(hass):
     zone = SimpleNamespace(ZoneName="Living Room", Appliances=[appliance])
     status = SimpleNamespace(ApplianceId="appliance-1", EcoStartEnabled=True)
 
-    with patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])), patch.object(
+    with patch.object(
+        api._client, "get_hubs", new=AsyncMock(return_value=[hub])
+    ), patch.object(
         api._client,
         "get_hub_zones",
         new=AsyncMock(return_value=[zone]),

@@ -1,4 +1,5 @@
 """Test dimplex_controller switch."""
+
 from types import SimpleNamespace
 from unittest.mock import call
 from unittest.mock import patch
@@ -7,9 +8,9 @@ import pytest
 from custom_components.dimplex.const import (
     DOMAIN,
 )
+from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.components.switch import SERVICE_TURN_OFF
 from homeassistant.components.switch import SERVICE_TURN_ON
-from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.const import ATTR_ENTITY_ID
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -26,8 +27,14 @@ def _mock_coordinator_payload():
         FriendlyName="Living Room Heater",
         ApplianceModel="Model X",
     )
-    status = SimpleNamespace(EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5)
-    return {"appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}]}
+    status = SimpleNamespace(
+        EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5
+    )
+    return {
+        "appliances": [
+            {"hub": hub, "zone": zone, "appliance": appliance, "status": status}
+        ]
+    }
 
 
 async def test_switch_services(hass):
@@ -36,9 +43,7 @@ async def test_switch_services(hass):
     config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
 
-    with patch(
-        "custom_components.dimplex.DimplexApiClient.async_initialize"
-    ), patch(
+    with patch("custom_components.dimplex.DimplexApiClient.async_initialize"), patch(
         "custom_components.dimplex.DimplexApiClient.async_get_data",
         return_value=_mock_coordinator_payload(),
     ):

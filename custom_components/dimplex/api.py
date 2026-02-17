@@ -106,9 +106,7 @@ class DimplexApiClient:
                     overview = await self._client.get_appliance_overview(
                         hub.HubId, appliance_ids
                     )
-                    overview_by_id = {
-                        status.ApplianceId: status for status in overview
-                    }
+                    overview_by_id = {status.ApplianceId: status for status in overview}
 
                 for zone in zones:
                     for appliance in zone.Appliances:

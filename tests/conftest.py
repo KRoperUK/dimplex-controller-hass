@@ -1,4 +1,5 @@
 """Global fixtures for dimplex_controller integration."""
+
 from unittest.mock import patch
 
 import pytest
@@ -29,9 +30,7 @@ def skip_notifications_fixture():
 @pytest.fixture(name="bypass_get_data")
 def bypass_get_data_fixture():
     """Skip calls to get data from API."""
-    with patch(
-        "custom_components.dimplex.DimplexApiClient.async_initialize"
-    ), patch(
+    with patch("custom_components.dimplex.DimplexApiClient.async_initialize"), patch(
         "custom_components.dimplex.DimplexApiClient.async_get_data",
         return_value={"appliances": []},
     ):

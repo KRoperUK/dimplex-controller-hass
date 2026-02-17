@@ -20,8 +20,14 @@ def _mock_coordinator_payload():
         FriendlyName="Living Room Heater",
         ApplianceModel="Model X",
     )
-    status = SimpleNamespace(EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5)
-    return {"appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}]}
+    status = SimpleNamespace(
+        EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5
+    )
+    return {
+        "appliances": [
+            {"hub": hub, "zone": zone, "appliance": appliance, "status": status}
+        ]
+    }
 
 
 async def test_sensor_and_binary_sensor_entities(hass):

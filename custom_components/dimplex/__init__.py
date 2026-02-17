@@ -4,6 +4,7 @@ Custom integration to integrate dimplex_controller with Home Assistant.
 For more details about this integration, please refer to
 https://github.com/kroperuk/dimplex-controller-hass
 """
+
 import asyncio
 import logging
 
