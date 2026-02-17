@@ -1,4 +1,4 @@
-# dimplex_controller
+# Dimplex Hub
 
 [![GitHub Release][releases-shield]][releases]
 [![GitHub Activity][commits-shield]][commits]
@@ -14,56 +14,66 @@
 [![Discord][discord-shield]][discord]
 [![Community Forum][forum-shield]][forum]
 
-**TO BE REMOVED: If you need help, as a developer, to use this custom component tempalte,
-please look at the [User Guide in the Cookiecutter documentation](https://cookiecutter-homeassistant-custom-component.readthedocs.io/en/stable/quickstart.html)**
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.][hacs-install-badge]][hacs-install]
 
-**This component will set up the following platforms.**
+Custom Home Assistant integration for Dimplex electric heating appliances.
 
-| Platform        | Description                                                               |
-| --------------- | ------------------------------------------------------------------------- |
-| `binary_sensor` | Show something `True` or `False`.                                         |
-| `sensor`        | Show info from dimplex_controller API. |
-| `switch`        | Switch something `True` or `False`.                                       |
+## Overview
 
-![example][exampleimg]
+This integration connects Home Assistant to the Dimplex cloud API and exposes core heater telemetry and controls through config entries.
 
-## Installation
+## Supported entities
 
-1. Using the tool of choice open the directory (folder) for your HA configuration (where you find `configuration.yaml`).
-2. If you do not have a `custom_components` directory (folder) there, you need to create it.
-3. In the `custom_components` directory (folder) create a new folder called `dimplex`.
-4. Download _all_ the files from the `custom_components/dimplex/` directory (folder) in this repository.
-5. Place the files you downloaded in the new directory (folder) you created.
-6. Restart Home Assistant
-7. In the HA UI go to "Configuration" -> "Integrations" click "+" and search for "dimplex_controller"
+| Platform        | Description                     |
+| --------------- | ------------------------------- |
+| `sensor`        | Room temperature per appliance. |
+| `binary_sensor` | Comfort status per appliance.   |
+| `switch`        | EcoStart toggle per appliance.  |
 
-Using your HA configuration directory (folder) as a starting point you should now also have this:
+## Installation (manual)
 
-```text
-custom_components/dimplex/translations/en.json
-custom_components/dimplex/translations/fr.json
-custom_components/dimplex/translations/nb.json
-custom_components/dimplex/translations/sensor.en.json
-custom_components/dimplex/translations/sensor.fr.json
-custom_components/dimplex/translations/sensor.nb.json
-custom_components/dimplex/translations/sensor.nb.json
-custom_components/dimplex/__init__.py
-custom_components/dimplex/api.py
-custom_components/dimplex/binary_sensor.py
-custom_components/dimplex/config_flow.py
-custom_components/dimplex/const.py
-custom_components/dimplex/manifest.json
-custom_components/dimplex/sensor.py
-custom_components/dimplex/switch.py
-```
+1. Open your Home Assistant configuration directory (the folder containing `configuration.yaml`).
+2. Create `custom_components` if it does not exist.
+3. Copy `custom_components/dimplex` from this repository into your Home Assistant config.
+4. Restart Home Assistant.
+5. In Home Assistant, go to **Configuration** -> **Integrations**.
+6. Click **+** and search for `Dimplex Hub`.
 
-## Configuration is done in the UI
+## Configuration
 
-<!---->
+Configuration is done in the UI through the integration config flow.
+
+### Getting the OAuth callback URL or code
+
+During setup, the config flow shows a login URL.
+
+1. Open that login URL in your browser.
+2. **Before** entering your credentials, open Developer Tools (`F12`) and go to the **Network** tab.
+3. Enable **Preserve log** (or equivalent "keep log" option).
+4. Submit your login details.
+5. The final mobile-app redirect will fail/cancel, which is expected.
+6. In Network, find the last redirect/cancelled request (or the request URL) that includes `?code=...`.
+7. Copy either:
+   - the full callback URL (starts with `msal...://auth/?code=...`), or
+   - just the `code` value.
+8. Paste that into the integration form field **Redirect URL or code**.
+
+If the code expires, repeat the steps and capture a fresh one.
+
+## Known limitations
+
+- Target temperature controls are not exposed yet.
+- Schedules/timer editing is not exposed yet.
+
+## Troubleshooting
+
+- Check Home Assistant logs for authentication or connectivity errors.
+- Re-authenticate in the config flow if your token has expired.
+- If setup fails, create an issue with logs and reproduction steps.
 
 ## Contributions are welcome!
 
-If you want to contribute to this please read the [Contribution guidelines](CONTRIBUTING.md)
+If you want to contribute, please read the [Contribution guidelines](CONTRIBUTING.md).
 
 ## Credits
 
@@ -81,6 +91,8 @@ Code template was mainly taken from [@Ludeeus](https://github.com/ludeeus)'s [in
 [commits-shield]: https://img.shields.io/github/commit-activity/y/kroperuk/dimplex-controller-hass.svg?style=for-the-badge
 [commits]: https://github.com/kroperuk/dimplex-controller-hass/commits/main
 [hacs]: https://hacs.xyz
+[hacs-install]: https://my.home-assistant.io/redirect/hacs_repository/?owner=kroperuk&repository=dimplex-controller-hass&category=integration
+[hacs-install-badge]: https://my.home-assistant.io/badges/hacs_repository.svg
 [hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
 [discord]: https://discord.gg/Qa5fW2R
 [discord-shield]: https://img.shields.io/discord/330944238910963714.svg?style=for-the-badge

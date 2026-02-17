@@ -1,0 +1,85 @@
+name: Linting
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - dev
+  pull_request:
+
+env:
+  DEFAULT_PYTHON: 3.13
+
+jobs:
+  pre-commit:
+    runs-on: "ubuntu-latest"
+    name: Pre-commit
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Ensure jq is installed
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Set up Python ${{ env.DEFAULT_PYTHON }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.DEFAULT_PYTHON }}
+
+      - name: Upgrade pip
+        run: |
+          pip --version
+
+      - name: Install Python modules
+        run: |
+          pip install -r requirements_test.txt
+
+      - name: Run pre-commit on all files
+        run: |
+          pre-commit run --all-files --show-diff-on-failure --color=always
+
+  hacs:
+    runs-on: "ubuntu-latest"
+    name: HACS
+    steps:
+      - name: Check out the repository
+        uses: "actions/checkout@v6"
+
+      - name: HACS validation
+        uses: "hacs/action@22.5.0"
+        with:
+          category: "integration"
+
+  hassfest:
+    runs-on: "ubuntu-latest"
+    name: Hassfest
+    steps:
+      - name: Check out the repository
+        uses: "actions/checkout@v6"
+
+      - name: Hassfest validation
+        uses: "home-assistant/actions/hassfest@master"
+  tests:
+    runs-on: "ubuntu-latest"
+    name: Run tests
+    steps:
+      - name: Check out code from GitHub
+        uses: "actions/checkout@v6"
+      - name: Setup Python ${{ env.DEFAULT_PYTHON }}
+        uses: "actions/setup-python@v6"
+        with:
+          python-version: ${{ env.DEFAULT_PYTHON }}
+      - name: Install requirements
+        run: |
+          pip install -r requirements_test.txt
+      - name: Tests suite
+        run: |
+          pytest \
+            --timeout=9 \
+            --durations=10 \
+            -n auto \
+            -p no:sugar \
+            tests

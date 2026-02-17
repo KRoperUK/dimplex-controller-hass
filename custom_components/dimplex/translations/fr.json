@@ -1,0 +1,32 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dimplex Hub",
+        "description": "Ouvrez cette URL pour vous connecter et déclencher les requêtes d'authentification : {auth_url}. Dans les outils de développement du navigateur, ouvrez l'onglet Réseau et activez Preserve log avant de valider la connexion. Copiez ensuite l'URL de redirection msal complète (ou uniquement le paramètre code) depuis la requête capturée, puis collez-la ci-dessous.",
+        "data": {
+          "auth_code": "URL de redirection ou code"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Échec de connexion au service Dimplex.",
+      "invalid_auth": "Échec de l'authentification. Vérifiez vos identifiants.",
+      "unknown": "Une erreur inattendue est survenue."
+    },
+    "abort": {
+      "single_instance_allowed": "Une seule instance est autorisée."
+    }
+  },
+  "options": {
+    "step": {
+      "user": {
+        "data": {
+          "binary_sensor": "Capteur binaire activé",
+          "sensor": "Capteur activé",
+          "switch": "Interrupteur activé"
+        }
+      }
+    }
+  }
+}
