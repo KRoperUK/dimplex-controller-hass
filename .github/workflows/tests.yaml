@@ -28,12 +28,11 @@ jobs:
 
       - name: Upgrade pip
         run: |
-          pip install --constraint=.github/workflows/constraints.txt pip
           pip --version
 
       - name: Install Python modules
         run: |
-          pip install --constraint=.github/workflows/constraints.txt pre-commit black flake8 reorder-python-imports
+          pip install requirements_test.txt
 
       - name: Run pre-commit on all files
         run: |
@@ -50,7 +49,6 @@ jobs:
         uses: "hacs/action@22.5.0"
         with:
           category: "integration"
-          ignore: brands
 
   hassfest:
     runs-on: "ubuntu-latest"
@@ -73,7 +71,6 @@ jobs:
           python-version: ${{ env.DEFAULT_PYTHON }}
       - name: Install requirements
         run: |
-          pip install --constraint=.github/workflows/constraints.txt pip
           pip install -r requirements_test.txt
       - name: Tests suite
         run: |
