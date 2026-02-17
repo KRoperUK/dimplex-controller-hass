@@ -8,6 +8,10 @@
           "type": "json",
           "path": "custom_components/dimplex/manifest.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "custom_components/dimplex/const.py"
         }
       ]
     }

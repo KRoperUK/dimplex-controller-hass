@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "dimplex_controller",
+        "title": "Dimplex Hub",
         "description": "Åpne denne URL-en for å logge inn og utløse autentiseringsforespørsler: {auth_url}. I nettleserens utviklerverktøy åpner du Nettverk og slår på Preserve log før du sender inn innloggingen. Kopier deretter hele msal-omdirigerings-URL-en (eller bare code-parameteren) fra den fangede forespørselen og lim den inn under.",
         "data": {
           "auth_code": "Omdirigerings-URL eller kode"

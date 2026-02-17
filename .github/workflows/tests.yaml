@@ -7,8 +7,6 @@ on:
       - master
       - dev
   pull_request:
-  schedule:
-    - cron: "0 0 * * *"
 
 env:
   DEFAULT_PYTHON: 3.13
@@ -20,6 +18,11 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v6
+
+      - name: Ensure jq is installed
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
       - name: Set up Python ${{ env.DEFAULT_PYTHON }}
         uses: actions/setup-python@v6

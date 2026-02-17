@@ -4,9 +4,9 @@ from datetime import timedelta
 
 from homeassistant.const import Platform
 
-NAME = "Dimplex Controller"
+NAME = "Dimplex Hub"
 DOMAIN = "dimplex"
-VERSION = "0.0.0"
+VERSION = "0.0.0"  # x-release-please-version
 DOCS_URL = "https://github.com/kroperuk/dimplex-controller-hass"
 ISSUE_URL = "https://github.com/kroperuk/dimplex-controller-hass/issues"
 

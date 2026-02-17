@@ -2,7 +2,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "dimplex_controller",
+        "title": "Dimplex Hub",
         "description": "Open this URL to sign in and trigger auth requests: {auth_url}. In your browser DevTools, open Network and enable Preserve log before you submit the sign-in request. Then copy the full msal redirect URL (or just the code parameter) from the captured request and paste it below.",
         "data": {
           "auth_code": "Redirect URL or code"

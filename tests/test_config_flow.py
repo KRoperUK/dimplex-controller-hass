@@ -64,7 +64,7 @@ async def test_successful_config_flow(hass):
     # Check that the config flow is complete and a new entry is created with
     # the input data
     assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Dimplex Controller"
+    assert result["title"] == "Dimplex Hub"
     assert result["data"]["access_token"] == "access_token"
     assert result["data"]["refresh_token"] == "refresh_token"
     assert result["data"]["expires_at"] == 123
@@ -122,7 +122,7 @@ async def test_options_flow(hass):
     # flow entirely)
     entry = MockConfigEntry(
         domain=DOMAIN,
-        title="Dimplex Controller",
+        title="Dimplex Hub",
         data=MOCK_CONFIG,
         entry_id="test",
     )
@@ -146,7 +146,7 @@ async def test_options_flow(hass):
 
     # Verify that the flow finishes
     assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Dimplex Controller"
+    assert result["title"] == "Dimplex Hub"
 
     # Verify that the options were updated
     assert entry.options == {

@@ -1,6 +1,6 @@
 {
   "domain": "dimplex",
-  "name": "dimplex_controller",
+  "name": "Dimplex Hub",
   "codeowners": ["@kroperuk"],
   "config_flow": true,
   "dependencies": [],
