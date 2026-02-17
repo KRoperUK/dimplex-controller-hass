@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from urllib.parse import parse_qs
+from urllib.parse import urlparse
+
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
@@ -11,27 +14,36 @@ from .api import CannotConnect
 from .api import DimplexApiClient
 from .api import InvalidAuth
 from .const import CONF_ACCESS_TOKEN
+from .const import CONF_AUTH_CODE
 from .const import CONF_EXPIRES_AT
-from .const import CONF_PASSWORD
 from .const import CONF_REFRESH_TOKEN
-from .const import CONF_USERNAME
 from .const import DOMAIN
+from .const import NAME
 from .const import PLATFORMS
 
 
-async def validate_input(hass, data):
-    """Validate user input allows us to connect and authenticate."""
+def _extract_auth_code(raw_input: str) -> str:
+    """Extract auth code from a full redirect URL or raw code."""
+    if "code=" in raw_input:
+        try:
+            parsed = urlparse(raw_input)
+            query = parse_qs(parsed.query)
+            return query.get("code", [""])[0]
+        except ValueError:
+            return ""
+
+    return raw_input.strip()
+
+
+async def validate_auth_code(hass, auth_input):
+    """Exchange auth code and validate user session."""
+    code = _extract_auth_code(auth_input)
+    if not code:
+        raise InvalidAuth
+
     session = async_create_clientsession(hass)
-    client = DimplexApiClient(
-        session=session,
-        username=data[CONF_USERNAME],
-        password=data[CONF_PASSWORD],
-    )
-    token_data = await client.async_validate_connection()
-    return {
-        "title": data[CONF_USERNAME],
-        "token_data": token_data,
-    }
+    client = DimplexApiClient(session=session)
+    return await client.async_exchange_code(code)
 
 
 class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -54,7 +66,9 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                info = await validate_input(self.hass, user_input)
+                token_data = await validate_auth_code(
+                    self.hass, user_input[CONF_AUTH_CODE]
+                )
             except InvalidAuth:
                 self._errors["base"] = "invalid_auth"
             except CannotConnect:
@@ -63,12 +77,11 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 self._errors["base"] = "unknown"
             else:
                 return self.async_create_entry(
-                    title=info["title"],
+                    title=NAME,
                     data={
-                        CONF_USERNAME: user_input[CONF_USERNAME],
-                        CONF_REFRESH_TOKEN: info["token_data"].get(CONF_REFRESH_TOKEN),
-                        CONF_ACCESS_TOKEN: info["token_data"].get(CONF_ACCESS_TOKEN),
-                        CONF_EXPIRES_AT: info["token_data"].get(CONF_EXPIRES_AT, 0),
+                        CONF_REFRESH_TOKEN: token_data.get(CONF_REFRESH_TOKEN),
+                        CONF_ACCESS_TOKEN: token_data.get(CONF_ACCESS_TOKEN),
+                        CONF_EXPIRES_AT: token_data.get(CONF_EXPIRES_AT, 0),
                     },
                 )
 
@@ -83,12 +96,14 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _show_config_form(self, user_input):  # pylint: disable=unused-argument
         """Show the configuration form to edit location data."""
+        session = async_create_clientsession(self.hass)
+        auth_url = DimplexApiClient(session=session).get_auth_url()
+
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema(
-                {vol.Required(CONF_USERNAME): str, vol.Required(CONF_PASSWORD): str}
-            ),
+            data_schema=vol.Schema({vol.Required(CONF_AUTH_CODE): str}),
             errors=self._errors,
+            description_placeholders={"auth_url": auth_url},
         )
 
 
@@ -126,5 +141,5 @@ class DimplexOptionsFlowHandler(config_entries.OptionsFlow):
     async def _update_options(self):
         """Update config entry options."""
         return self.async_create_entry(
-            title=self._config_entry.data.get(CONF_USERNAME), data=self.options
+            title=self._config_entry.title, data=self.options
         )

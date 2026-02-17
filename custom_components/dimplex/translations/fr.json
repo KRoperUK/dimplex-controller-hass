@@ -3,10 +3,9 @@
     "step": {
       "user": {
         "title": "dimplex_controller",
-        "description": "Si vous avez besoin d'aide pour la configuration, regardez ici: https://github.com/kroperuk/dimplex-controller-hass",
+        "description": "Ouvrez cette URL pour vous connecter et déclencher les requêtes d'authentification : {auth_url}. Dans les outils de développement du navigateur, ouvrez l'onglet Réseau et activez Preserve log avant de valider la connexion. Copiez ensuite l'URL de redirection msal complète (ou uniquement le paramètre code) depuis la requête capturée, puis collez-la ci-dessous.",
         "data": {
-          "username": "Identifiant",
-          "password": "Mot de Passe"
+          "auth_code": "URL de redirection ou code"
         }
       }
     },

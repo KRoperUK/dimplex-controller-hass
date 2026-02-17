@@ -59,6 +59,23 @@ custom_components/dimplex/switch.py
 
 ## Configuration is done in the UI
 
+### Getting the OAuth callback URL (or code)
+
+During setup, the config flow shows a login URL.
+
+1. Open that login URL in your browser.
+2. **Before** entering your credentials, open Developer Tools (`F12`) and go to the **Network** tab.
+3. Enable **Preserve log** (or equivalent "keep log" option).
+4. Submit your login details.
+5. The final mobile-app redirect will fail/cancel, which is expected.
+6. In Network, find the last redirect/cancelled request (or the request URL) that includes `?code=...`.
+7. Copy either:
+   - the full callback URL (starts with `msal...://auth/?code=...`), or
+   - just the `code` value.
+8. Paste that into the integration form field **Redirect URL or code**.
+
+If the code expires, repeat the steps and capture a fresh one.
+
 <!---->
 
 ## Contributions are welcome!

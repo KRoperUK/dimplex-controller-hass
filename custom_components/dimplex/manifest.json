@@ -7,5 +7,6 @@
   "dependencies": [],
   "config_flow": true,
   "codeowners": ["@kroperuk"],
-  "requirements": ["dimplex-controller>=0.2.0"]
+  "requirements": ["dimplex-controller>=0.2.0"],
+  "countries": ["GB"]
 }

@@ -114,3 +114,25 @@ async def test_set_eco_start_calls_library(hass):
         await api.async_set_eco_start("hub-1", "appliance-1", True)
 
     set_eco_start.assert_awaited_once_with("hub-1", ["appliance-1"], True)
+
+
+async def test_exchange_code_success(hass):
+    """Test auth code exchange returns token payload."""
+    api = DimplexApiClient(session=async_get_clientsession(hass))
+
+    with patch.object(
+        api._client.auth,
+        "exchange_code",
+        new=AsyncMock(),
+    ), patch.object(
+        api._client,
+        "get_user_context",
+        new=AsyncMock(return_value=SimpleNamespace(Name="Test User")),
+    ):
+        api._client.auth._access_token = "access"
+        api._client.auth._refresh_token = "refresh"
+        api._client.auth._expires_at = 123
+        token_data = await api.async_exchange_code("test-code")
+
+    assert token_data["access_token"] == "access"
+    assert token_data["refresh_token"] == "refresh"

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import base64
+import json
+from datetime import datetime
+from datetime import timezone
 from typing import Any
 
 import aiohttp
@@ -51,6 +55,21 @@ class DimplexApiClient:
             "expires_at": self._client.auth._expires_at,
         }
 
+    @staticmethod
+    def _extract_expiry(access_token: str) -> float:
+        """Extract the exp claim from a JWT access token."""
+        try:
+            payload_part = access_token.split(".")[1]
+            payload_part += "=" * (-len(payload_part) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_part.encode()))
+            exp = payload.get("exp")
+            if isinstance(exp, int | float):
+                return float(exp)
+        except Exception:
+            return 0
+
+        return 0
+
     async def async_initialize(self) -> None:
         """Ensure the underlying library is authenticated."""
         if self._client.auth._refresh_token:
@@ -61,6 +80,20 @@ class DimplexApiClient:
                 raise InvalidAuth from exception
             except DimplexConnectionError as exception:
                 raise CannotConnect from exception
+
+        if self._client.auth._access_token:
+            if not self._client.auth._expires_at:
+                self._client.auth._expires_at = self._extract_expiry(
+                    self._client.auth._access_token
+                )
+
+            if self._client.auth._expires_at:
+                if (
+                    self._client.auth._expires_at
+                    <= datetime.now(timezone.utc).timestamp()
+                ):
+                    raise InvalidAuth
+                return
 
         if not self._username or not self._password:
             raise InvalidAuth
@@ -86,6 +119,28 @@ class DimplexApiClient:
             raise CannotConnect from exception
 
         return self.token_data
+
+    async def async_exchange_code(self, code: str) -> dict[str, Any]:
+        """Exchange auth code for tokens and validate the session."""
+        try:
+            await self._client.auth.exchange_code(code)
+            await self._client.get_user_context()
+        except DimplexAuthError as exception:
+            raise InvalidAuth from exception
+        except DimplexConnectionError as exception:
+            raise CannotConnect from exception
+        except DimplexApiError as exception:
+            raise CannotConnect from exception
+
+        return self.token_data
+
+    def get_auth_url(self) -> str:
+        """Return the browser auth URL for manual token generation."""
+        auth_manager = self._client.auth
+        if hasattr(auth_manager, "get_auth_url"):
+            return auth_manager.get_auth_url()
+
+        return auth_manager.get_login_url()
 
     async def async_get_data(self) -> dict[str, Any]:
         """Fetch hubs, zones, and appliance overview data."""

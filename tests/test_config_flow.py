@@ -36,10 +36,8 @@ def bypass_setup_fixture():
         yield
 
 
-# Here we simiulate a successful config flow from the backend.
-# Note that we use the `bypass_get_data` fixture here because
-# we want the config flow validation to succeed during the test.
-async def test_successful_config_flow(hass, bypass_get_data):
+# Here we simulate a successful config flow from the backend.
+async def test_successful_config_flow(hass):
     """Test a successful config flow."""
     # Initialize a config flow
     result = await hass.config_entries.flow.async_init(
@@ -50,17 +48,13 @@ async def test_successful_config_flow(hass, bypass_get_data):
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["step_id"] == "user"
 
-    # If a user were to enter `test_username` for username and `test_password`
-    # for password, it would result in this function call
+    # If a user enters an access token, it results in this validation call.
     with patch(
-        "custom_components.dimplex.config_flow.validate_input",
+        "custom_components.dimplex.config_flow.validate_auth_code",
         return_value={
-            "title": "test_username",
-            "token_data": {
-                "refresh_token": "refresh",
-                "access_token": "access",
-                "expires_at": 123,
-            },
+            "refresh_token": "refresh_token",
+            "access_token": "access_token",
+            "expires_at": 123,
         },
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -70,9 +64,10 @@ async def test_successful_config_flow(hass, bypass_get_data):
     # Check that the config flow is complete and a new entry is created with
     # the input data
     assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test_username"
-    assert result["data"]["username"] == "test_username"
-    assert result["data"]["refresh_token"] == "refresh"
+    assert result["title"] == "Dimplex Controller"
+    assert result["data"]["access_token"] == "access_token"
+    assert result["data"]["refresh_token"] == "refresh_token"
+    assert result["data"]["expires_at"] == 123
     assert result["result"]
 
 
@@ -91,7 +86,7 @@ async def test_failed_config_flow(hass, error_on_get_data):
     assert result["step_id"] == "user"
 
     with patch(
-        "custom_components.dimplex.config_flow.validate_input",
+        "custom_components.dimplex.config_flow.validate_auth_code",
         side_effect=InvalidAuth,
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -109,7 +104,7 @@ async def test_cannot_connect_config_flow(hass):
     )
 
     with patch(
-        "custom_components.dimplex.config_flow.validate_input",
+        "custom_components.dimplex.config_flow.validate_auth_code",
         side_effect=CannotConnect,
     ):
         result = await hass.config_entries.flow.async_configure(
@@ -125,7 +120,12 @@ async def test_options_flow(hass):
     """Test an options flow."""
     # Create a new MockConfigEntry and add to HASS (we're bypassing config
     # flow entirely)
-    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_CONFIG, entry_id="test")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Dimplex Controller",
+        data=MOCK_CONFIG,
+        entry_id="test",
+    )
     entry.add_to_hass(hass)
 
     # Initialize an options flow
@@ -146,7 +146,7 @@ async def test_options_flow(hass):
 
     # Verify that the flow finishes
     assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["title"] == "test_username"
+    assert result["title"] == "Dimplex Controller"
 
     # Verify that the options were updated
     assert entry.options == {
