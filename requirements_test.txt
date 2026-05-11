@@ -1,5 +1,5 @@
 -r requirements_dev.txt
-pytest-homeassistant-custom-component>=0.13.109
+pytest-homeassistant-custom-component>=0.13.330
 black
 flake8
 pre-commit
