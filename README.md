@@ -43,7 +43,14 @@ This integration connects Home Assistant to the Dimplex cloud API and exposes co
 
 Configuration is done in the UI through the integration config flow.
 
-### Getting the OAuth callback URL or code
+### Authentication
+
+The config flow supports two login methods:
+
+1. **Username/password (recommended):** enter your Dimplex account credentials directly in the form.
+2. **OAuth callback URL or code:** if direct login does not work for your account, use the manual flow below.
+
+#### Manual OAuth callback URL/code capture
 
 During setup, the config flow shows a login URL.
 

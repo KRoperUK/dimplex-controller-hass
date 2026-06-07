@@ -16,7 +16,9 @@ from .api import InvalidAuth
 from .const import CONF_ACCESS_TOKEN
 from .const import CONF_AUTH_CODE
 from .const import CONF_EXPIRES_AT
+from .const import CONF_PASSWORD
 from .const import CONF_REFRESH_TOKEN
+from .const import CONF_USERNAME
 from .const import DOMAIN
 from .const import NAME
 from .const import PLATFORMS
@@ -46,6 +48,13 @@ async def validate_auth_code(hass, auth_input):
     return await client.async_exchange_code(code)
 
 
+async def validate_credentials(hass, username, password):
+    """Validate username/password login and return token details."""
+    session = async_create_clientsession(hass)
+    client = DimplexApiClient(session, None, None, 0, username, password)
+    return await client.async_validate_connection()
+
+
 class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for dimplex."""
 
@@ -66,9 +75,18 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             try:
-                token_data = await validate_auth_code(
-                    self.hass, user_input[CONF_AUTH_CODE]
-                )
+                auth_code = user_input.get(CONF_AUTH_CODE, "").strip()
+                username = user_input.get(CONF_USERNAME, "").strip()
+                password = user_input.get(CONF_PASSWORD, "")
+
+                if auth_code:
+                    token_data = await validate_auth_code(self.hass, auth_code)
+                elif username and password:
+                    token_data = await validate_credentials(
+                        self.hass, username, password
+                    )
+                else:
+                    raise InvalidAuth
             except InvalidAuth:
                 self._errors["base"] = "invalid_auth"
             except CannotConnect:
@@ -101,7 +119,13 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({vol.Required(CONF_AUTH_CODE): str}),
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_USERNAME, default=""): str,
+                    vol.Optional(CONF_PASSWORD, default=""): str,
+                    vol.Optional(CONF_AUTH_CODE, default=""): str,
+                }
+            ),
             errors=self._errors,
             description_placeholders={"auth_url": auth_url},
         )

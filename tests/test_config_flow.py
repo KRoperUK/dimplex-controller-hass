@@ -6,6 +6,15 @@ import pytest
 from custom_components.dimplex.api import CannotConnect
 from custom_components.dimplex.api import InvalidAuth
 from custom_components.dimplex.const import (
+    CONF_AUTH_CODE,
+)
+from custom_components.dimplex.const import (
+    CONF_PASSWORD,
+)
+from custom_components.dimplex.const import (
+    CONF_USERNAME,
+)
+from custom_components.dimplex.const import (
     DOMAIN,
 )
 from custom_components.dimplex.const import (
@@ -113,6 +122,63 @@ async def test_cannot_connect_config_flow(hass):
 
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_successful_config_flow_with_credentials(hass):
+    """Test config flow using username/password auth path."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "custom_components.dimplex.config_flow.validate_credentials",
+        return_value={
+            "refresh_token": "refresh_token",
+            "access_token": "access_token",
+            "expires_at": 123,
+        },
+    ) as validate_credentials:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_USERNAME: "user@example.com",
+                CONF_PASSWORD: "secret",
+                CONF_AUTH_CODE: "",
+            },
+        )
+
+    validate_credentials.assert_awaited_once_with(hass, "user@example.com", "secret")
+    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Dimplex Hub"
+    assert result["data"]["access_token"] == "access_token"
+    assert result["data"]["refresh_token"] == "refresh_token"
+    assert result["data"]["expires_at"] == 123
+
+
+async def test_config_flow_rejects_incomplete_credentials(hass):
+    """Test config flow rejects partial credential inputs."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    with patch(
+        "custom_components.dimplex.config_flow.validate_auth_code",
+    ) as validate_auth_code, patch(
+        "custom_components.dimplex.config_flow.validate_credentials",
+    ) as validate_credentials:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_USERNAME: "user@example.com",
+                CONF_PASSWORD: "",
+                CONF_AUTH_CODE: "",
+            },
+        )
+
+    validate_auth_code.assert_not_called()
+    validate_credentials.assert_not_called()
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_auth"}
 
 
 # Our config flow also has an options flow, so we must test it as well.

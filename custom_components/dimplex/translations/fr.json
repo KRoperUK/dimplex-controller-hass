@@ -3,8 +3,10 @@
     "step": {
       "user": {
         "title": "Dimplex Hub",
-        "description": "Ouvrez cette URL pour vous connecter et déclencher les requêtes d'authentification : {auth_url}. Dans les outils de développement du navigateur, ouvrez l'onglet Réseau et activez Preserve log avant de valider la connexion. Copiez ensuite l'URL de redirection msal complète (ou uniquement le paramètre code) depuis la requête capturée, puis collez-la ci-dessous.",
+        "description": "Connectez-vous ci-dessous avec votre nom d'utilisateur et mot de passe Dimplex. Si votre compte nécessite une connexion manuelle par code d'authentification, ouvrez cette URL : {auth_url}. Dans les outils de développement du navigateur, capturez l'URL de redirection msal finale (ou copiez uniquement le paramètre code), puis collez-la ci-dessous.",
         "data": {
+          "username": "Nom d'utilisateur (e-mail)",
+          "password": "Mot de passe",
           "auth_code": "URL de redirection ou code"
         }
       }
