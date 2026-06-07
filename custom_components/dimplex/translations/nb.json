@@ -3,8 +3,10 @@
     "step": {
       "user": {
         "title": "Dimplex Hub",
-        "description": "Åpne denne URL-en for å logge inn og utløse autentiseringsforespørsler: {auth_url}. I nettleserens utviklerverktøy åpner du Nettverk og slår på Preserve log før du sender inn innloggingen. Kopier deretter hele msal-omdirigerings-URL-en (eller bare code-parameteren) fra den fangede forespørselen og lim den inn under.",
+        "description": "Logg inn med Dimplex-brukernavn og passord nedenfor. Hvis kontoen din krever manuell innlogging med autentiseringskode, åpner du denne URL-en: {auth_url}. I nettleserens utviklerverktøy kan du hente den siste msal-omdirigerings-URL-en (eller bare code-parameteren) og lime den inn under.",
         "data": {
+          "username": "Brukernavn (e-post)",
+          "password": "Passord",
           "auth_code": "Omdirigerings-URL eller kode"
         }
       }
