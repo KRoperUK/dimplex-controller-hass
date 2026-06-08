@@ -2,24 +2,23 @@
 
 from __future__ import annotations
 
-from urllib.parse import parse_qs
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
-from .api import CannotConnect
-from .api import DimplexApiClient
-from .api import InvalidAuth
-from .const import CONF_ACCESS_TOKEN
-from .const import CONF_AUTH_CODE
-from .const import CONF_EXPIRES_AT
-from .const import CONF_REFRESH_TOKEN
-from .const import DOMAIN
-from .const import NAME
-from .const import PLATFORMS
+from .api import CannotConnect, DimplexApiClient, InvalidAuth
+from .const import (
+    CONF_ACCESS_TOKEN,
+    CONF_AUTH_CODE,
+    CONF_EXPIRES_AT,
+    CONF_REFRESH_TOKEN,
+    DOMAIN,
+    NAME,
+    PLATFORMS,
+)
 
 
 def _extract_auth_code(raw_input: str) -> str:

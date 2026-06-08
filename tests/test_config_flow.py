@@ -3,17 +3,14 @@
 from unittest.mock import patch
 
 import pytest
-from custom_components.dimplex.api import CannotConnect
-from custom_components.dimplex.api import InvalidAuth
+from homeassistant import config_entries, data_entry_flow
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.dimplex.api import CannotConnect, InvalidAuth
 from custom_components.dimplex.const import (
     DOMAIN,
-)
-from custom_components.dimplex.const import (
     PLATFORMS,
 )
-from homeassistant import config_entries
-from homeassistant import data_entry_flow
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .const import MOCK_CONFIG
 
@@ -26,12 +23,15 @@ pytestmark = pytest.mark.asyncio
 @pytest.fixture(autouse=True)
 def bypass_setup_fixture():
     """Prevent setup."""
-    with patch(
-        "custom_components.dimplex.async_setup",
-        return_value=True,
-    ), patch(
-        "custom_components.dimplex.async_setup_entry",
-        return_value=True,
+    with (
+        patch(
+            "custom_components.dimplex.async_setup",
+            return_value=True,
+        ),
+        patch(
+            "custom_components.dimplex.async_setup_entry",
+            return_value=True,
+        ),
     ):
         yield
 

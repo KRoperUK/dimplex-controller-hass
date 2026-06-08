@@ -2,14 +2,8 @@
 
 from custom_components.dimplex.const import (
     CONF_ACCESS_TOKEN,
-)
-from custom_components.dimplex.const import (
     CONF_AUTH_CODE,
-)
-from custom_components.dimplex.const import (
     CONF_EXPIRES_AT,
-)
-from custom_components.dimplex.const import (
     CONF_REFRESH_TOKEN,
 )
 

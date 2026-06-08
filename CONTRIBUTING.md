@@ -13,11 +13,13 @@ Github is used to host code, to track issues and feature requests, as well as ac
 
 Pull requests are the best way to propose changes to the codebase.
 
-1. Fork the repo and create your branch from `master`.
+1. Fork the repo and create your branch from `main`.
 2. If you've changed something, update the documentation.
-3. Make sure your code lints (using black).
-4. Test you contribution.
-5. Issue that pull request!
+3. Make sure your code lints and is formatted (`ruff check .` and `ruff format .`).
+4. Add or update tests for your change and make sure `pytest` passes.
+5. Use a [Conventional Commit](https://www.conventionalcommits.org/) PR title
+   (`fix:`, `feat:`, `chore:` …) — this drives the automated changelog/release.
+6. Issue that pull request!
 
 ## Any contributions you make will be under the MIT Software License
 
@@ -44,11 +46,10 @@ People _love_ thorough bug reports. I'm not even kidding.
 
 ## Use a Consistent Coding Style
 
-Use [black](https://github.com/ambv/black) and [prettier](https://prettier.io/)
-to make sure the code follows the style.
-
-Or use the `pre-commit` settings implemented in this repository
-(see deicated section below).
+This project uses [ruff](https://docs.astral.sh/ruff/) for Python linting and
+formatting (config in `pyproject.toml`) and [prettier](https://prettier.io/) for
+YAML/JSON/Markdown. The easiest way to apply everything is the `pre-commit`
+settings included in this repository (see dedicated section below).
 
 ## Test your code modification
 
@@ -68,13 +69,16 @@ and you are encouraged to add new ones.
 You can run the tests using the following commands from the root folder:
 
 ```bash
-# Create a virtual environment
-python3 -m venv venv
-source venv/bin/activate
-# Install requirements
-pip install -r requirements_test.txt
-# Run tests and get a summary of successes/failures and code coverage
-pytest --durations=10 --cov-report term-missing --cov=custom_components.dimplex tests
+# Create a virtual environment (uv recommended; plain venv works too)
+uv venv --python 3.13 .venv
+uv pip install --python .venv -r requirements_test.txt
+
+# Lint & format
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
+
+# Run tests with coverage
+.venv/bin/python -m pytest tests
 ```
 
 If any of the tests fail, make the necessary changes to the tests as part of

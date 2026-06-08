@@ -1,0 +1,37 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+]
+# E501 (line length) is handled by the formatter; long strings/comments are fine.
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components", "tests"]
+
+[tool.pytest.ini_options]
+addopts = "-qq --cov=custom_components.dimplex --cov-report=term-missing"
+console_output_style = "count"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+branch = false
+source = ["custom_components/dimplex"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+]

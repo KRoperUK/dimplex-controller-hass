@@ -1,17 +1,18 @@
 """Test dimplex_controller setup process."""
 
 import pytest
-from custom_components.dimplex import async_reload_entry
-from custom_components.dimplex import async_setup_entry
-from custom_components.dimplex import async_unload_entry
+from homeassistant.exceptions import ConfigEntryNotReady
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
 from custom_components.dimplex import (
     DimplexDataUpdateCoordinator,
+    async_reload_entry,
+    async_setup_entry,
+    async_unload_entry,
 )
 from custom_components.dimplex.const import (
     DOMAIN,
 )
-from homeassistant.exceptions import ConfigEntryNotReady
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .const import MOCK_ENTRY_DATA
 

@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a problem with the Dimplex Controller integration
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to file a bug report! Please search existing issues first.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight checks
+      options:
+        - label: I have searched existing issues and this is not a duplicate.
+          required: true
+        - label: I am running the latest released version of this integration.
+          required: true
+  - type: input
+    id: integration_version
+    attributes:
+      label: Integration version
+      description: See `custom_components/dimplex/const.py` or HACS.
+      placeholder: "e.g. 1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "e.g. 2026.5.0"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear description of the problem and what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug log
+      description: >
+        Enable debug logging (`custom_components.dimplex: debug`), reproduce, and paste
+        the relevant lines. Redact any credentials or tokens.
+      render: text
+    validations:
+      required: false

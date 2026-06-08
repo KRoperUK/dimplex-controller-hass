@@ -1,18 +1,17 @@
 """Test dimplex_controller switch."""
 
 from types import SimpleNamespace
-from unittest.mock import call
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
+from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
+from homeassistant.components.switch import SERVICE_TURN_OFF, SERVICE_TURN_ON
+from homeassistant.const import ATTR_ENTITY_ID
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
 from custom_components.dimplex.const import (
     DOMAIN,
 )
-from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
-from homeassistant.components.switch import SERVICE_TURN_OFF
-from homeassistant.components.switch import SERVICE_TURN_ON
-from homeassistant.const import ATTR_ENTITY_ID
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from .const import MOCK_ENTRY_DATA
 
@@ -43,9 +42,12 @@ async def test_switch_services(hass):
     config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
 
-    with patch("custom_components.dimplex.DimplexApiClient.async_initialize"), patch(
-        "custom_components.dimplex.DimplexApiClient.async_get_data",
-        return_value=_mock_coordinator_payload(),
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_data",
+            return_value=_mock_coordinator_payload(),
+        ),
     ):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
@@ -60,11 +62,14 @@ async def test_switch_services(hass):
 
     # Functions/objects can be patched directly in test code as well and can be used to test
     # additional things, like whether a function was called or what arguments it was called with
-    with patch(
-        "custom_components.dimplex.DimplexApiClient.async_set_eco_start"
-    ) as eco_start_func, patch(
-        "custom_components.dimplex.DimplexApiClient.async_get_data",
-        return_value=_mock_coordinator_payload(),
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_eco_start"
+        ) as eco_start_func,
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_data",
+            return_value=_mock_coordinator_payload(),
+        ),
     ):
         await hass.services.async_call(
             SWITCH_DOMAIN,

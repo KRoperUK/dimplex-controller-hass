@@ -19,8 +19,9 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 @pytest.fixture(name="skip_notifications", autouse=True)
 def skip_notifications_fixture():
     """Skip notification calls."""
-    with patch("homeassistant.components.persistent_notification.async_create"), patch(
-        "homeassistant.components.persistent_notification.async_dismiss"
+    with (
+        patch("homeassistant.components.persistent_notification.async_create"),
+        patch("homeassistant.components.persistent_notification.async_dismiss"),
     ):
         yield
 
@@ -30,9 +31,12 @@ def skip_notifications_fixture():
 @pytest.fixture(name="bypass_get_data")
 def bypass_get_data_fixture():
     """Skip calls to get data from API."""
-    with patch("custom_components.dimplex.DimplexApiClient.async_initialize"), patch(
-        "custom_components.dimplex.DimplexApiClient.async_get_data",
-        return_value={"appliances": []},
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_data",
+            return_value={"appliances": []},
+        ),
     ):
         yield
 
@@ -42,8 +46,11 @@ def bypass_get_data_fixture():
 @pytest.fixture(name="error_on_get_data")
 def error_get_data_fixture():
     """Simulate error when retrieving data from API."""
-    with patch("custom_components.dimplex.DimplexApiClient.async_initialize"), patch(
-        "custom_components.dimplex.DimplexApiClient.async_get_data",
-        side_effect=Exception,
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_data",
+            side_effect=Exception,
+        ),
     ):
         yield
