@@ -1,4 +1,4 @@
 -r requirements_dev.txt
-pytest-homeassistant-custom-component>=0.13.109
+pytest-homeassistant-custom-component>=0.13.337
 ruff==0.15.16
 pre-commit
