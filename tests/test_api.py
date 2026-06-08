@@ -1,18 +1,30 @@
 """Tests for dimplex API adapter."""
 
+import base64
+import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from custom_components.dimplex.api import CannotConnect
-from custom_components.dimplex.api import DimplexApiClient
-from custom_components.dimplex.api import InvalidAuth
-from dimplex_controller import DimplexAuthError
-from dimplex_controller import DimplexConnectionError
+from dimplex_controller import (
+    DimplexApiError,
+    DimplexAuthError,
+    DimplexConnectionError,
+)
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-pytestmark = pytest.mark.asyncio
+from custom_components.dimplex.api import CannotConnect, DimplexApiClient, InvalidAuth
+
+# asyncio_mode = auto (pyproject.toml) auto-handles async tests, so no module-level
+# asyncio mark is needed — and adding one would break the sync unit tests below.
+
+
+def _jwt(exp) -> str:
+    """Build a minimal JWT-like string carrying an exp claim."""
+    payload = (
+        base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).decode().rstrip("=")
+    )
+    return f"header.{payload}.signature"
 
 
 async def test_validate_connection_success(hass):
@@ -23,18 +35,22 @@ async def test_validate_connection_success(hass):
         password="password",
     )
 
-    with patch.object(
-        api._client.auth,
-        "headless_login",
-        new=AsyncMock(),
-    ), patch.object(
-        api._client.auth,
-        "get_access_token",
-        new=AsyncMock(return_value="token"),
-    ), patch.object(
-        api._client,
-        "get_user_context",
-        new=AsyncMock(return_value=SimpleNamespace(Name="Test User")),
+    with (
+        patch.object(
+            api._client.auth,
+            "headless_login",
+            new=AsyncMock(),
+        ),
+        patch.object(
+            api._client.auth,
+            "get_access_token",
+            new=AsyncMock(return_value="token"),
+        ),
+        patch.object(
+            api._client,
+            "get_user_context",
+            new=AsyncMock(return_value=SimpleNamespace(Name="Test User")),
+        ),
     ):
         api._client.auth._refresh_token = "refresh"
         token_data = await api.async_validate_connection()
@@ -50,13 +66,15 @@ async def test_validate_connection_invalid_auth(hass):
         password="wrong",
     )
 
-    with patch.object(
-        api._client.auth,
-        "headless_login",
-        new=AsyncMock(side_effect=DimplexAuthError("failed")),
+    with (
+        patch.object(
+            api._client.auth,
+            "headless_login",
+            new=AsyncMock(side_effect=DimplexAuthError("failed")),
+        ),
+        pytest.raises(InvalidAuth),
     ):
-        with pytest.raises(InvalidAuth):
-            await api.async_validate_connection()
+        await api.async_validate_connection()
 
 
 async def test_validate_connection_cannot_connect(hass):
@@ -67,13 +85,15 @@ async def test_validate_connection_cannot_connect(hass):
         password="password",
     )
 
-    with patch.object(
-        api._client.auth,
-        "headless_login",
-        new=AsyncMock(side_effect=DimplexConnectionError("offline")),
+    with (
+        patch.object(
+            api._client.auth,
+            "headless_login",
+            new=AsyncMock(side_effect=DimplexConnectionError("offline")),
+        ),
+        pytest.raises(CannotConnect),
     ):
-        with pytest.raises(CannotConnect):
-            await api.async_validate_connection()
+        await api.async_validate_connection()
 
 
 async def test_async_get_data_maps_appliances(hass):
@@ -89,16 +109,18 @@ async def test_async_get_data_maps_appliances(hass):
     zone = SimpleNamespace(ZoneName="Living Room", Appliances=[appliance])
     status = SimpleNamespace(ApplianceId="appliance-1", EcoStartEnabled=True)
 
-    with patch.object(
-        api._client, "get_hubs", new=AsyncMock(return_value=[hub])
-    ), patch.object(
-        api._client,
-        "get_hub_zones",
-        new=AsyncMock(return_value=[zone]),
-    ), patch.object(
-        api._client,
-        "get_appliance_overview",
-        new=AsyncMock(return_value=[status]),
+    with (
+        patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        patch.object(
+            api._client,
+            "get_hub_zones",
+            new=AsyncMock(return_value=[zone]),
+        ),
+        patch.object(
+            api._client,
+            "get_appliance_overview",
+            new=AsyncMock(return_value=[status]),
+        ),
     ):
         data = await api.async_get_data()
 
@@ -120,14 +142,17 @@ async def test_exchange_code_success(hass):
     """Test auth code exchange returns token payload."""
     api = DimplexApiClient(session=async_get_clientsession(hass))
 
-    with patch.object(
-        api._client.auth,
-        "exchange_code",
-        new=AsyncMock(),
-    ), patch.object(
-        api._client,
-        "get_user_context",
-        new=AsyncMock(return_value=SimpleNamespace(Name="Test User")),
+    with (
+        patch.object(
+            api._client.auth,
+            "exchange_code",
+            new=AsyncMock(),
+        ),
+        patch.object(
+            api._client,
+            "get_user_context",
+            new=AsyncMock(return_value=SimpleNamespace(Name="Test User")),
+        ),
     ):
         api._client.auth._access_token = "access"
         api._client.auth._refresh_token = "refresh"
@@ -136,3 +161,149 @@ async def test_exchange_code_success(hass):
 
     assert token_data["access_token"] == "access"
     assert token_data["refresh_token"] == "refresh"
+
+
+# ---------------------------------------------------------------------------
+# _extract_expiry
+# ---------------------------------------------------------------------------
+
+
+def test_extract_expiry_valid():
+    """A valid JWT exp claim is parsed to a float."""
+    assert DimplexApiClient._extract_expiry(_jwt(1893456000)) == 1893456000.0
+
+
+def test_extract_expiry_invalid_returns_zero():
+    """A malformed token yields 0 instead of raising."""
+    assert DimplexApiClient._extract_expiry("not-a-jwt") == 0
+
+
+# ---------------------------------------------------------------------------
+# async_initialize branches
+# ---------------------------------------------------------------------------
+
+
+async def test_initialize_refresh_token_path(hass):
+    """A stored refresh token just refreshes the access token."""
+    api = DimplexApiClient(
+        session=async_get_clientsession(hass), refresh_token="refresh"
+    )
+    with patch.object(
+        api._client.auth, "get_access_token", new=AsyncMock(return_value="token")
+    ) as get_token:
+        await api.async_initialize()
+    get_token.assert_awaited_once()
+
+
+async def test_initialize_refresh_token_auth_error(hass):
+    """Auth errors during refresh map to InvalidAuth."""
+    api = DimplexApiClient(
+        session=async_get_clientsession(hass), refresh_token="refresh"
+    )
+    with (
+        patch.object(
+            api._client.auth,
+            "get_access_token",
+            new=AsyncMock(side_effect=DimplexAuthError("nope")),
+        ),
+        pytest.raises(InvalidAuth),
+    ):
+        await api.async_initialize()
+
+
+async def test_initialize_access_token_not_expired(hass):
+    """A non-expired access token short-circuits initialization."""
+    api = DimplexApiClient(session=async_get_clientsession(hass))
+    api._client.auth._refresh_token = None
+    api._client.auth._access_token = "access"
+    api._client.auth._expires_at = 1893456000  # far future
+    await api.async_initialize()  # should not raise
+
+
+async def test_initialize_access_token_expired(hass):
+    """An expired access token raises InvalidAuth."""
+    api = DimplexApiClient(session=async_get_clientsession(hass))
+    api._client.auth._refresh_token = None
+    api._client.auth._access_token = "access"
+    api._client.auth._expires_at = 1  # epoch, long expired
+    with pytest.raises(InvalidAuth):
+        await api.async_initialize()
+
+
+async def test_initialize_access_token_expiry_from_jwt(hass):
+    """When expires_at is unset, it is derived from the JWT."""
+    api = DimplexApiClient(session=async_get_clientsession(hass))
+    api._client.auth._refresh_token = None
+    api._client.auth._access_token = _jwt(1893456000)
+    api._client.auth._expires_at = 0
+    await api.async_initialize()  # should not raise
+    assert api._client.auth._expires_at == 1893456000.0
+
+
+async def test_initialize_no_credentials(hass):
+    """No refresh token, access token, or credentials raises InvalidAuth."""
+    api = DimplexApiClient(session=async_get_clientsession(hass))
+    api._client.auth._refresh_token = None
+    api._client.auth._access_token = None
+    with pytest.raises(InvalidAuth):
+        await api.async_initialize()
+
+
+# ---------------------------------------------------------------------------
+# get_auth_url
+# ---------------------------------------------------------------------------
+
+
+def test_get_auth_url_prefers_get_auth_url():
+    """get_auth_url is used when the auth manager exposes it."""
+    api = DimplexApiClient(session=MagicMock())
+    api._client.auth = SimpleNamespace(get_auth_url=lambda: "https://auth/url")
+    assert api.get_auth_url() == "https://auth/url"
+
+
+def test_get_auth_url_falls_back_to_login_url():
+    """get_login_url is used when get_auth_url is unavailable."""
+    api = DimplexApiClient(session=MagicMock())
+    api._client.auth = SimpleNamespace(get_login_url=lambda: "https://login/url")
+    assert api.get_auth_url() == "https://login/url"
+
+
+# ---------------------------------------------------------------------------
+# Error mapping for data + control calls
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (DimplexAuthError("a"), InvalidAuth),
+        (DimplexConnectionError("c"), CannotConnect),
+        (DimplexApiError(500, "e"), CannotConnect),
+    ],
+)
+async def test_get_data_error_mapping(hass, exc, expected):
+    """Library errors during data fetch map to integration exceptions."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with (
+        patch.object(api._client, "get_hubs", new=AsyncMock(side_effect=exc)),
+        pytest.raises(expected),
+    ):
+        await api.async_get_data()
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (DimplexAuthError("a"), InvalidAuth),
+        (DimplexConnectionError("c"), CannotConnect),
+        (DimplexApiError(500, "e"), CannotConnect),
+    ],
+)
+async def test_set_eco_start_error_mapping(hass, exc, expected):
+    """Library errors during control map to integration exceptions."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with (
+        patch.object(api._client, "set_eco_start", new=AsyncMock(side_effect=exc)),
+        pytest.raises(expected),
+    ):
+        await api.async_set_eco_start("hub-1", "appliance-1", True)

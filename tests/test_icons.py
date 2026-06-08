@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import pytest
+
 from custom_components.dimplex.binary_sensor import DimplexComfortBinarySensor
 from custom_components.dimplex.switch import DimplexEcoStartSwitch
 

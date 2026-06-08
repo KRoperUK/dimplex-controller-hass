@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import datetime
-from datetime import timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import aiohttp
-from dimplex_controller import DimplexApiError
-from dimplex_controller import DimplexAuthError
-from dimplex_controller import DimplexConnectionError
-from dimplex_controller import DimplexControl
+from dimplex_controller import (
+    DimplexApiError,
+    DimplexAuthError,
+    DimplexConnectionError,
+    DimplexControl,
+)
 
 
 class CannotConnect(Exception):
@@ -88,10 +89,7 @@ class DimplexApiClient:
                 )
 
             if self._client.auth._expires_at:
-                if (
-                    self._client.auth._expires_at
-                    <= datetime.now(timezone.utc).timestamp()
-                ):
+                if self._client.auth._expires_at <= datetime.now(UTC).timestamp():
                     raise InvalidAuth
                 return
 

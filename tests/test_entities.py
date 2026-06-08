@@ -4,8 +4,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
-from custom_components.dimplex.const import DOMAIN
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.dimplex.const import DOMAIN
 
 from .const import MOCK_ENTRY_DATA
 
@@ -35,9 +36,12 @@ async def test_sensor_and_binary_sensor_entities(hass):
     config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
 
-    with patch("custom_components.dimplex.DimplexApiClient.async_initialize"), patch(
-        "custom_components.dimplex.DimplexApiClient.async_get_data",
-        return_value=_mock_coordinator_payload(),
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_data",
+            return_value=_mock_coordinator_payload(),
+        ),
     ):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
