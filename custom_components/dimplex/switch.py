@@ -46,6 +46,11 @@ class DimplexEcoStartSwitch(DimplexEntity, SwitchEntity):
         return f"{self._appliance.FriendlyName} EcoStart"
 
     @property
+    def icon(self):
+        """Return a leaf icon reflecting the EcoStart state."""
+        return "mdi:leaf" if self.is_on else "mdi:leaf-off"
+
+    @property
     def is_on(self):
         """Return true if the switch is on."""
         status = self._status

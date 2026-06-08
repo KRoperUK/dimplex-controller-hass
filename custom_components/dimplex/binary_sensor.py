@@ -28,6 +28,11 @@ class DimplexComfortBinarySensor(DimplexEntity, BinarySensorEntity):
         return f"{self._appliance.FriendlyName} Comfort"
 
     @property
+    def icon(self):
+        """Return a sofa icon, consistent with the HA climate 'comfort' preset."""
+        return "mdi:sofa" if self.is_on else "mdi:sofa-outline"
+
+    @property
     def is_on(self):
         """Return true if the binary_sensor is on."""
         status = self._status

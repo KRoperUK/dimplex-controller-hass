@@ -49,3 +49,10 @@ async def test_sensor_and_binary_sensor_entities(hass):
     binary_state = hass.states.get("binary_sensor.living_room_heater_comfort")
     assert binary_state is not None
     assert binary_state.state == "on"
+    # Comfort active -> sofa icon (matches HA climate "comfort" preset).
+    assert binary_state.attributes.get("icon") == "mdi:sofa"
+
+    # EcoStart is disabled in the mock payload -> leaf-off icon.
+    switch_state = hass.states.get("switch.living_room_heater_ecostart")
+    assert switch_state is not None
+    assert switch_state.attributes.get("icon") == "mdi:leaf-off"
