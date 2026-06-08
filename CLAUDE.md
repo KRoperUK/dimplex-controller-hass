@@ -11,16 +11,16 @@ Distributed via HACS; `iot_class` is cloud polling.
 
 ## Architecture
 
-| File | Responsibility |
-| --- | --- |
-| `__init__.py` | Sets up the `DataUpdateCoordinator`, the API client, and forwards platforms. |
-| `api.py` | `DimplexApiClient` wrapper around the `dimplex-controller` library (auth, fetching hubs/zones/appliances/status). |
-| `entity.py` | `DimplexEntity` base — shared `device_info`, `unique_id`, and per-appliance status lookup. |
-| `sensor.py` | Room temperature sensor (`temperature` device class). |
-| `binary_sensor.py` | Comfort status (`mdi:sofa` / `mdi:sofa-outline`). |
-| `switch.py` | EcoStart toggle (`mdi:leaf` / `mdi:leaf-off`). |
-| `config_flow.py` | UI setup flow. |
-| `const.py` | Domain, config keys, platforms, update interval. |
+| File               | Responsibility                                                                                                    |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `__init__.py`      | Sets up the `DataUpdateCoordinator`, the API client, and forwards platforms.                                      |
+| `api.py`           | `DimplexApiClient` wrapper around the `dimplex-controller` library (auth, fetching hubs/zones/appliances/status). |
+| `entity.py`        | `DimplexEntity` base — shared `device_info`, `unique_id`, and per-appliance status lookup.                        |
+| `sensor.py`        | Room temperature sensor (`temperature` device class).                                                             |
+| `binary_sensor.py` | Comfort status (`mdi:sofa` / `mdi:sofa-outline`).                                                                 |
+| `switch.py`        | EcoStart toggle (`mdi:leaf` / `mdi:leaf-off`).                                                                    |
+| `config_flow.py`   | UI setup flow.                                                                                                    |
+| `const.py`         | Domain, config keys, platforms, update interval.                                                                  |
 
 The coordinator stores a snapshot under `coordinator.data["appliances"]`, a list of
 rows `{hub, zone, appliance, status}`. Entities resolve their current value by

@@ -5,6 +5,8 @@ repos:
       - id: check-added-large-files
       - id: check-yaml
       - id: check-json
+        # VS Code config files are JSONC (allow comments/trailing commas).
+        exclude: ^\.vscode/
       - id: end-of-file-fixer
       - id: trailing-whitespace
   - repo: https://github.com/astral-sh/ruff-pre-commit
