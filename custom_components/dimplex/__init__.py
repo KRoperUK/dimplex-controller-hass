@@ -39,25 +39,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType):
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
-    """Set up this integration using UI."""
-    if hass.data.get(DOMAIN) is None:
-        hass.data.setdefault(DOMAIN, {})
-        _LOGGER.info(STARTUP_MESSAGE)
-
-    session = async_get_clientsession(hass)
-    client = DimplexApiClient(
-        session=session,
-        refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
-        access_token=entry.data.get(CONF_ACCESS_TOKEN),
-        expires_at=entry.data.get(CONF_EXPIRES_AT, 0),
-        username=entry.data.get(CONF_USERNAME),
-        password=entry.data.get(CONF_PASSWORD),
-    )
-
     try:
         await client.async_initialize()
-    except (CannotConnect, InvalidAuth) as exception:
+    except InvalidAuth as exception:
+        entry.async_start_reauth(hass)
+        return False
+    except CannotConnect as exception:
         raise ConfigEntryNotReady from exception
 
     coordinator = DimplexDataUpdateCoordinator(hass, client=client)

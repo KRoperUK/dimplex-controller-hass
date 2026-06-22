@@ -7,6 +7,13 @@
         "data": {
           "auth_code": "Redirect URL or code"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Dimplex Hub",
+        "description": "Your Dimplex Hub authentication has expired. Open this URL to sign in again: {auth_url}. Then copy the full msal redirect URL (or just the code parameter) and paste it below.",
+        "data": {
+          "auth_code": "Redirect URL or code"
+        }
       }
     },
     "error": {
@@ -15,7 +22,8 @@
       "unknown": "Unexpected error occurred."
     },
     "abort": {
-      "single_instance_allowed": "Only a single instance is allowed."
+      "single_instance_allowed": "Only a single instance is allowed.",
+      "reauth_successful": "Re-authentication was successful."
     }
   },
   "options": {
