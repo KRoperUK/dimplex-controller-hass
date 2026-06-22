@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.1](https://github.com/KRoperUK/dimplex-controller-hass/compare/v1.1.0...v1.1.1) (2026-06-22)
+
+
+### Bug Fixes
+
+* add MOCK_ENTRY_DATA import for reauth tests ([#35](https://github.com/KRoperUK/dimplex-controller-hass/issues/35)) ([8db6f3d](https://github.com/KRoperUK/dimplex-controller-hass/commit/8db6f3d7a551551d551d95b3b0dcd1eb0a2c2c3d))
+* implement reauth config flow to allow token refresh on expiry ([#32](https://github.com/KRoperUK/dimplex-controller-hass/issues/32)) ([c71b002](https://github.com/KRoperUK/dimplex-controller-hass/commit/c71b0025d1279eeb27af8a2a37ea34870d41ba5f)), closes [#29](https://github.com/KRoperUK/dimplex-controller-hass/issues/29)
+* restore async_setup_entry function signature ([#34](https://github.com/KRoperUK/dimplex-controller-hass/issues/34)) ([280061e](https://github.com/KRoperUK/dimplex-controller-hass/commit/280061e32870ea4c41f65c7465675cf6fa0773cc))
+* revert entity IDs to match CI test environment ([#36](https://github.com/KRoperUK/dimplex-controller-hass/issues/36)) ([e0be792](https://github.com/KRoperUK/dimplex-controller-hass/commit/e0be792750c1fda6d0266272b6f29299ff7022ff))
+
 ## [1.1.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v1.0.0...v1.1.0) (2026-06-10)
 
 
