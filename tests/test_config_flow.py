@@ -8,9 +8,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dimplex.api import CannotConnect, InvalidAuth
 from custom_components.dimplex.const import (
-    CONF_AUTH_CODE,
-    CONF_PASSWORD,
-    CONF_USERNAME,
     DOMAIN,
     PLATFORMS,
 )
@@ -37,6 +34,7 @@ def bypass_setup_fixture():
 
 
 # ── setup: auth_code path ──────────────────────────────────────
+
 
 async def test_menu_step(hass):
     """Test the first-step menu shows the method selector."""
@@ -191,11 +189,10 @@ async def test_auth_code_cannot_connect(hass):
 
 # ── reauth ──────────────────────────────────────────────────────
 
+
 async def test_reauth_menu(hass):
     """Test reauth shows method selector."""
-    config_entry = MockConfigEntry(
-        domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test"
-    )
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
@@ -213,9 +210,7 @@ async def test_reauth_menu(hass):
 
 async def test_reauth_credentials_success(hass):
     """Test reauth via credentials updates entry."""
-    config_entry = MockConfigEntry(
-        domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test"
-    )
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
@@ -255,9 +250,7 @@ async def test_reauth_credentials_success(hass):
 
 async def test_reauth_code_success(hass):
     """Test reauth via auth code updates entry."""
-    config_entry = MockConfigEntry(
-        domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test"
-    )
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
@@ -293,9 +286,7 @@ async def test_reauth_code_success(hass):
 
 async def test_reauth_credentials_invalid(hass):
     """Test reauth handles invalid credentials."""
-    config_entry = MockConfigEntry(
-        domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test"
-    )
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
@@ -327,10 +318,13 @@ async def test_reauth_credentials_invalid(hass):
 
 # ── options ─────────────────────────────────────────────────────
 
+
 async def test_options_flow(hass):
     """Test an options flow."""
     config_entry = MockConfigEntry(
-        domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test",
+        domain=DOMAIN,
+        data=MOCK_ENTRY_DATA,
+        entry_id="test",
         options={},
     )
     config_entry.add_to_hass(hass)
@@ -344,12 +338,8 @@ async def test_options_flow(hass):
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        user_input={
-            x.value: True for x in sorted(PLATFORMS)
-        },
+        user_input={x.value: True for x in sorted(PLATFORMS)},
     )
 
     assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert config_entry.options == {
-        x.value: True for x in sorted(PLATFORMS)
-    }
+    assert config_entry.options == {x.value: True for x in sorted(PLATFORMS)}

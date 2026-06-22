@@ -119,6 +119,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_REFRESH_TOKEN: token_data.get(CONF_REFRESH_TOKEN),
                             CONF_ACCESS_TOKEN: token_data.get(CONF_ACCESS_TOKEN),
                             CONF_EXPIRES_AT: token_data.get(CONF_EXPIRES_AT, 0),
+                            CONF_USERNAME: username,
                         },
                     )
 
@@ -167,9 +168,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="auth_code",
-            data_schema=vol.Schema(
-                {vol.Required(CONF_AUTH_CODE): str}
-            ),
+            data_schema=vol.Schema({vol.Required(CONF_AUTH_CODE): str}),
             errors=self._errors,
             description_placeholders={"auth_url": auth_url},
         )
@@ -268,9 +267,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="reauth_auth_code",
-            data_schema=vol.Schema(
-                {vol.Required(CONF_AUTH_CODE): str}
-            ),
+            data_schema=vol.Schema({vol.Required(CONF_AUTH_CODE): str}),
             errors=self._errors,
             description_placeholders={"auth_url": auth_url},
         )
@@ -291,6 +288,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         )
         await self.hass.config_entries.async_reload(existing_entry.entry_id)
         return self.async_abort(reason="reauth_successful")
+
 
 class DimplexOptionsFlowHandler(config_entries.OptionsFlow):
     """Config flow options handler for dimplex."""
