@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v1.1.1...v2.0.0) (2026-06-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* add username/password credential auth to config flow ([#37](https://github.com/KRoperUK/dimplex-controller-hass/issues/37))
+
+### Features
+
+* add username/password credential auth to config flow ([#37](https://github.com/KRoperUK/dimplex-controller-hass/issues/37)) ([e4bef7e](https://github.com/KRoperUK/dimplex-controller-hass/commit/e4bef7eddce4c3204101df26e08a8af122a78fab))
+
+
+### Bug Fixes
+
+* require dimplex-controller&gt;=0.3.0 for headless login support ([#39](https://github.com/KRoperUK/dimplex-controller-hass/issues/39)) ([6f33a0d](https://github.com/KRoperUK/dimplex-controller-hass/commit/6f33a0d98bebd1a4c9c2e4af0ad26928322aedec))
+
 ## [1.1.1](https://github.com/KRoperUK/dimplex-controller-hass/compare/v1.1.0...v1.1.1) (2026-06-22)
 
 
