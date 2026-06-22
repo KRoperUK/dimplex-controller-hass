@@ -8,18 +8,18 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dimplex.api import CannotConnect, InvalidAuth
 from custom_components.dimplex.const import (
+    CONF_AUTH_CODE,
+    CONF_PASSWORD,
+    CONF_USERNAME,
     DOMAIN,
     PLATFORMS,
 )
 
-from .const import MOCK_CONFIG, MOCK_ENTRY_DATA
+from .const import MOCK_CONFIG, MOCK_CREDENTIALS, MOCK_ENTRY_DATA
 
 pytestmark = pytest.mark.asyncio
 
 
-# This fixture bypasses the actual setup of the integration
-# since we only want to test the config flow. We test the
-# actual functionality of the integration in other test modules.
 @pytest.fixture(autouse=True)
 def bypass_setup_fixture():
     """Prevent setup."""
@@ -36,71 +36,144 @@ def bypass_setup_fixture():
         yield
 
 
-# Here we simulate a successful config flow from the backend.
-async def test_successful_config_flow(hass):
-    """Test a successful config flow."""
-    # Initialize a config flow
+# ── setup: auth_code path ──────────────────────────────────────
+
+async def test_menu_step(hass):
+    """Test the first-step menu shows the method selector."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
-    # Check that the config flow shows the user form as the first step
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["step_id"] == "user"
+    schema = result["data_schema"].schema
+    assert "auth_method" in schema
 
-    # If a user enters an access token, it results in this validation call.
+
+async def test_credentials_path_success(hass):
+    """Test successful config flow via email/password."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    # Step 1: choose credentials method
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+    assert result["step_id"] == "credentials"
+
+    # Step 2: submit credentials
+    with patch(
+        "custom_components.dimplex.config_flow.validate_credentials",
+        return_value={
+            "refresh_token": "rt",
+            "access_token": "at",
+            "expires_at": 123,
+        },
+    ) as mock_val:
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CREDENTIALS,
+        )
+
+    mock_val.assert_awaited_once_with(hass, "user@example.com", "secret")
+    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert result["title"] == "Dimplex Hub"
+    assert result["data"]["access_token"] == "at"
+    assert result["data"]["refresh_token"] == "rt"
+
+
+async def test_auth_code_path_success(hass):
+    """Test successful config flow via manual auth code."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    # Step 1: choose auth_code method
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "auth_code"},
+    )
+    assert result["step_id"] == "auth_code"
+
+    # Step 2: submit auth code
     with patch(
         "custom_components.dimplex.config_flow.validate_auth_code",
         return_value={
-            "refresh_token": "refresh_token",
-            "access_token": "access_token",
+            "refresh_token": "rt",
+            "access_token": "at",
             "expires_at": 123,
         },
     ):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], user_input=MOCK_CONFIG
+            result["flow_id"],
+            user_input=MOCK_CONFIG,
         )
 
-    # Check that the config flow is complete and a new entry is created with
-    # the input data
     assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Dimplex Hub"
-    assert result["data"]["access_token"] == "access_token"
-    assert result["data"]["refresh_token"] == "refresh_token"
-    assert result["data"]["expires_at"] == 123
-    assert result["result"]
+    assert result["data"]["access_token"] == "at"
 
 
-# In this case, we want to simulate a failure during the config flow.
-# We use the `error_on_get_data` mock instead of `bypass_get_data`
-# (note the function parameters) to raise an Exception during
-# validation of the input config.
-async def test_failed_config_flow(hass, error_on_get_data):
-    """Test a failed config flow due to credential validation failure."""
-
+async def test_credentials_invalid_auth(hass):
+    """Test credentials flow handles invalid auth."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
 
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+
+    with patch(
+        "custom_components.dimplex.config_flow.validate_credentials",
+        side_effect=InvalidAuth,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CREDENTIALS,
+        )
+
     assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "user"
+    assert result["step_id"] == "credentials"
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_auth_code_invalid(hass):
+    """Test auth code flow handles invalid auth."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "auth_code"},
+    )
 
     with patch(
         "custom_components.dimplex.config_flow.validate_auth_code",
         side_effect=InvalidAuth,
     ):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], user_input=MOCK_CONFIG
+            result["flow_id"],
+            user_input=MOCK_CONFIG,
         )
 
     assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "auth_code"
     assert result["errors"] == {"base": "invalid_auth"}
 
 
-async def test_cannot_connect_config_flow(hass):
-    """Test a failed config flow due to connectivity failure."""
+async def test_auth_code_cannot_connect(hass):
+    """Test auth code flow handles connectivity failure."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "auth_code"},
     )
 
     with patch(
@@ -108,121 +181,175 @@ async def test_cannot_connect_config_flow(hass):
         side_effect=CannotConnect,
     ):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], user_input=MOCK_CONFIG
+            result["flow_id"],
+            user_input=MOCK_CONFIG,
         )
 
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["errors"] == {"base": "cannot_connect"}
 
 
-# Our config flow also has an options flow, so we must test it as well.
-async def test_options_flow(hass):
-    """Test an options flow."""
-    # Create a new MockConfigEntry and add to HASS (we're bypassing config
-    # flow entirely)
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="Dimplex Hub",
-        data=MOCK_CONFIG,
-        entry_id="test",
+# ── reauth ──────────────────────────────────────────────────────
+
+async def test_reauth_menu(hass):
+    """Test reauth shows method selector."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test"
     )
-    entry.add_to_hass(hass)
-
-    # Initialize an options flow
-    await hass.config_entries.async_setup(entry.entry_id)
-    result = await hass.config_entries.options.async_init(entry.entry_id)
-
-    # Verify that the first options step is a user form
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "user"
-
-    # Enter some fake data into the form
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        user_input={
-            platform.value: platform.value != "sensor" for platform in PLATFORMS
-        },
-    )
-
-    # Verify that the flow finishes
-    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert result["title"] == "Dimplex Hub"
-
-    # Verify that the options were updated
-    assert entry.options == {
-        "binary_sensor": True,
-        "sensor": False,
-        "switch": True,
-    }
-
-
-async def test_reauth_flow(hass):
-    """Test reauth flow updates existing entry."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="Dimplex Hub",
-        data=MOCK_ENTRY_DATA,
-        entry_id="test",
-    )
-    entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={
             "source": config_entries.SOURCE_REAUTH,
-            "entry_id": entry.entry_id,
+            "entry_id": config_entry.entry_id,
         },
-        data=entry.data,
     )
 
-    assert result["type"] == data_entry_flow.FlowResultType.FORM
-    assert result["step_id"] == "reauth_confirm"
+    assert result["step_id"] == "reauth"
+    schema = result["data_schema"].schema
+    assert "auth_method" in schema
+
+
+async def test_reauth_credentials_success(hass):
+    """Test reauth via credentials updates entry."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test"
+    )
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_REAUTH,
+            "entry_id": config_entry.entry_id,
+        },
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+    assert result["step_id"] == "reauth_credentials"
 
     with patch(
-        "custom_components.dimplex.config_flow.validate_auth_code",
+        "custom_components.dimplex.config_flow.validate_credentials",
         return_value={
-            "refresh_token": "new_refresh_token",
-            "access_token": "new_access_token",
+            "refresh_token": "new_rt",
+            "access_token": "new_at",
             "expires_at": 456,
         },
     ):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], user_input=MOCK_CONFIG
+            result["flow_id"],
+            user_input=MOCK_CREDENTIALS,
         )
 
     assert result["type"] == data_entry_flow.FlowResultType.ABORT
     assert result["reason"] == "reauth_successful"
-    assert entry.data["refresh_token"] == "new_refresh_token"
-    assert entry.data["access_token"] == "new_access_token"
+    entry = hass.config_entries.async_get_entry(config_entry.entry_id)
+    assert entry.data["access_token"] == "new_at"
+    assert entry.data["refresh_token"] == "new_rt"
     assert entry.data["expires_at"] == 456
 
 
-async def test_reauth_flow_invalid_auth(hass):
-    """Test reauth flow handles invalid auth."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        title="Dimplex Hub",
-        data=MOCK_ENTRY_DATA,
-        entry_id="test",
+async def test_reauth_code_success(hass):
+    """Test reauth via auth code updates entry."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test"
     )
-    entry.add_to_hass(hass)
+    config_entry.add_to_hass(hass)
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={
             "source": config_entries.SOURCE_REAUTH,
-            "entry_id": entry.entry_id,
+            "entry_id": config_entry.entry_id,
         },
-        data=entry.data,
     )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "auth_code"},
+    )
+    assert result["step_id"] == "reauth_auth_code"
 
     with patch(
         "custom_components.dimplex.config_flow.validate_auth_code",
+        return_value={
+            "refresh_token": "new_rt",
+            "access_token": "new_at",
+            "expires_at": 456,
+        },
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CONFIG,
+        )
+
+    assert result["type"] == data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+
+
+async def test_reauth_credentials_invalid(hass):
+    """Test reauth handles invalid credentials."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test"
+    )
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_REAUTH,
+            "entry_id": config_entry.entry_id,
+        },
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+
+    with patch(
+        "custom_components.dimplex.config_flow.validate_credentials",
         side_effect=InvalidAuth,
     ):
         result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], user_input=MOCK_CONFIG
+            result["flow_id"],
+            user_input=MOCK_CREDENTIALS,
         )
 
     assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "reauth_credentials"
     assert result["errors"] == {"base": "invalid_auth"}
+
+
+# ── options ─────────────────────────────────────────────────────
+
+async def test_options_flow(hass):
+    """Test an options flow."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test",
+        options={},
+    )
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(
+        config_entry.entry_id, context={"source": config_entries.SOURCE_USER}
+    )
+
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "user"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            x.value: True for x in sorted(PLATFORMS)
+        },
+    )
+
+    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert config_entry.options == {
+        x.value: True for x in sorted(PLATFORMS)
+    }

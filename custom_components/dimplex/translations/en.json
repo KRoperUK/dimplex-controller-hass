@@ -3,14 +3,44 @@
     "step": {
       "user": {
         "title": "Dimplex Hub",
-        "description": "Open this URL to sign in and trigger auth requests: {auth_url}. In your browser DevTools, open Network and enable Preserve log before you submit the sign-in request. Then copy the full msal redirect URL (or just the code parameter) from the captured request and paste it below.",
+        "description": "Choose your preferred authentication method.",
+        "data": {
+          "auth_method": "Authentication method"
+        }
+      },
+      "credentials": {
+        "title": "Sign in with email",
+        "description": "Enter your Dimplex account email and password to sign in automatically.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
+      },
+      "auth_code": {
+        "title": "Manual auth code",
+        "description": "Open this URL in a browser: {auth_url}\n\nLog in, then capture the redirect URL (or just the `code` parameter) from the browser's address bar or DevTools network tab. Paste it below.",
         "data": {
           "auth_code": "Redirect URL or code"
         }
       },
-      "reauth_confirm": {
+      "reauth": {
         "title": "Re-authenticate Dimplex Hub",
-        "description": "Your Dimplex Hub authentication has expired. Open this URL to sign in again: {auth_url}. Then copy the full msal redirect URL (or just the code parameter) and paste it below.",
+        "description": "Your authentication has expired. Choose a method to sign in again.",
+        "data": {
+          "auth_method": "Authentication method"
+        }
+      },
+      "reauth_credentials": {
+        "title": "Re-authenticate with email",
+        "description": "Enter your Dimplex account credentials.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
+      },
+      "reauth_auth_code": {
+        "title": "Re-authenticate with auth code",
+        "description": "Open this URL in a browser: {auth_url}\n\nLog in, capture the redirect URL/code, and paste it below.",
         "data": {
           "auth_code": "Redirect URL or code"
         }
