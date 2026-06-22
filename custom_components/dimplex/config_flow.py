@@ -104,6 +104,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=self._errors,
             description_placeholders={"auth_url": auth_url},
         )
+
     async def async_step_reauth(self, user_input=None):
         """Handle re-authentication."""
         return await self.async_step_reauth_confirm(user_input)
@@ -147,7 +148,6 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=self._errors,
             description_placeholders={"auth_url": auth_url},
         )
-
 
 
 class DimplexOptionsFlowHandler(config_entries.OptionsFlow):

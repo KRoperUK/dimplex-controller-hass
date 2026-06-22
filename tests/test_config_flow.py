@@ -12,7 +12,7 @@ from custom_components.dimplex.const import (
     PLATFORMS,
 )
 
-from .const import MOCK_CONFIG
+from .const import MOCK_CONFIG, MOCK_ENTRY_DATA
 
 pytestmark = pytest.mark.asyncio
 
@@ -155,6 +155,7 @@ async def test_options_flow(hass):
         "switch": True,
     }
 
+
 async def test_reauth_flow(hass):
     """Test reauth flow updates existing entry."""
     entry = MockConfigEntry(
@@ -225,4 +226,3 @@ async def test_reauth_flow_invalid_auth(hass):
 
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["errors"] == {"base": "invalid_auth"}
-
