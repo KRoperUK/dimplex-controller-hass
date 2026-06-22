@@ -104,6 +104,50 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             errors=self._errors,
             description_placeholders={"auth_url": auth_url},
         )
+    async def async_step_reauth(self, user_input=None):
+        """Handle re-authentication."""
+        return await self.async_step_reauth_confirm(user_input)
+
+    async def async_step_reauth_confirm(self, user_input=None):
+        """Dialog that informs the user that reauth is required."""
+        self._errors = {}
+        if user_input is not None:
+            try:
+                token_data = await validate_auth_code(
+                    self.hass, user_input[CONF_AUTH_CODE]
+                )
+            except InvalidAuth:
+                self._errors["base"] = "invalid_auth"
+            except CannotConnect:
+                self._errors["base"] = "cannot_connect"
+            except Exception:
+                self._errors["base"] = "unknown"
+            else:
+                existing_entry = self.hass.config_entries.async_get_entry(
+                    self.context["entry_id"]
+                )
+                self.hass.config_entries.async_update_entry(
+                    existing_entry,
+                    data={
+                        **existing_entry.data,
+                        CONF_REFRESH_TOKEN: token_data.get(CONF_REFRESH_TOKEN),
+                        CONF_ACCESS_TOKEN: token_data.get(CONF_ACCESS_TOKEN),
+                        CONF_EXPIRES_AT: token_data.get(CONF_EXPIRES_AT, 0),
+                    },
+                )
+                await self.hass.config_entries.async_reload(existing_entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+
+        session = async_create_clientsession(self.hass)
+        auth_url = DimplexApiClient(session=session).get_auth_url()
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({vol.Required(CONF_AUTH_CODE): str}),
+            errors=self._errors,
+            description_placeholders={"auth_url": auth_url},
+        )
+
 
 
 class DimplexOptionsFlowHandler(config_entries.OptionsFlow):
