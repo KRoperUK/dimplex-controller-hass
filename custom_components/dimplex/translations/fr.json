@@ -3,8 +3,19 @@
     "step": {
       "user": {
         "title": "Dimplex Hub",
-        "description": "Ouvrez cette URL pour vous connecter et déclencher les requêtes d'authentification : {auth_url}. Dans les outils de développement du navigateur, ouvrez l'onglet Réseau et activez Preserve log avant de valider la connexion. Copiez ensuite l'URL de redirection msal complète (ou uniquement le paramètre code) depuis la requête capturée, puis collez-la ci-dessous.",
+        "description": "Connectez-vous avec votre nom d'utilisateur et mot de passe Dimplex ci-dessous. Si votre compte nécessite une connexion manuelle par code d'authentification, ouvrez cette URL : {auth_url}. Dans les outils de développement du navigateur, capturez l'URL de redirection msal finale (ou copiez uniquement le paramètre code) et collez-la ci-dessous.",
         "data": {
+          "username": "Nom d'utilisateur (email)",
+          "password": "Mot de passe",
+          "auth_code": "URL de redirection ou code"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Ré-authentifier Dimplex Hub",
+        "description": "Votre authentification Dimplex Hub a expiré. Connectez-vous avec votre nom d'utilisateur et mot de passe ci-dessous, ou utilisez la connexion manuelle par code d'authentification via : {auth_url}.",
+        "data": {
+          "username": "Nom d'utilisateur (email)",
+          "password": "Mot de passe",
           "auth_code": "URL de redirection ou code"
         }
       }
@@ -15,7 +26,8 @@
       "unknown": "Une erreur inattendue est survenue."
     },
     "abort": {
-      "single_instance_allowed": "Une seule instance est autorisée."
+      "single_instance_allowed": "Une seule instance est autorisée.",
+      "reauth_successful": "La ré-authentification a réussi."
     }
   },
   "options": {

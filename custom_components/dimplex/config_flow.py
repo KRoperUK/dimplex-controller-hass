@@ -14,7 +14,9 @@ from .const import (
     CONF_ACCESS_TOKEN,
     CONF_AUTH_CODE,
     CONF_EXPIRES_AT,
+    CONF_PASSWORD,
     CONF_REFRESH_TOKEN,
+    CONF_USERNAME,
     DOMAIN,
     NAME,
     PLATFORMS,
@@ -45,6 +47,13 @@ async def validate_auth_code(hass, auth_input):
     return await client.async_exchange_code(code)
 
 
+async def validate_credentials(hass, username, password):
+    """Validate username/password login and return token details."""
+    session = async_create_clientsession(hass)
+    client = DimplexApiClient(session, None, None, 0, username, password)
+    return await client.async_validate_connection()
+
+
 class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for dimplex."""
 
@@ -55,99 +64,230 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize."""
         self._errors = {}
 
+    # ── step: user (initial menu) ──────────────────────────────
     async def async_step_user(self, user_input=None):
         """Handle a flow initialized by the user."""
         self._errors = {}
 
-        # Uncomment the next 2 lines if only a single instance of the integration is allowed:
-        # if self._async_current_entries():
-        #     return self.async_abort(reason="single_instance_allowed")
+        if user_input is not None:
+            method = user_input.get("auth_method", "credentials")
+            if method == "credentials":
+                return await self.async_step_credentials()
+            return await self.async_step_auth_code()
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("auth_method", default="credentials"): vol.In(
+                        {
+                            "credentials": "Email / password (recommended)",
+                            "auth_code": "Manual auth code from browser",
+                        }
+                    ),
+                }
+            ),
+            errors=self._errors,
+        )
+
+    # ── step: credentials ───────────────────────────────────────
+    async def async_step_credentials(self, user_input=None):
+        """Handle the email/password credential login step."""
+        self._errors = {}
 
         if user_input is not None:
-            try:
-                token_data = await validate_auth_code(
-                    self.hass, user_input[CONF_AUTH_CODE]
-                )
-            except InvalidAuth:
+            username = user_input.get(CONF_USERNAME, "").strip()
+            password = user_input.get(CONF_PASSWORD, "")
+
+            if not username or not password:
                 self._errors["base"] = "invalid_auth"
-            except CannotConnect:
-                self._errors["base"] = "cannot_connect"
-            except Exception:
-                self._errors["base"] = "unknown"
             else:
-                return self.async_create_entry(
-                    title=NAME,
-                    data={
-                        CONF_REFRESH_TOKEN: token_data.get(CONF_REFRESH_TOKEN),
-                        CONF_ACCESS_TOKEN: token_data.get(CONF_ACCESS_TOKEN),
-                        CONF_EXPIRES_AT: token_data.get(CONF_EXPIRES_AT, 0),
-                    },
-                )
+                try:
+                    token_data = await validate_credentials(
+                        self.hass, username, password
+                    )
+                except InvalidAuth:
+                    self._errors["base"] = "invalid_auth"
+                except CannotConnect:
+                    self._errors["base"] = "cannot_connect"
+                except Exception:
+                    self._errors["base"] = "unknown"
+                else:
+                    return self.async_create_entry(
+                        title=NAME,
+                        data={
+                            CONF_REFRESH_TOKEN: token_data.get(CONF_REFRESH_TOKEN),
+                            CONF_ACCESS_TOKEN: token_data.get(CONF_ACCESS_TOKEN),
+                            CONF_EXPIRES_AT: token_data.get(CONF_EXPIRES_AT, 0),
+                            CONF_USERNAME: username,
+                        },
+                    )
 
-            return await self._show_config_form(user_input)
+        return self.async_show_form(
+            step_id="credentials",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_USERNAME): str,
+                    vol.Required(CONF_PASSWORD): str,
+                }
+            ),
+            errors=self._errors,
+        )
 
-        return await self._show_config_form(user_input)
+    # ── step: auth_code ─────────────────────────────────────────
+    async def async_step_auth_code(self, user_input=None):
+        """Handle the manual auth-code login step."""
+        self._errors = {}
 
+        session = async_create_clientsession(self.hass)
+        auth_url = DimplexApiClient(session=session).get_auth_url()
+
+        if user_input is not None:
+            auth_code = user_input.get(CONF_AUTH_CODE, "").strip()
+
+            if not auth_code:
+                self._errors["base"] = "invalid_auth"
+            else:
+                try:
+                    token_data = await validate_auth_code(self.hass, auth_code)
+                except InvalidAuth:
+                    self._errors["base"] = "invalid_auth"
+                except CannotConnect:
+                    self._errors["base"] = "cannot_connect"
+                except Exception:
+                    self._errors["base"] = "unknown"
+                else:
+                    return self.async_create_entry(
+                        title=NAME,
+                        data={
+                            CONF_REFRESH_TOKEN: token_data.get(CONF_REFRESH_TOKEN),
+                            CONF_ACCESS_TOKEN: token_data.get(CONF_ACCESS_TOKEN),
+                            CONF_EXPIRES_AT: token_data.get(CONF_EXPIRES_AT, 0),
+                        },
+                    )
+
+        return self.async_show_form(
+            step_id="auth_code",
+            data_schema=vol.Schema({vol.Required(CONF_AUTH_CODE): str}),
+            errors=self._errors,
+            description_placeholders={"auth_url": auth_url},
+        )
+
+    # ── options ─────────────────────────────────────────────────
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
         return DimplexOptionsFlowHandler(config_entry)
 
-    async def _show_config_form(self, user_input):  # pylint: disable=unused-argument
-        """Show the configuration form to edit location data."""
-        session = async_create_clientsession(self.hass)
-        auth_url = DimplexApiClient(session=session).get_auth_url()
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema({vol.Required(CONF_AUTH_CODE): str}),
-            errors=self._errors,
-            description_placeholders={"auth_url": auth_url},
-        )
+    # ══ reauthentication ════════════════════════════════════════
 
     async def async_step_reauth(self, user_input=None):
-        """Handle re-authentication."""
-        return await self.async_step_reauth_confirm(user_input)
-
-    async def async_step_reauth_confirm(self, user_input=None):
-        """Dialog that informs the user that reauth is required."""
+        """Handle re-authentication — choose method."""
         self._errors = {}
+
         if user_input is not None:
-            try:
-                token_data = await validate_auth_code(
-                    self.hass, user_input[CONF_AUTH_CODE]
-                )
-            except InvalidAuth:
+            method = user_input.get("auth_method", "credentials")
+            if method == "credentials":
+                return await self.async_step_reauth_credentials()
+            return await self.async_step_reauth_auth_code()
+
+        return self.async_show_form(
+            step_id="reauth",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("auth_method", default="credentials"): vol.In(
+                        {
+                            "credentials": "Email / password (recommended)",
+                            "auth_code": "Manual auth code from browser",
+                        }
+                    ),
+                }
+            ),
+            errors=self._errors,
+        )
+
+    async def async_step_reauth_credentials(self, user_input=None):
+        """Re-authenticate with email/password."""
+        self._errors = {}
+
+        if user_input is not None:
+            username = user_input.get(CONF_USERNAME, "").strip()
+            password = user_input.get(CONF_PASSWORD, "")
+
+            if not username or not password:
                 self._errors["base"] = "invalid_auth"
-            except CannotConnect:
-                self._errors["base"] = "cannot_connect"
-            except Exception:
-                self._errors["base"] = "unknown"
             else:
-                existing_entry = self.hass.config_entries.async_get_entry(
-                    self.context["entry_id"]
-                )
-                self.hass.config_entries.async_update_entry(
-                    existing_entry,
-                    data={
-                        **existing_entry.data,
-                        CONF_REFRESH_TOKEN: token_data.get(CONF_REFRESH_TOKEN),
-                        CONF_ACCESS_TOKEN: token_data.get(CONF_ACCESS_TOKEN),
-                        CONF_EXPIRES_AT: token_data.get(CONF_EXPIRES_AT, 0),
-                    },
-                )
-                await self.hass.config_entries.async_reload(existing_entry.entry_id)
-                return self.async_abort(reason="reauth_successful")
+                try:
+                    token_data = await validate_credentials(
+                        self.hass, username, password
+                    )
+                except InvalidAuth:
+                    self._errors["base"] = "invalid_auth"
+                except CannotConnect:
+                    self._errors["base"] = "cannot_connect"
+                except Exception:
+                    self._errors["base"] = "unknown"
+                else:
+                    return await self._finish_reauth(token_data)
+
+        return self.async_show_form(
+            step_id="reauth_credentials",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_USERNAME): str,
+                    vol.Required(CONF_PASSWORD): str,
+                }
+            ),
+            errors=self._errors,
+        )
+
+    async def async_step_reauth_auth_code(self, user_input=None):
+        """Re-authenticate with manual auth code."""
+        self._errors = {}
 
         session = async_create_clientsession(self.hass)
         auth_url = DimplexApiClient(session=session).get_auth_url()
 
+        if user_input is not None:
+            auth_code = user_input.get(CONF_AUTH_CODE, "").strip()
+
+            if not auth_code:
+                self._errors["base"] = "invalid_auth"
+            else:
+                try:
+                    token_data = await validate_auth_code(self.hass, auth_code)
+                except InvalidAuth:
+                    self._errors["base"] = "invalid_auth"
+                except CannotConnect:
+                    self._errors["base"] = "cannot_connect"
+                except Exception:
+                    self._errors["base"] = "unknown"
+                else:
+                    return await self._finish_reauth(token_data)
+
         return self.async_show_form(
-            step_id="reauth_confirm",
+            step_id="reauth_auth_code",
             data_schema=vol.Schema({vol.Required(CONF_AUTH_CODE): str}),
             errors=self._errors,
             description_placeholders={"auth_url": auth_url},
         )
+
+    async def _finish_reauth(self, token_data: dict) -> dict:
+        """Update the existing config entry with new tokens and re-load."""
+        existing_entry = self.hass.config_entries.async_get_entry(
+            self.context["entry_id"]
+        )
+        self.hass.config_entries.async_update_entry(
+            existing_entry,
+            data={
+                **existing_entry.data,
+                CONF_REFRESH_TOKEN: token_data.get(CONF_REFRESH_TOKEN),
+                CONF_ACCESS_TOKEN: token_data.get(CONF_ACCESS_TOKEN),
+                CONF_EXPIRES_AT: token_data.get(CONF_EXPIRES_AT, 0),
+            },
+        )
+        await self.hass.config_entries.async_reload(existing_entry.entry_id)
+        return self.async_abort(reason="reauth_successful")
 
 
 class DimplexOptionsFlowHandler(config_entries.OptionsFlow):

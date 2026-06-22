@@ -63,7 +63,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     except CannotConnect as exception:
         raise ConfigEntryNotReady from exception
 
-    coordinator = DimplexDataUpdateCoordinator(hass, client=client)
+    coordinator = DimplexDataUpdateCoordinator(hass, entry, client)
     await coordinator.async_refresh()
 
     if not coordinator.last_update_success:
@@ -71,17 +71,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    token_data = client.token_data
-    if token_data.get(CONF_REFRESH_TOKEN):
-        hass.config_entries.async_update_entry(
-            entry,
-            data={
-                **entry.data,
-                CONF_REFRESH_TOKEN: token_data.get(CONF_REFRESH_TOKEN),
-                CONF_ACCESS_TOKEN: token_data.get(CONF_ACCESS_TOKEN),
-                CONF_EXPIRES_AT: token_data.get(CONF_EXPIRES_AT, 0),
-            },
-        )
+    # Persist tokens after initialisation in case they were refreshed
+    _persist_tokens(hass, entry, client)
 
     coordinator.platforms = [
         platform for platform in PLATFORMS if entry.options.get(platform, True)
@@ -98,10 +89,12 @@ class DimplexDataUpdateCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass: HomeAssistant,
+        entry: ConfigEntry,
         client: DimplexApiClient,
     ) -> None:
         """Initialize."""
         self.api = client
+        self._entry = entry
         self.platforms = []
 
         super().__init__(
@@ -114,13 +107,43 @@ class DimplexDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Update data via library."""
         try:
-            return await self.api.async_get_data()
+            data = await self.api.async_get_data()
         except InvalidAuth as exception:
-            raise UpdateFailed("Authentication failed") from exception
+            _LOGGER.warning("Authentication expired — triggering reauth")
+            self._entry.async_start_reauth(self.hass)
+            raise UpdateFailed("Authentication expired") from exception
         except CannotConnect as exception:
             raise UpdateFailed("Cannot connect") from exception
         except Exception as exception:
             raise UpdateFailed() from exception
+
+        # Persist tokens after every successful fetch so restarts
+        # pick up the latest refresh token.
+        _persist_tokens(self.hass, self._entry, self.api)
+        return data
+
+
+def _persist_tokens(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    client: DimplexApiClient,
+) -> None:
+    """Write current tokens back to the config entry if they changed."""
+    token_data = client.token_data
+    if not token_data.get(CONF_REFRESH_TOKEN):
+        return
+    current = {
+        CONF_REFRESH_TOKEN: token_data.get(CONF_REFRESH_TOKEN),
+        CONF_ACCESS_TOKEN: token_data.get(CONF_ACCESS_TOKEN),
+        CONF_EXPIRES_AT: token_data.get(CONF_EXPIRES_AT, 0),
+    }
+    if (
+        entry.data.get(CONF_REFRESH_TOKEN) != current[CONF_REFRESH_TOKEN]
+        or entry.data.get(CONF_ACCESS_TOKEN) != current[CONF_ACCESS_TOKEN]
+    ):
+        _LOGGER.debug("Persisting refreshed tokens")
+        data = {**entry.data, **current}
+        hass.config_entries.async_update_entry(entry, data=data)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
