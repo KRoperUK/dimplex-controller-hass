@@ -21,14 +21,8 @@ def _mock_coordinator_payload():
         FriendlyName="Living Room Heater",
         ApplianceModel="Model X",
     )
-    status = SimpleNamespace(
-        EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5
-    )
-    return {
-        "appliances": [
-            {"hub": hub, "zone": zone, "appliance": appliance, "status": status}
-        ]
-    }
+    status = SimpleNamespace(EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5)
+    return {"appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}]}
 
 
 async def test_sensor_and_binary_sensor_entities(hass):
@@ -49,17 +43,13 @@ async def test_sensor_and_binary_sensor_entities(hass):
     # Entity ID format varies by Home Assistant version
     sensor_state = hass.states.get("sensor.living_room_heater_room_temperature")
     if sensor_state is None:
-        sensor_state = hass.states.get(
-            "sensor.living_room_living_room_heater_room_temperature"
-        )
+        sensor_state = hass.states.get("sensor.living_room_living_room_heater_room_temperature")
     assert sensor_state is not None
     assert sensor_state.state == "21.5"
 
     binary_state = hass.states.get("binary_sensor.living_room_heater_comfort")
     if binary_state is None:
-        binary_state = hass.states.get(
-            "binary_sensor.living_room_living_room_heater_comfort"
-        )
+        binary_state = hass.states.get("binary_sensor.living_room_living_room_heater_comfort")
     assert binary_state is not None
     assert binary_state.state == "on"
     # Comfort active -> sofa icon (matches HA climate "comfort" preset).

@@ -20,7 +20,7 @@ gh api \
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["Pre-commit", "Run tests", "HACS", "Hassfest"]
+    "contexts": ["lint", "test", "hacs_validate"]
   },
   "enforce_admins": false,
   "required_pull_request_reviews": {

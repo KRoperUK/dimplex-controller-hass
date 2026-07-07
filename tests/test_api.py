@@ -21,9 +21,7 @@ from custom_components.dimplex.api import CannotConnect, DimplexApiClient, Inval
 
 def _jwt(exp) -> str:
     """Build a minimal JWT-like string carrying an exp claim."""
-    payload = (
-        base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).decode().rstrip("=")
-    )
+    payload = base64.urlsafe_b64encode(json.dumps({"exp": exp}).encode()).decode().rstrip("=")
     return f"header.{payload}.signature"
 
 
@@ -185,21 +183,15 @@ def test_extract_expiry_invalid_returns_zero():
 
 async def test_initialize_refresh_token_path(hass):
     """A stored refresh token just refreshes the access token."""
-    api = DimplexApiClient(
-        session=async_get_clientsession(hass), refresh_token="refresh"
-    )
-    with patch.object(
-        api._client.auth, "get_access_token", new=AsyncMock(return_value="token")
-    ) as get_token:
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="refresh")
+    with patch.object(api._client.auth, "get_access_token", new=AsyncMock(return_value="token")) as get_token:
         await api.async_initialize()
     get_token.assert_awaited_once()
 
 
 async def test_initialize_refresh_token_auth_error(hass):
     """Auth errors during refresh map to InvalidAuth."""
-    api = DimplexApiClient(
-        session=async_get_clientsession(hass), refresh_token="refresh"
-    )
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="refresh")
     with (
         patch.object(
             api._client.auth,

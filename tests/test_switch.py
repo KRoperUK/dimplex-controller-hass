@@ -26,14 +26,8 @@ def _mock_coordinator_payload():
         FriendlyName="Living Room Heater",
         ApplianceModel="Model X",
     )
-    status = SimpleNamespace(
-        EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5
-    )
-    return {
-        "appliances": [
-            {"hub": hub, "zone": zone, "appliance": appliance, "status": status}
-        ]
-    }
+    status = SimpleNamespace(EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5)
+    return {"appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}]}
 
 
 async def test_switch_services(hass):
@@ -52,20 +46,14 @@ async def test_switch_services(hass):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    switch_entities = [
-        state.entity_id
-        for state in hass.states.async_all()
-        if state.entity_id.startswith("switch.")
-    ]
+    switch_entities = [state.entity_id for state in hass.states.async_all() if state.entity_id.startswith("switch.")]
     assert len(switch_entities) == 1
     entity_id = switch_entities[0]
 
     # Functions/objects can be patched directly in test code as well and can be used to test
     # additional things, like whether a function was called or what arguments it was called with
     with (
-        patch(
-            "custom_components.dimplex.DimplexApiClient.async_set_eco_start"
-        ) as eco_start_func,
+        patch("custom_components.dimplex.DimplexApiClient.async_set_eco_start") as eco_start_func,
         patch(
             "custom_components.dimplex.DimplexApiClient.async_get_data",
             return_value=_mock_coordinator_payload(),

@@ -84,9 +84,7 @@ class DimplexApiClient:
 
         if self._client.auth._access_token:
             if not self._client.auth._expires_at:
-                self._client.auth._expires_at = self._extract_expiry(
-                    self._client.auth._access_token
-                )
+                self._client.auth._expires_at = self._extract_expiry(self._client.auth._access_token)
 
             if self._client.auth._expires_at:
                 if self._client.auth._expires_at <= datetime.now(UTC).timestamp():
@@ -148,17 +146,11 @@ class DimplexApiClient:
 
             for hub in hubs:
                 zones = await self._client.get_hub_zones(hub.HubId)
-                appliance_ids = [
-                    appliance.ApplianceId
-                    for zone in zones
-                    for appliance in zone.Appliances
-                ]
+                appliance_ids = [appliance.ApplianceId for zone in zones for appliance in zone.Appliances]
 
                 overview_by_id: dict[str, Any] = {}
                 if appliance_ids:
-                    overview = await self._client.get_appliance_overview(
-                        hub.HubId, appliance_ids
-                    )
+                    overview = await self._client.get_appliance_overview(hub.HubId, appliance_ids)
                     overview_by_id = {status.ApplianceId: status for status in overview}
 
                 for zone in zones:
@@ -180,9 +172,7 @@ class DimplexApiClient:
         except DimplexApiError as exception:
             raise CannotConnect from exception
 
-    async def async_set_eco_start(
-        self, hub_id: str, appliance_id: str, enable: bool
-    ) -> None:
+    async def async_set_eco_start(self, hub_id: str, appliance_id: str, enable: bool) -> None:
         """Enable or disable EcoStart for an appliance."""
         try:
             await self._client.set_eco_start(hub_id, [appliance_id], enable)
