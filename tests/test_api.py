@@ -2,6 +2,7 @@
 
 import base64
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -108,6 +109,13 @@ async def test_async_get_data_maps_appliances(hass):
     )
     zone = SimpleNamespace(ZoneName="Living Room", Appliances=[appliance])
     status = SimpleNamespace(ApplianceId="appliance-1", EcoStartEnabled=True)
+    energy_report = SimpleNamespace(
+        ApplianceTelemetryData={
+            "appliance-1": [
+                {"timestamp": "2026-06-01T00:00:00Z", "value": 0.1},
+            ]
+        }
+    )
 
     with (
         patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
@@ -121,11 +129,22 @@ async def test_async_get_data_maps_appliances(hass):
             "get_appliance_overview",
             new=AsyncMock(return_value=[status]),
         ),
+        patch.object(
+            api._client,
+            "get_tsi_energy_report",
+            new=AsyncMock(return_value=energy_report),
+        ),
     ):
         data = await api.async_get_data()
 
     assert len(data["appliances"]) == 1
     assert data["appliances"][0]["appliance"].ApplianceId == "appliance-1"
+    # Energy report is indexed by hub id, then by appliance id, and each value
+    # is the parsed telemetry list (one normalised point per cloud entry).
+    assert "hub-1" in data["energy"]
+    assert data["energy"]["hub-1"]["appliance-1"] == [
+        (datetime(2026, 6, 1, tzinfo=UTC), 0.1)
+    ]
 
 
 async def test_set_eco_start_calls_library(hass):
@@ -307,3 +326,78 @@ async def test_set_eco_start_error_mapping(hass, exc, expected):
         pytest.raises(expected),
     ):
         await api.async_set_eco_start("hub-1", "appliance-1", True)
+
+
+# ---------------------------------------------------------------------------
+# async_get_energy_report
+# ---------------------------------------------------------------------------
+
+
+async def test_async_get_energy_report(hass):
+    """The energy method returns parsed (ts, value) points per appliance."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    report = SimpleNamespace(
+        ApplianceTelemetryData={
+            "appliance-1": [
+                {"timestamp": "2026-06-01T00:00:00Z", "value": 0.1},
+                {"timestamp": "2026-06-01T01:00:00Z", "value": 0.2},
+            ],
+            "appliance-2": [],
+        }
+    )
+    with patch.object(
+        api._client,
+        "get_tsi_energy_report",
+        new=AsyncMock(return_value=report),
+    ) as lib_call:
+        result = await api.async_get_energy_report("hub-1")
+
+    assert set(result) == {"appliance-1", "appliance-2"}
+    assert result["appliance-2"] == []
+    assert result["appliance-1"] == [
+        (datetime(2026, 6, 1, tzinfo=UTC), 0.1),
+        (datetime(2026, 6, 1, 1, tzinfo=UTC), 0.2),
+    ]
+    lib_call.assert_awaited_once()
+
+
+async def test_async_get_energy_report_passes_window_to_library(hass):
+    """The integration passes the configured days/interval to the library."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    report = SimpleNamespace(ApplianceTelemetryData={})
+    with patch.object(
+        api._client,
+        "get_tsi_energy_report",
+        new=AsyncMock(return_value=report),
+    ) as lib_call:
+        await api.async_get_energy_report("hub-1", days_back=7, interval="00:10:00")
+
+    lib_call.assert_awaited_once_with(
+        hub_id="hub-1",
+        report_type=1,
+        interval="00:10:00",
+        days_back=7,
+    )
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (DimplexAuthError("a"), InvalidAuth),
+        (DimplexConnectionError("c"), CannotConnect),
+        (DimplexApiError(500, "e"), CannotConnect),
+    ],
+)
+async def test_async_get_energy_report_error_mapping(hass, exc, expected):
+    """Library errors during energy fetch map to integration exceptions."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with (
+        patch.object(
+            api._client,
+            "get_tsi_energy_report",
+            new=AsyncMock(side_effect=exc),
+        ),
+        pytest.raises(expected),
+    ):
+        await api.async_get_energy_report("hub-1")

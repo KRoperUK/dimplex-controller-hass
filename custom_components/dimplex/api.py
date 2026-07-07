@@ -13,7 +13,10 @@ from dimplex_controller import (
     DimplexAuthError,
     DimplexConnectionError,
     DimplexControl,
+    parse_telemetry_points,
 )
+
+from .const import ENERGY_REPORT_DAYS, ENERGY_REPORT_INTERVAL
 
 
 class CannotConnect(Exception):
@@ -145,6 +148,9 @@ class DimplexApiClient:
         try:
             hubs = await self._client.get_hubs()
             appliance_rows: list[dict[str, Any]] = []
+            energy_by_hub: dict[
+                str, dict[str, list[tuple[datetime | None, float]]]
+            ] = {}
 
             for hub in hubs:
                 zones = await self._client.get_hub_zones(hub.HubId)
@@ -172,7 +178,14 @@ class DimplexApiClient:
                             }
                         )
 
-            return {"appliances": appliance_rows}
+                # Energy telemetry is hub-scoped, not appliance-scoped, so it
+                # is fetched once per hub. Empty arrays are normal on hubs
+                # without metered appliances or when the heaters are not
+                # running, so we surface them as-is rather than treating them
+                # as failures.
+                energy_by_hub[hub.HubId] = await self.async_get_energy_report(hub.HubId)
+
+            return {"appliances": appliance_rows, "energy": energy_by_hub}
         except DimplexAuthError as exception:
             raise InvalidAuth from exception
         except DimplexConnectionError as exception:
@@ -192,3 +205,38 @@ class DimplexApiClient:
             raise CannotConnect from exception
         except DimplexApiError as exception:
             raise CannotConnect from exception
+
+    async def async_get_energy_report(
+        self,
+        hub_id: str,
+        days_back: int = ENERGY_REPORT_DAYS,
+        interval: str = ENERGY_REPORT_INTERVAL,
+    ) -> dict[str, list[tuple[datetime | None, float]]]:
+        """Fetch the per-appliance energy telemetry report for a hub.
+
+        Returns a dict keyed by appliance id. Each value is the raw telemetry
+        list (possibly empty) as returned by the cloud, normalised by
+        :func:`parse_telemetry_points` into ``(timestamp, value)`` tuples
+        so callers do not need to know the wire format. When the cloud
+        returns no data — e.g. the hub has no metered appliances, or the
+        heaters have not been running — the dict values are simply empty
+        lists. That is treated as success, not an error.
+        """
+        try:
+            report = await self._client.get_tsi_energy_report(
+                hub_id=hub_id,
+                report_type=1,
+                interval=interval,
+                days_back=days_back,
+            )
+        except DimplexAuthError as exception:
+            raise InvalidAuth from exception
+        except DimplexConnectionError as exception:
+            raise CannotConnect from exception
+        except DimplexApiError as exception:
+            raise CannotConnect from exception
+
+        return {
+            appliance_id: parse_telemetry_points(points)
+            for appliance_id, points in report.ApplianceTelemetryData.items()
+        }
