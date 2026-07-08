@@ -23,11 +23,7 @@ gh api \
     "contexts": ["lint", "test", "hacs_validate"]
   },
   "enforce_admins": false,
-  "required_pull_request_reviews": {
-    "dismiss_stale_reviews": true,
-    "require_code_owner_reviews": false,
-    "required_approving_review_count": 1
-  },
+  "required_pull_request_reviews": null,
   "restrictions": null,
   "required_linear_history": true,
   "allow_force_pushes": false,
