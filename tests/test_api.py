@@ -143,6 +143,44 @@ async def test_async_get_data_maps_appliances(hass):
     assert data["energy"]["hub-1"]["appliance-1"] == [(datetime(2026, 6, 1, tzinfo=UTC), 0.1)]
 
 
+async def test_async_get_data_overview_fallback(hass):
+    """Test that if bulk get_appliance_overview fails, we retry individually."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    hub = SimpleNamespace(HubId="hub-1")
+    appliance = SimpleNamespace(
+        ApplianceId="appliance-1",
+        FriendlyName="Living Room Heater",
+        ApplianceModel="Model X",
+    )
+    zone = SimpleNamespace(ZoneName="Living Room", Appliances=[appliance])
+    status = SimpleNamespace(ApplianceId="appliance-1", EcoStartEnabled=True)
+    energy_report = SimpleNamespace(ApplianceTelemetryData={})
+
+    # Side effect: first call (bulk) raises error, second call (individual) succeeds
+    mock_overview = AsyncMock()
+    mock_overview.side_effect = [
+        DimplexApiError(400, "Bad Request"),
+        [status],
+    ]
+
+    with (
+        patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        patch.object(api._client, "get_hub_zones", new=AsyncMock(return_value=[zone])),
+        patch.object(api._client, "get_appliance_overview", new=mock_overview),
+        patch.object(
+            api._client,
+            "get_tsi_energy_report",
+            new=AsyncMock(return_value=energy_report),
+        ),
+    ):
+        data = await api.async_get_data()
+
+    assert len(data["appliances"]) == 1
+    assert data["appliances"][0]["status"] == status
+    assert mock_overview.call_count == 2
+
+
 async def test_set_eco_start_calls_library(hass):
     """Test eco start control call delegates to library client."""
     api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")

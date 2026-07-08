@@ -1,9 +1,6 @@
-"""API adapter for Dimplex Controller."""
-
-from __future__ import annotations
-
 import base64
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -17,6 +14,8 @@ from dimplex_controller import (
 )
 
 from .const import ENERGY_REPORT_DAYS, ENERGY_REPORT_INTERVAL
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CannotConnect(Exception):
@@ -154,8 +153,26 @@ class DimplexApiClient:
 
                 overview_by_id: dict[str, Any] = {}
                 if appliance_ids:
-                    overview = await self._client.get_appliance_overview(hub.HubId, appliance_ids)
-                    overview_by_id = {status.ApplianceId: status for status in overview}
+                    try:
+                        overview = await self._client.get_appliance_overview(hub.HubId, appliance_ids)
+                        overview_by_id = {status.ApplianceId: status for status in overview}
+                    except DimplexApiError as exception:
+                        _LOGGER.warning(
+                            "Failed to fetch appliance overview in bulk for hub %s: %s. Retrying individually.",
+                            hub.HubId,
+                            exception,
+                        )
+                        for appliance_id in appliance_ids:
+                            try:
+                                overview = await self._client.get_appliance_overview(hub.HubId, [appliance_id])
+                                if overview:
+                                    overview_by_id[appliance_id] = overview[0]
+                            except DimplexApiError as app_exception:
+                                _LOGGER.error(
+                                    "Failed to fetch overview for appliance %s: %s",
+                                    appliance_id,
+                                    app_exception,
+                                )
 
                 for zone in zones:
                     for appliance in zone.Appliances:
