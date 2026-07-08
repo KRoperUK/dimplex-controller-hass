@@ -15,8 +15,13 @@ Pull requests are the best way to propose changes to the codebase.
 
 1. Fork the repo and create your branch from `main`.
 2. If you've changed something, update the documentation.
-3. Make sure your code lints and is formatted (`ruff check .` and `ruff format .`).
-4. Add or update tests for your change and make sure `pytest` passes.
+3. Make sure your code lints and is formatted. Either:
+   - run `ruff check .` and `ruff format .` directly, or
+   - install the local hooks once with `pip install pre-commit && pre-commit install`,
+     which will then run ruff, ruff-format, and the manifest-key-order check
+     automatically on every `git commit`.
+4. Add or update tests for your change and make sure `pytest` passes
+   (`uv pip install -r requirements_test.txt && pytest`).
 5. Use a [Conventional Commit](https://www.conventionalcommits.org/) PR title
    (`fix:`, `feat:`, `chore:` …) — this drives the automated changelog/release.
 6. Issue that pull request!

@@ -1,6 +1,6 @@
 [tool.ruff]
 target-version = "py313"
-line-length = 88
+line-length = 120
 
 [tool.ruff.lint]
 select = [
@@ -17,6 +17,17 @@ ignore = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["custom_components", "tests"]
+
+[tool.mypy]
+# Strict mypy is the eventual goal (see sungrow-hass). CI does not yet run mypy
+# because the integration is untyped; a follow-up PR will land the typing pass
+# and then enable the "Type check with mypy" step in .github/workflows/ci.yml.
+python_version = "3.13"
+strict = true
+ignore_missing_imports = true
+check_untyped_defs = true
+# Scope to our own package; Home Assistant is imported for types only.
+files = ["custom_components/dimplex"]
 
 [tool.pytest.ini_options]
 addopts = "-qq --cov=custom_components.dimplex --cov-report=term-missing"

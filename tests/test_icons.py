@@ -17,9 +17,7 @@ def _appliance_row(eco_start: bool, comfort: bool):
         FriendlyName="Living Room Heater",
         ApplianceModel="Model X",
     )
-    status = SimpleNamespace(
-        EcoStartEnabled=eco_start, ComfortStatus=comfort, RoomTemperature=21.5
-    )
+    status = SimpleNamespace(EcoStartEnabled=eco_start, ComfortStatus=comfort, RoomTemperature=21.5)
     row = {"hub": hub, "zone": zone, "appliance": appliance, "status": status}
     coordinator = SimpleNamespace(data={"appliances": [row]})
     config_entry = SimpleNamespace(entry_id="test")

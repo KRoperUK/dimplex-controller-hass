@@ -38,9 +38,7 @@ def bypass_setup_fixture():
 
 async def test_menu_step(hass):
     """Test the first-step menu shows the method selector."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
 
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["step_id"] == "user"
@@ -50,9 +48,7 @@ async def test_menu_step(hass):
 
 async def test_credentials_path_success(hass):
     """Test successful config flow via email/password."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
 
     # Step 1: choose credentials method
     result = await hass.config_entries.flow.async_configure(
@@ -84,9 +80,7 @@ async def test_credentials_path_success(hass):
 
 async def test_auth_code_path_success(hass):
     """Test successful config flow via manual auth code."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
 
     # Step 1: choose auth_code method
     result = await hass.config_entries.flow.async_configure(
@@ -115,9 +109,7 @@ async def test_auth_code_path_success(hass):
 
 async def test_credentials_invalid_auth(hass):
     """Test credentials flow handles invalid auth."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -140,9 +132,7 @@ async def test_credentials_invalid_auth(hass):
 
 async def test_auth_code_invalid(hass):
     """Test auth code flow handles invalid auth."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -165,9 +155,7 @@ async def test_auth_code_invalid(hass):
 
 async def test_auth_code_cannot_connect(hass):
     """Test auth code flow handles connectivity failure."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
