@@ -1,5 +1,5 @@
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 120
 
 [tool.ruff.lint]
@@ -11,7 +11,7 @@ select = [
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
     "SIM", # flake8-simplify
-]
+ ]
 # E501 (line length) is handled by the formatter; long strings/comments are fine.
 ignore = ["E501"]
 
@@ -22,7 +22,7 @@ known-first-party = ["custom_components", "tests"]
 # Strict mypy is the eventual goal (see sungrow-hass). CI does not yet run mypy
 # because the integration is untyped; a follow-up PR will land the typing pass
 # and then enable the "Type check with mypy" step in .github/workflows/ci.yml.
-python_version = "3.13"
+python_version = "3.14"
 strict = true
 ignore_missing_imports = true
 check_untyped_defs = true
