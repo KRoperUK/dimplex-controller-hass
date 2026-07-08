@@ -34,7 +34,7 @@ jobs:
         run: zensical build
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@4f9cc66b0d61d6667850890666badcf1654d673f # v4.0.0
+        uses: peaceiris/actions-gh-pages@v4.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
