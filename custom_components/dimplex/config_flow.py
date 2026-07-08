@@ -103,9 +103,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 self._errors["base"] = "invalid_auth"
             else:
                 try:
-                    token_data = await validate_credentials(
-                        self.hass, username, password
-                    )
+                    token_data = await validate_credentials(self.hass, username, password)
                 except InvalidAuth:
                     self._errors["base"] = "invalid_auth"
                 except CannotConnect:
@@ -218,9 +216,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 self._errors["base"] = "invalid_auth"
             else:
                 try:
-                    token_data = await validate_credentials(
-                        self.hass, username, password
-                    )
+                    token_data = await validate_credentials(self.hass, username, password)
                 except InvalidAuth:
                     self._errors["base"] = "invalid_auth"
                 except CannotConnect:
@@ -274,9 +270,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def _finish_reauth(self, token_data: dict) -> dict:
         """Update the existing config entry with new tokens and re-load."""
-        existing_entry = self.hass.config_entries.async_get_entry(
-            self.context["entry_id"]
-        )
+        existing_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         self.hass.config_entries.async_update_entry(
             existing_entry,
             data={
@@ -323,6 +317,4 @@ class DimplexOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def _update_options(self):
         """Update config entry options."""
-        return self.async_create_entry(
-            title=self._config_entry.title, data=self.options
-        )
+        return self.async_create_entry(title=self._config_entry.title, data=self.options)
