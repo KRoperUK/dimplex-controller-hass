@@ -140,9 +140,7 @@ async def test_async_get_data_maps_appliances(hass):
     # Energy report is indexed by hub id, then by appliance id, and each value
     # is the parsed telemetry list (one normalised point per cloud entry).
     assert "hub-1" in data["energy"]
-    assert data["energy"]["hub-1"]["appliance-1"] == [
-        (datetime(2026, 6, 1, tzinfo=UTC), 0.1)
-    ]
+    assert data["energy"]["hub-1"]["appliance-1"] == [(datetime(2026, 6, 1, tzinfo=UTC), 0.1)]
 
 
 async def test_set_eco_start_calls_library(hass):

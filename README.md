@@ -24,11 +24,11 @@ This integration connects Home Assistant to the Dimplex cloud API and exposes co
 
 ## Supported entities
 
-| Platform        | Description                                                    |
-| --------------- | -------------------------------------------------------------- |
-| `sensor`        | Room temperature and energy used per appliance.                |
-| `binary_sensor` | Comfort status per appliance.                                  |
-| `switch`        | EcoStart toggle per appliance.                                 |
+| Platform        | Description                                     |
+| --------------- | ----------------------------------------------- |
+| `sensor`        | Room temperature and energy used per appliance. |
+| `binary_sensor` | Comfort status per appliance.                   |
+| `switch`        | EcoStart toggle per appliance.                  |
 
 ### Energy monitoring
 

@@ -146,9 +146,7 @@ class DimplexApiClient:
         try:
             hubs = await self._client.get_hubs()
             appliance_rows: list[dict[str, Any]] = []
-            energy_by_hub: dict[
-                str, dict[str, list[tuple[datetime | None, float]]]
-            ] = {}
+            energy_by_hub: dict[str, dict[str, list[tuple[datetime | None, float]]]] = {}
 
             for hub in hubs:
                 zones = await self._client.get_hub_zones(hub.HubId)

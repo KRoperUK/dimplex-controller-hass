@@ -28,13 +28,9 @@ def _row(*, energy):
         FriendlyName="Living Room Heater",
         ApplianceModel="Model X",
     )
-    status = SimpleNamespace(
-        EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5
-    )
+    status = SimpleNamespace(EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5)
     return {
-        "appliances": [
-            {"hub": hub, "zone": zone, "appliance": appliance, "status": status}
-        ],
+        "appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}],
         "energy": {"hub-1": {"appliance-1": energy}},
     }
 
@@ -113,13 +109,9 @@ async def test_energy_sensor_unavailable_when_hub_key_missing(hass):
         FriendlyName="Living Room Heater",
         ApplianceModel="Model X",
     )
-    status = SimpleNamespace(
-        EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5
-    )
+    status = SimpleNamespace(EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5)
     payload = {
-        "appliances": [
-            {"hub": hub, "zone": zone, "appliance": appliance, "status": status}
-        ],
+        "appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}],
         # "energy" missing entirely — older payloads / fresh installs.
     }
     config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
