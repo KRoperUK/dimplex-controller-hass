@@ -5,9 +5,8 @@
       "release-type": "simple",
       "extra-files": [
         {
-          "type": "json",
-          "path": "custom_components/dimplex/manifest.json",
-          "jsonpath": "$.version"
+          "type": "generic",
+          "path": "custom_components/dimplex/manifest.json"
         },
         {
           "type": "generic",
