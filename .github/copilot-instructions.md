@@ -18,11 +18,11 @@ The coordinator snapshot is `coordinator.data["appliances"]` — a list of
 
 ## Must-follow rules
 
-1. **Conventional Commits** for commits and PR titles — `release-please` drives
-   versioning/changelog (`fix:` → patch, `feat:` → minor).
+1. **Conventional Commits** for PR titles and all commit messages — `release-please` drives
+   versioning/changelog (`fix:` → patch, `feat:` → minor). Every PR title and commit on a feature branch must follow this format, and this is enforced in CI.
 2. **Add/update tests** for any behaviour change (`pytest-homeassistant-custom-component`).
-3. **`main` is protected** — work on a branch and open a PR. CI runs ruff
-   (lint + format via pre-commit), pytest with coverage, and HACS/Hassfest.
+3. **`main` is protected** — work on a branch and open a PR. CI runs conventional commit validation,
+   ruff (lint + format via pre-commit), pytest with coverage, and HACS/Hassfest.
 4. Keep coverage at or above the `fail_under` threshold in `pyproject.toml`.
 
 ## Local checks (match CI)
