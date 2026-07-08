@@ -24,11 +24,26 @@ This integration connects Home Assistant to the Dimplex cloud API and exposes co
 
 ## Supported entities
 
-| Platform        | Description                     |
-| --------------- | ------------------------------- |
-| `sensor`        | Room temperature per appliance. |
-| `binary_sensor` | Comfort status per appliance.   |
-| `switch`        | EcoStart toggle per appliance.  |
+| Platform        | Description                                     |
+| --------------- | ----------------------------------------------- |
+| `sensor`        | Room temperature and energy used per appliance. |
+| `binary_sensor` | Comfort status per appliance.                   |
+| `switch`        | EcoStart toggle per appliance.                  |
+
+### Energy monitoring
+
+Each appliance that the Dimplex Hub reports energy for exposes a
+`SensorDeviceClass.ENERGY` sensor with kWh as the unit. The value is the
+total energy used in a rolling 30-day window; `last_reset` is set to the
+start of that window so the Home Assistant Energy Dashboard can plot it
+correctly.
+
+Energy data is hardware-dependent — only metered appliances (e.g. QRAD
+radiators) report telemetry. When the hub returns no data, the sensor is
+**unavailable** rather than `0`, so the Energy Dashboard never sees
+fabricated zero readings. During the warmer months, when heaters are not
+running, you should expect to see the energy sensor as `unavailable` — this
+is correct behaviour, not a bug.
 
 ## Installation (manual)
 
