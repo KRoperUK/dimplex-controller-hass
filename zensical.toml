@@ -1,0 +1,6 @@
+site_name = "Dimplex Hub Integration"
+site_url = "https://dimplex-hass.kroper.uk"
+site_description = "Home Assistant integration for Glen Dimplex Heating & Ventilation appliances"
+
+[theme]
+name = "zensical"
