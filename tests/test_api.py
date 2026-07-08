@@ -181,6 +181,40 @@ async def test_async_get_data_overview_fallback(hass):
     assert mock_overview.call_count == 2
 
 
+async def test_async_get_data_energy_report_api_error_is_skipped(hass):
+    """Test that a DimplexApiError from the energy report does not fail the coordinator."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    hub = SimpleNamespace(HubId="hub-1")
+    appliance = SimpleNamespace(
+        ApplianceId="appliance-1",
+        FriendlyName="Living Room Heater",
+        ApplianceModel="Model X",
+    )
+    zone = SimpleNamespace(ZoneName="Living Room", Appliances=[appliance])
+    status = SimpleNamespace(ApplianceId="appliance-1", EcoStartEnabled=True)
+
+    with (
+        patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        patch.object(api._client, "get_hub_zones", new=AsyncMock(return_value=[zone])),
+        patch.object(
+            api._client,
+            "get_appliance_overview",
+            new=AsyncMock(return_value=[status]),
+        ),
+        patch.object(
+            api._client,
+            "get_tsi_energy_report",
+            new=AsyncMock(side_effect=DimplexApiError(404, "Not Found")),
+        ),
+    ):
+        data = await api.async_get_data()
+
+    # Appliances should still load; energy should be an empty dict for this hub
+    assert len(data["appliances"]) == 1
+    assert data["energy"]["hub-1"] == {}
+
+
 async def test_set_eco_start_calls_library(hass):
     """Test eco start control call delegates to library client."""
     api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
@@ -414,11 +448,10 @@ async def test_async_get_energy_report_passes_window_to_library(hass):
     [
         (DimplexAuthError("a"), InvalidAuth),
         (DimplexConnectionError("c"), CannotConnect),
-        (DimplexApiError(500, "e"), CannotConnect),
     ],
 )
 async def test_async_get_energy_report_error_mapping(hass, exc, expected):
-    """Library errors during energy fetch map to integration exceptions."""
+    """Auth/connection errors during energy fetch map to integration exceptions."""
     api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
     with (
         patch.object(
@@ -429,3 +462,15 @@ async def test_async_get_energy_report_error_mapping(hass, exc, expected):
         pytest.raises(expected),
     ):
         await api.async_get_energy_report("hub-1")
+
+
+async def test_async_get_energy_report_api_error_returns_empty(hass):
+    """A DimplexApiError (e.g. 404/400 for hubs with no metered appliances) returns {} instead of raising."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with patch.object(
+        api._client,
+        "get_tsi_energy_report",
+        new=AsyncMock(side_effect=DimplexApiError(404, "Not Found")),
+    ):
+        result = await api.async_get_energy_report("hub-1")
+    assert result == {}

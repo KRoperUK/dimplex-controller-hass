@@ -239,7 +239,15 @@ class DimplexApiClient:
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
         except DimplexApiError as exception:
-            raise CannotConnect from exception
+            # Some hubs (e.g. without metered appliances) return a non-200
+            # response for this endpoint.  This should not fail the entire
+            # coordinator refresh — just return no energy data.
+            _LOGGER.warning(
+                "Energy report unavailable for hub %s: %s — skipping.",
+                hub_id,
+                exception,
+            )
+            return {}
 
         return {
             appliance_id: parse_telemetry_points(points)
