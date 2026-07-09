@@ -5,7 +5,6 @@ For more details about this integration, please refer to
 https://github.com/kroperuk/dimplex-controller-hass
 """
 
-import asyncio
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -71,13 +70,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    # Persist tokens after initialisation in case they were refreshed
-    _persist_tokens(hass, entry, client)
-
     coordinator.platforms = [platform for platform in PLATFORMS if entry.options.get(platform, True)]
     await hass.config_entries.async_forward_entry_setups(entry, coordinator.platforms)
 
-    entry.add_update_listener(async_reload_entry)
+    # Persist tokens after platform setup. _persist_tokens calls
+    # async_update_entry only when tokens actually changed; registering an
+    # update_listener that triggers a full reload on every token write would
+    # cause an infinite reload loop, so we intentionally do not register one.
+    _persist_tokens(hass, entry, client)
+
     return True
 
 
@@ -147,18 +148,7 @@ def _persist_tokens(
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Handle removal of an entry."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    unloaded = all(
-        await asyncio.gather(
-            *[hass.config_entries.async_forward_entry_unload(entry, platform) for platform in coordinator.platforms]
-        )
-    )
+    unloaded = await hass.config_entries.async_unload_platforms(entry, coordinator.platforms)
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id)
-
     return unloaded
-
-
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload config entry."""
-    await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry)
