@@ -14,14 +14,32 @@ pytestmark = pytest.mark.asyncio
 
 
 def _mock_coordinator_payload():
-    hub = SimpleNamespace(HubId="hub-1")
+    hub = SimpleNamespace(
+        HubId="hub-1",
+        FriendlyName="My Hub",
+        HubType="GatewayOther",
+        ConnectionState=1,
+    )
     zone = SimpleNamespace(ZoneName="Living Room")
     appliance = SimpleNamespace(
         ApplianceId="appliance-1",
         FriendlyName="Living Room Heater",
         ApplianceModel="Model X",
+        LastTelemDate=None,
     )
-    status = SimpleNamespace(EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5)
+    status = SimpleNamespace(
+        EcoStartEnabled=False,
+        ComfortStatus=True,
+        RoomTemperature=21.5,
+        ActiveSetPointTemperature=20,
+        BoostTemperature=25.0,
+        AwayTemperature=15.0,
+        SetbackTemperature=18.0,
+        OpenWindowEnabled=True,
+        SetbackEnabled=True,
+        ErrorCode="E1",
+        WarningCode="W2",
+    )
     return {"appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}]}
 
 
@@ -61,3 +79,27 @@ async def test_sensor_and_binary_sensor_entities(hass):
         switch_state = hass.states.get("switch.living_room_living_room_heater_ecostart")
     assert switch_state is not None
     assert switch_state.attributes.get("icon") == "mdi:leaf-off"
+
+    target_state = hass.states.get("sensor.living_room_heater_target_temperature")
+    if target_state is None:
+        target_state = hass.states.get("sensor.living_room_living_room_heater_target_temperature")
+    assert target_state is not None
+    assert target_state.state == "20"
+
+    open_window_state = hass.states.get("binary_sensor.living_room_heater_open_window")
+    if open_window_state is None:
+        open_window_state = hass.states.get("binary_sensor.living_room_living_room_heater_open_window")
+    assert open_window_state is not None
+    assert open_window_state.state == "on"
+
+    setback_state = hass.states.get("binary_sensor.living_room_heater_setback")
+    if setback_state is None:
+        setback_state = hass.states.get("binary_sensor.living_room_living_room_heater_setback")
+    assert setback_state is not None
+    assert setback_state.state == "on"
+
+    hub_connected_state = hass.states.get("binary_sensor.hub_1_connected")
+    if hub_connected_state is None:
+        hub_connected_state = hass.states.get("binary_sensor.my_hub_connected")
+    assert hub_connected_state is not None
+    assert hub_connected_state.state == "on"
