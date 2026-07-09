@@ -1,123 +1,195 @@
 # Dimplex Hub
 
-[![GitHub Release][releases-shield]][releases]
-[![GitHub Activity][commits-shield]][commits]
-[![License][license-shield]](LICENSE)
+[![GitHub Release](https://img.shields.io/github/release/kroperuk/dimplex-controller-hass.svg)](https://github.com/kroperuk/dimplex-controller-hass/releases)
+[![GitHub Activity](https://img.shields.io/github/commit-activity/y/kroperuk/dimplex-controller-hass.svg?style=for-the-badge)](https://github.com/kroperuk/dimplex-controller-hass/commits/main)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://hacs.xyz)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?style=for-the-badge)](https://github.com/pre-commit/pre-commit)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=for-the-badge)](https://github.com/astral-sh/ruff)
+[![Maintainer](https://img.shields.io/badge/maintainer-%40kroperuk-blue.svg?style=for-the-badge)](https://github.com/kroperuk)
+[![Buy me a coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge)](https://www.buymeacoffee.com/kroperuk)
+[![Discord](https://img.shields.io/discord/330944238910963714.svg?style=for-the-badge)](https://discord.gg/Qa5fW2R)
+[![Community Forum](https://img.shields.io/badge/community-forum-brightgreen.svg?style=for-the-badge)](https://community.home-assistant.io/)
+[![HACS Install](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=kroperuk&repository=dimplex-controller-hass&category=integration)
 
-[![pre-commit][pre-commit-shield]][pre-commit]
-[![Ruff][ruff-shield]][ruff]
+<p align="center">
+  <strong>Custom Home Assistant integration for Glen Dimplex Heating &amp; Ventilation (GDHV) electric heating appliances.</strong>
+</p>
 
-[![hacs][hacsbadge]][hacs]
-[![Project Maintenance][maintenance-shield]][user_profile]
-[![BuyMeCoffee][buymecoffeebadge]][buymecoffee]
+---
 
-[![Discord][discord-shield]][discord]
-[![Community Forum][forum-shield]][forum]
+## What does this do?
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.][hacs-install-badge]][hacs-install]
+`dimplex-controller-hass` connects Home Assistant to the Dimplex cloud API. It discovers your Dimplex Hub, Zones and Appliances, and exposes them as native Home Assistant entities so you can monitor temperatures, track energy usage and control EcoStart — all from the Home Assistant dashboard.
 
-Custom Home Assistant integration for Dimplex electric heating appliances.
+It is distributed via [HACS](https://hacs.xyz) and built on top of the [`dimplex-controller-py`](https://github.com/KRoperUK/dimplex-controller-py) Python client.
 
-## Overview
+## Contents
 
-This integration connects Home Assistant to the Dimplex cloud API and exposes core heater telemetry and controls through config entries.
+- [Features](#features)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Entities](#entities)
+- [Energy monitoring](#energy-monitoring)
+- [Known limitations](#known-limitations)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [Credits](#credits)
 
-## Supported entities
+## Features
 
-| Platform        | Description                                     |
-| --------------- | ----------------------------------------------- |
-| `sensor`        | Room temperature and energy used per appliance. |
-| `binary_sensor` | Comfort status per appliance.                   |
-| `switch`        | EcoStart toggle per appliance.                  |
+- **Temperature monitoring** — View current room temperature and active target temperature setpoints for each Zone.
+- **Comfort status** — Monitor whether your heating is in Comfort mode.
+- **EcoStart control** — Toggle the EcoStart energy-saving feature from Home Assistant.
+- **Energy telemetry** — Monitor and log energy consumption for metered appliances directly in the Home Assistant Energy Dashboard.
+- **Automatic re-authentication** — The integration refreshes tokens automatically and prompts you to re-authenticate when necessary.
 
-### Energy monitoring
+## Installation
 
-Each appliance that the Dimplex Hub reports energy for exposes a
-`SensorDeviceClass.ENERGY` sensor with kWh as the unit. The value is the
-total energy used in a rolling 30-day window; `last_reset` is set to the
-start of that window so the Home Assistant Energy Dashboard can plot it
-correctly.
+### Via HACS (recommended)
 
-Energy data is hardware-dependent — only metered appliances (e.g. QRAD
-radiators) report telemetry. When the hub returns no data, the sensor is
-**unavailable** rather than `0`, so the Energy Dashboard never sees
-fabricated zero readings. During the warmer months, when heaters are not
-running, you should expect to see the energy sensor as `unavailable` — this
-is correct behaviour, not a bug.
+1. Open **HACS** in Home Assistant.
+2. Search for **Dimplex Hub**.
+3. Click **Download**.
+4. Restart Home Assistant.
+5. Go to **Settings** > **Devices & Services** > **Add Integration** and search for **Dimplex Hub**.
 
-## Installation (manual)
+### Manual installation
 
 1. Open your Home Assistant configuration directory (the folder containing `configuration.yaml`).
-2. Create `custom_components` if it does not exist.
-3. Copy `custom_components/dimplex` from this repository into your Home Assistant config.
+2. Create `custom_components` if it does not already exist.
+3. Copy the `custom_components/dimplex` folder from this repository into your Home Assistant `custom_components` directory.
 4. Restart Home Assistant.
-5. In Home Assistant, go to **Configuration** -> **Integrations**.
-6. Click **+** and search for `Dimplex Hub`.
+5. Go to **Settings** > **Devices & Services**.
+6. Click **+ Add Integration** and search for **Dimplex Hub**.
 
 ## Configuration
 
-Configuration is done in the UI through the integration config flow.
+Configuration is handled entirely through the Home Assistant UI. No YAML editing is required.
 
-### Getting the OAuth callback URL or code
+### Step 1: Choose an authentication method
 
-During setup, the config flow shows a login URL.
+When you add the integration, you are asked to choose one of two login methods:
 
-1. Open that login URL in your browser.
+| Method                             | When to use                                                                                   |
+| ---------------------------------- | --------------------------------------------------------------------------------------------- |
+| **Email / password (recommended)** | Use your Dimplex cloud account email and password.                                            |
+| **Manual auth code**               | Use this if password login fails or if you prefer not to enter credentials in Home Assistant. |
+
+### Step 2: Email / password
+
+1. Enter your Dimplex account email and password.
+2. Click **Submit**.
+
+The integration signs in to the Dimplex cloud in the background and stores the resulting tokens securely.
+
+### Step 3: Manual auth code
+
+If you choose the manual auth code method:
+
+1. The integration shows a login URL. Open it in a new browser tab.
 2. **Before** entering your credentials, open Developer Tools (`F12`) and go to the **Network** tab.
-3. Enable **Preserve log** (or equivalent "keep log" option).
-4. Submit your login details.
-5. The final mobile-app redirect will fail/cancel, which is expected.
-6. In Network, find the last redirect/cancelled request (or the request URL) that includes `?code=...`.
-7. Copy either:
-   - the full callback URL (starts with `msal...://auth/?code=...`), or
-   - just the `code` value.
-8. Paste that into the integration form field **Redirect URL or code**.
+3. Enable **Preserve log** (or your browser's equivalent).
+4. Log in with your Dimplex credentials.
+5. The final redirect will fail or show a "cannot open page" error — this is expected.
+6. In the Network tab, find the last request that includes `?code=...` in its URL.
+7. Copy either the full redirect URL or just the `code` value.
+8. Paste it into the integration's **Redirect URL or code** field.
+9. Click **Submit**.
 
-If the code expires, repeat the steps and capture a fresh one.
+> **Tip:** If the code expires, repeat the steps and capture a fresh one. Auth codes are short-lived.
+
+### Options flow
+
+After installation, you can adjust which platforms are enabled:
+
+1. Go to **Settings** > **Devices & Services**.
+2. Find **Dimplex Hub** and click **Configure**.
+3. Toggle `sensor`, `binary_sensor` and `switch` platforms on or off.
+
+## Entities
+
+| Platform        | Description                                 | Example entity                     |
+| --------------- | ------------------------------------------- | ---------------------------------- |
+| `sensor`        | Room temperature per Zone.                  | `sensor.living_room_temperature`   |
+| `sensor`        | Cumulative energy used per Appliance (kWh). | `sensor.k radiator_energy`         |
+| `binary_sensor` | Comfort status per Appliance.               | `binary_sensor.k_radiator_comfort` |
+| `switch`        | EcoStart toggle per Appliance.              | `switch.k_radiator_ecostart`       |
+
+> Entity IDs are generated from your appliance names. You can rename them in Home Assistant as usual.
+
+## Energy monitoring
+
+Each metered Appliance exposes a `SensorDeviceClass.ENERGY` sensor with `kWh` as the unit of measurement. The value represents the total energy used in a rolling 30-day window. `last_reset` is set to the start of that window so the Home Assistant Energy Dashboard can plot it correctly.
+
+**Important behaviour:**
+
+- Energy data is hardware-dependent — only metered appliances (for example, QRAD radiators) report telemetry.
+- When the Hub returns no data, the sensor is **unavailable** rather than `0`, so the Energy Dashboard never sees fabricated zero readings.
+- During warmer months, when heaters are not running, you should expect to see the energy sensor as **unavailable** — this is correct behaviour, not a bug.
 
 ## Known limitations
 
 - Target temperature controls are not exposed yet.
-- Schedules/timer editing is not exposed yet.
+- Schedules and timer editing are not exposed yet.
 
 ## Troubleshooting
 
-- Check Home Assistant logs for authentication or connectivity errors.
-- Re-authenticate in the config flow if your token has expired.
-- If setup fails, create an issue with logs and reproduction steps.
+### The integration fails to set up
 
-## Contributions are welcome!
+**Symptom:** Setup fails with an authentication or connectivity error.
 
-If you want to contribute, please read the [Contribution guidelines](CONTRIBUTING.md).
+**Steps to resolve:**
+
+1. Check **Settings** > **System** > **Logs** for detailed error messages.
+2. If you see `InvalidAuth`, re-authenticate via the config flow.
+3. If you see `CannotConnect`, verify your internet connection and that `api.gdhv.io` is reachable from your Home Assistant instance.
+
+### Tokens keep expiring
+
+**Symptom:** You are repeatedly asked to re-authenticate.
+
+**Steps to resolve:**
+
+1. Use the **Email / password** method — it obtains a fresh refresh token automatically.
+2. If using the manual auth code method, capture a fresh code each time.
+3. Ensure Home Assistant has reliable internet access; intermittent connectivity can cause token refresh failures.
+
+### Entities are missing
+
+**Symptom:** Some entities do not appear after setup.
+
+**Steps to resolve:**
+
+1. Check the options flow and make sure the relevant platform is toggled on.
+2. Restart Home Assistant.
+3. Check the logs for errors during platform setup.
+
+### Energy sensor shows `unavailable` in summer
+
+This is expected. See the [Energy monitoring](#energy-monitoring) section above.
+
+### Still stuck?
+
+If you cannot resolve your issue, please [open a GitHub issue](https://github.com/kroperuk/dimplex-controller-hass/issues) with:
+
+1. Your Home Assistant version.
+2. The integration version.
+3. The relevant log entries (redact any personal information).
+4. Steps to reproduce the problem.
+
+## Contributing
+
+Contributions are welcome! Please read the [contribution guidelines](CONTRIBUTING.md) before opening a pull request.
+
+Key points:
+
+- Use **Conventional Commits** (`feat:`, `fix:`, `chore:`, etc.) — this drives the automated changelog and release process.
+- Run `ruff check`, `ruff format --check` and `pytest` locally before pushing.
+- Pre-commit hooks are available — run `pre-commit install` once.
 
 ## Credits
 
 This project was generated from [@oncleben31](https://github.com/oncleben31)'s [Home Assistant Custom Component Cookiecutter](https://github.com/oncleben31/cookiecutter-homeassistant-custom-component) template.
 
-Code template was mainly taken from [@Ludeeus](https://github.com/ludeeus)'s [integration_blueprint][integration_blueprint] template
-
----
-
-[integration_blueprint]: https://github.com/custom-components/integration_blueprint
-[ruff]: https://github.com/astral-sh/ruff
-[ruff-shield]: https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=for-the-badge
-[buymecoffee]: https://www.buymeacoffee.com/kroperuk
-[buymecoffeebadge]: https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge
-[commits-shield]: https://img.shields.io/github/commit-activity/y/kroperuk/dimplex-controller-hass.svg?style=for-the-badge
-[commits]: https://github.com/kroperuk/dimplex-controller-hass/commits/main
-[hacs]: https://hacs.xyz
-[hacs-install]: https://my.home-assistant.io/redirect/hacs_repository/?owner=kroperuk&repository=dimplex-controller-hass&category=integration
-[hacs-install-badge]: https://my.home-assistant.io/badges/hacs_repository.svg
-[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
-[discord]: https://discord.gg/Qa5fW2R
-[discord-shield]: https://img.shields.io/discord/330944238910963714.svg?style=for-the-badge
-[exampleimg]: example.png
-[forum-shield]: https://img.shields.io/badge/community-forum-brightgreen.svg?style=for-the-badge
-[forum]: https://community.home-assistant.io/
-[license-shield]: https://img.shields.io/github/license/kroperuk/dimplex-controller-hass.svg?style=for-the-badge
-[maintenance-shield]: https://img.shields.io/badge/maintainer-%40kroperuk-blue.svg?style=for-the-badge
-[pre-commit]: https://github.com/pre-commit/pre-commit
-[pre-commit-shield]: https://img.shields.io/badge/pre--commit-enabled-brightgreen?style=for-the-badge
-[releases-shield]: https://img.shields.io/github/release/kroperuk/dimplex-controller-hass.svg?style=for-the-badge
-[releases]: https://github.com/kroperuk/dimplex-controller-hass/releases
-[user_profile]: https://github.com/kroperuk
+Code template was mainly taken from [@Ludeeus](https://github.com/ludeeus)'s [integration_blueprint](https://github.com/custom-components/integration_blueprint) template.

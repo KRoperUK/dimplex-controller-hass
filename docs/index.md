@@ -2,28 +2,25 @@
 
 Welcome to the documentation for the Dimplex Hub custom integration for Home Assistant.
 
-This integration allows you to control and monitor Glen Dimplex Heating & Ventilation (GDHV) appliances via the Dimplex Hub cloud API.
+This integration connects Home Assistant to the Dimplex cloud API and exposes core heater telemetry and controls through config entries.
 
-## Features
+## What you can do
 
-- **Temperature Monitoring**: View current room temperature and active target temperature setpoints for each zone.
-- **Comfort Mode Control**: Monitor and control comfort status for your heating zones.
-- **EcoStart Switch**: Easily enable or disable the EcoStart energy-saving feature on your heaters.
-- **Energy Telemetry**: Monitor and log energy consumption metrics for metered heating devices natively within the Home Assistant Energy Dashboard.
+- **Monitor temperatures** — See current room temperature and target setpoints for every Zone.
+- **Track energy** — Log energy consumption for metered appliances in the Home Assistant Energy Dashboard.
+- **Control heating** — Toggle EcoStart on and off from your dashboard or automations.
+- **Stay in sync** — Tokens refresh automatically; re-authentication is handled gracefully.
 
-## Installation
+## Documentation pages
 
-### Via HACS (Recommended)
+- [Getting started](getting-started.md) — installation and initial setup.
+- [Configuration](configuration.md) — detailed setup steps and options.
+- [Entities](entities.md) — entity reference and capabilities.
+- [Advanced usage](advanced.md) — energy dashboard, automations and tips.
+- [Troubleshooting](troubleshooting.md) — common issues and how to resolve them.
 
-1. Open **HACS** in Home Assistant.
-2. Search for `Dimplex Hub`.
-3. Click **Download**.
-4. Restart Home Assistant.
+## Quick links
 
-## Configuration
-
-1. In Home Assistant, go to **Settings** > **Devices & Services**.
-2. Click **Add Integration**.
-3. Search for **Dimplex Hub**.
-4. Enter your Dimplex account credentials (email and password).
-5. Follow the prompts to configure the integration.
+- [GitHub repository](https://github.com/kroperuk/dimplex-controller-hass)
+- [Report an issue](https://github.com/kroperuk/dimplex-controller-hass/issues)
+- [HACS repository](https://github.com/kroperuk/dimplex-controller-hass)
