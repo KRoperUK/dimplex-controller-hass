@@ -440,6 +440,7 @@ async def test_async_get_energy_report_passes_window_to_library(hass):
         report_type=1,
         interval="00:10:00",
         days_back=7,
+        include_previous_period=True,
     )
 
 

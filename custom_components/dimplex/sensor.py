@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -55,19 +55,17 @@ class DimplexRoomTemperatureSensor(DimplexEntity, SensorEntity):
 
 
 class DimplexEnergySensor(DimplexEntity, SensorEntity):
-    """Cumulative kWh energy used by an appliance over the report window.
+    """Cumulative kWh energy used by an appliance.
 
-    The cloud returns energy telemetry for a rolling
-    :data:`~custom_components.dimplex.const.ENERGY_REPORT_DAYS`-day window
-    (configurable on the client). This sensor sums every value the cloud
-    returned in that window and exposes it as a ``TOTAL`` value with
-    ``last_reset`` set to the start of the query window, so the Home
-    Assistant Energy Dashboard can plot it. The dashboard subtracts
-    ``last_reset`` snapshots, so a rolling window is the natural fit.
+    The cloud returns daily kWh values (keyed as ``T1``) with Unix-epoch
+    timestamps (keyed as ``TS``) covering all available history. This
+    sensor sums every value and exposes the earliest timestamp as
+    ``last_reset``, so the Home Assistant Energy Dashboard computes
+    ``current_total - previous_reset_value`` correctly for the full
+    reported period.
 
-    Hardware-dependent: only QRAD / metered appliances report data. When
-    the hub returns no data, the sensor is unavailable rather than ``0``,
-    so the Energy Dashboard never sees fabricated zero readings.
+    The sensor is unavailable when the hub returns no data for this
+    appliance, preventing fabricated zero readings on the dashboard.
     """
 
     _attr_icon = "mdi:lightning-bolt"
@@ -75,38 +73,26 @@ class DimplexEnergySensor(DimplexEntity, SensorEntity):
     _attr_state_class = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
 
-    def __init__(self, coordinator, config_entry, appliance_row) -> None:
-        super().__init__(coordinator, config_entry, appliance_row)
-        # Pre-compute the window start once. The API uses UTC, so we use
-        # the same here. The cloud only needs the report refreshed on the
-        # coordinator interval, so this is stable enough for ``last_reset``.
-        self._window_start = datetime.now(UTC) - timedelta(days=ENERGY_REPORT_DAYS)
-
     @property
     def unique_id(self) -> str:
-        """Unique id that disambiguates this from the room-temperature sensor."""
         return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_energy"
 
     @property
     def name(self):
-        """Return the name of the sensor."""
         return f"{self._appliance.FriendlyName} Energy"
 
     @property
     def _energy_points(self) -> list[tuple[datetime | None, float]]:
-        """Return the parsed telemetry points for this appliance, if any."""
         energy = self.coordinator.data.get("energy") or {}
         hub_points = energy.get(self._hub.HubId) or {}
         return hub_points.get(self._appliance.ApplianceId, [])
 
     @property
     def available(self) -> bool:
-        """The sensor is only available when the cloud returned data."""
         return bool(self._energy_points)
 
     @property
     def native_value(self) -> float | None:
-        """Return the total kWh used in the current report window."""
         points = self._energy_points
         if not points:
             return None
@@ -114,14 +100,20 @@ class DimplexEnergySensor(DimplexEntity, SensorEntity):
 
     @property
     def last_reset(self) -> datetime:
-        """Return the start of the energy report window."""
-        return self._window_start
+        points = self._energy_points
+        if not points:
+            return datetime.now(UTC)
+        timestamps = [ts for ts, _ in points if ts is not None]
+        if not timestamps:
+            return datetime.now(UTC)
+        return min(timestamps)
 
     @property
     def extra_state_attributes(self) -> dict:
-        """Expose the report window for transparency / debugging."""
         points = self._energy_points
+        earliest = min((ts for ts, _ in points if ts is not None), default=None)
         return {
+            "window_start": earliest.isoformat() if earliest else None,
             "window_days": ENERGY_REPORT_DAYS,
             "interval": ENERGY_REPORT_INTERVAL,
             "telemetry_points": len(points),

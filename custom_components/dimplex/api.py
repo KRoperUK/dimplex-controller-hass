@@ -233,6 +233,7 @@ class DimplexApiClient:
                 report_type=1,
                 interval=interval,
                 days_back=days_back,
+                include_previous_period=True,
             )
         except DimplexAuthError as exception:
             raise InvalidAuth from exception

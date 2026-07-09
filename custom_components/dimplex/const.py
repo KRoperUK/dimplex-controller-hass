@@ -22,11 +22,10 @@ CONF_EXPIRES_AT = "expires_at"
 COORDINATOR_UPDATE_INTERVAL = timedelta(seconds=30)
 
 # Energy monitoring — POST /Reports/GetTsiEnergyReportDataForHub.
-# The cloud returns one telemetry bucket per appliance; a 30-day rolling
-# window with hourly buckets is a reasonable default that keeps the
-# response small while still giving the Energy Dashboard something useful.
+# The real Dimplex Control iOS app uses a 10-minute interval. Daily kWh
+# values are returned keyed under "T1" with Unix-epoch "TS" timestamps.
 ENERGY_REPORT_DAYS = 30
-ENERGY_REPORT_INTERVAL = "01:00:00"
+ENERGY_REPORT_INTERVAL = "00:10:00"
 
 STARTUP_MESSAGE = f"""
 -------------------------------------------------------------------
