@@ -4,3 +4,12 @@ site_description = "Home Assistant integration for Glen Dimplex Heating & Ventil
 
 [theme]
 name = "zensical"
+
+nav = [
+  { "Overview" = "index.md" },
+  { "Getting started" = "getting-started.md" },
+  { "Configuration" = "configuration.md" },
+  { "Entities" = "entities.md" },
+  { "Advanced usage" = "advanced.md" },
+  { "Troubleshooting" = "troubleshooting.md" },
+]
