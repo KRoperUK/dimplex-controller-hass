@@ -33,10 +33,29 @@ class DimplexEntity(CoordinatorEntity):
 
     @property
     def device_info(self):
-        return {
+        """Return appliance device registry metadata.
+
+        The Dimplex cloud does not expose a local IP/MAC for radiators; the
+        appliance id is the stable serial used by the hub API.
+        """
+        appliance_type = getattr(self._appliance, "ApplianceType", None)
+        model = self._appliance.ApplianceModel
+        if appliance_type and model and appliance_type not in model:
+            model = f"{appliance_type} {model}"
+
+        info = {
             "identifiers": {(DOMAIN, self._appliance.ApplianceId)},
             "name": self._appliance.FriendlyName,
-            "model": self._appliance.ApplianceModel,
             "manufacturer": "Dimplex",
+            "model": model,
+            "serial_number": self._appliance.ApplianceId,
             "suggested_area": self._zone.ZoneName,
+            "via_device": (DOMAIN, self._hub.HubId),
         }
+        firmware = getattr(self._appliance, "FirmwareVersion", None)
+        if firmware:
+            info["sw_version"] = str(firmware)
+        series = getattr(self._appliance, "SeriesIdentifier", None)
+        if series:
+            info["hw_version"] = str(series)
+        return info
