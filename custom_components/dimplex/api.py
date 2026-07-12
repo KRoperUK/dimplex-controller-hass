@@ -6,6 +6,7 @@ from typing import Any
 
 import aiohttp
 from dimplex_controller import (
+    VALUE_KEY_T2,
     DimplexApiError,
     DimplexAuthError,
     DimplexConnectionError,
@@ -216,16 +217,15 @@ class DimplexApiClient:
         hub_id: str,
         days_back: int = ENERGY_REPORT_DAYS,
         interval: str = ENERGY_REPORT_INTERVAL,
-    ) -> dict[str, list[tuple[datetime | None, float]]]:
+    ) -> dict[str, dict[str, list[tuple[datetime | None, float]]]]:
         """Fetch the per-appliance energy telemetry report for a hub.
 
-        Returns a dict keyed by appliance id. Each value is the raw telemetry
-        list (possibly empty) as returned by the cloud, normalised by
-        :func:`parse_telemetry_points` into ``(timestamp, value)`` tuples
-        so callers do not need to know the wire format. When the cloud
-        returns no data — e.g. the hub has no metered appliances, or the
-        heaters have not been running — the dict values are simply empty
-        lists. That is treated as success, not an error.
+        Returns a dict with ``t1`` and ``t2`` keys. Each maps appliance id to
+        the raw telemetry list normalised by :func:`parse_telemetry_points`
+        into ``(timestamp, value)`` tuples. ``t1`` is the primary energy
+        register; ``t2`` is a secondary register observed for some Quantum
+        appliances. Empty lists are normal for hubs without metered appliances
+        or when heaters have not been running.
         """
         try:
             report = await self._client.get_tsi_energy_report(
@@ -240,17 +240,20 @@ class DimplexApiClient:
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
         except DimplexApiError as exception:
-            # Some hubs (e.g. without metered appliances) return a non-200
-            # response for this endpoint.  This should not fail the entire
-            # coordinator refresh — just return no energy data.
             _LOGGER.warning(
                 "Energy report unavailable for hub %s: %s — skipping.",
                 hub_id,
                 exception,
             )
-            return {}
+            return {"t1": {}, "t2": {}}
 
         return {
-            appliance_id: parse_telemetry_points(points)
-            for appliance_id, points in report.ApplianceTelemetryData.items()
+            "t1": {
+                appliance_id: parse_telemetry_points(points)
+                for appliance_id, points in report.ApplianceTelemetryData.items()
+            },
+            "t2": {
+                appliance_id: parse_telemetry_points(points, value_keys=VALUE_KEY_T2)
+                for appliance_id, points in report.ApplianceTelemetryData.items()
+            },
         }

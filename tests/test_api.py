@@ -140,7 +140,52 @@ async def test_async_get_data_maps_appliances(hass):
     # Energy report is indexed by hub id, then by appliance id, and each value
     # is the parsed telemetry list (one normalised point per cloud entry).
     assert "hub-1" in data["energy"]
-    assert data["energy"]["hub-1"]["appliance-1"] == [(datetime(2026, 6, 1, tzinfo=UTC), 0.1)]
+    assert data["energy"]["hub-1"]["t1"]["appliance-1"] == [(datetime(2026, 6, 1, tzinfo=UTC), 0.1)]
+    assert data["energy"]["hub-1"]["t2"]["appliance-1"] == []
+
+
+async def test_async_get_data_maps_st_telemetry(hass):
+    """QRAD models return energy values keyed as ``ST`` instead of ``T1``."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    hub = SimpleNamespace(HubId="hub-1")
+    appliance = SimpleNamespace(
+        ApplianceId="appliance-1",
+        FriendlyName="Living Room Heater",
+        ApplianceModel="QRAD075F",
+    )
+    zone = SimpleNamespace(ZoneName="Living Room", Appliances=[appliance])
+    status = SimpleNamespace(ApplianceId="appliance-1", EcoStartEnabled=True)
+    energy_report = SimpleNamespace(
+        ApplianceTelemetryData={
+            "appliance-1": [
+                {"TS": 1783773600, "ST": 0.06},
+            ]
+        }
+    )
+
+    with (
+        patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        patch.object(
+            api._client,
+            "get_hub_zones",
+            new=AsyncMock(return_value=[zone]),
+        ),
+        patch.object(
+            api._client,
+            "get_appliance_overview",
+            new=AsyncMock(return_value=[status]),
+        ),
+        patch.object(
+            api._client,
+            "get_tsi_energy_report",
+            new=AsyncMock(return_value=energy_report),
+        ),
+    ):
+        data = await api.async_get_data()
+
+    assert data["energy"]["hub-1"]["t1"]["appliance-1"] == [(datetime(2026, 7, 11, 12, 40, tzinfo=UTC), 0.06)]
+    assert data["energy"]["hub-1"]["t2"]["appliance-1"] == []
 
 
 async def test_async_get_data_overview_fallback(hass):
@@ -210,9 +255,9 @@ async def test_async_get_data_energy_report_api_error_is_skipped(hass):
     ):
         data = await api.async_get_data()
 
-    # Appliances should still load; energy should be an empty dict for this hub
+    # Appliances should still load; energy should contain empty t1/t2 dicts for this hub
     assert len(data["appliances"]) == 1
-    assert data["energy"]["hub-1"] == {}
+    assert data["energy"]["hub-1"] == {"t1": {}, "t2": {}}
 
 
 async def test_set_eco_start_calls_library(hass):
@@ -415,12 +460,13 @@ async def test_async_get_energy_report(hass):
     ) as lib_call:
         result = await api.async_get_energy_report("hub-1")
 
-    assert set(result) == {"appliance-1", "appliance-2"}
-    assert result["appliance-2"] == []
-    assert result["appliance-1"] == [
+    assert set(result) == {"t1", "t2"}
+    assert result["t1"]["appliance-2"] == []
+    assert result["t1"]["appliance-1"] == [
         (datetime(2026, 6, 1, tzinfo=UTC), 0.1),
         (datetime(2026, 6, 1, 1, tzinfo=UTC), 0.2),
     ]
+    assert result["t2"]["appliance-1"] == []
     lib_call.assert_awaited_once()
 
 
@@ -474,4 +520,4 @@ async def test_async_get_energy_report_api_error_returns_empty(hass):
         new=AsyncMock(side_effect=DimplexApiError(404, "Not Found")),
     ):
         result = await api.async_get_energy_report("hub-1")
-    assert result == {}
+    assert result == {"t1": {}, "t2": {}}
