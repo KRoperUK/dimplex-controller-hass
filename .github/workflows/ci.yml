@@ -187,6 +187,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -231,18 +232,62 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Create pre-release
+        id: prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
           BRANCH_RAW: ${{ github.head_ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Must pin the tag to the PR head SHA. Without --target, `gh release create`
+          # defaults to the repo default branch (main), so HACS/installers get main's
+          # tree instead of the PR commit advertised in the release notes.
           COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          set -euo pipefail
+          if [ -z "${COMMIT_SHA}" ]; then
+            echo "COMMIT_SHA is empty; refusing to create an untargeted release."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # Existing tag must already point at this PR head; otherwise delete and recreate.
+            existing_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.sha' 2>/dev/null || true)
+            # Annotated tags resolve to a tag object; peel to the commit.
+            object_type=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.type' 2>/dev/null || true)
+            if [ "$object_type" = "tag" ] && [ -n "$existing_sha" ]; then
+              existing_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${existing_sha}" --jq '.object.sha' 2>/dev/null || true)
+            fi
+            if [ "$existing_sha" = "$COMMIT_SHA" ]; then
+              echo "Release ${TAG} already targets ${COMMIT_SHA}; keeping."
+              echo "available=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Release ${TAG} points at ${existing_sha:-unknown}, expected ${COMMIT_SHA}; recreating."
+            gh release delete "$TAG" --yes --cleanup-tag
+          fi
+
           gh release create "$TAG" \
             --prerelease \
             --title "$TAG" \
-            --notes "Development build from branch \`${BRANCH_RAW}\` (PR #${PR_NUMBER}) at commit \`${COMMIT_SHA}\`." \
-            || echo "Release already exists for this tag, skipping."
+            --target "$COMMIT_SHA" \
+            --notes "Development build from branch \`${BRANCH_RAW}\` (PR #${PR_NUMBER}) at commit \`${COMMIT_SHA}\`."
+
+          bash scripts/verify-dev-release-target.sh
+          echo "Created ${TAG} -> ${COMMIT_SHA}"
+          echo "available=true" >> "$GITHUB_OUTPUT"
+
+      - name: Label PR as dev-release-cut
+        if: steps.prerelease.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if ! gh label list --repo "$GITHUB_REPOSITORY" --json name --jq '.[].name' | grep -Fxq "dev-release-cut"; then
+            gh label create "dev-release-cut" --repo "$GITHUB_REPOSITORY" \
+              --color "5319e7" --description "A dev/RC pre-release was published for this PR" || true
+          fi
+          gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label "dev-release-cut"
 
   # Main release-candidate dev builds — a push to main that changed the component,
   # once CI is green. Never for the "chore(main): release X.Y.Z" commit (matched via
@@ -375,8 +420,15 @@ jobs:
               echo "_No user-facing changes detected since the last release._"
             fi
           } > rc-notes.md
+          # Pin the RC tag to this push's commit. Without --target, gh defaults to
+          # the repository default branch tip, which can race with later pushes.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already exists for this tag, skipping."
+            exit 0
+          fi
           gh release create "$TAG" \
             --prerelease \
             --title "$TAG" \
-            --notes-file rc-notes.md \
-            || echo "Release already exists for this tag, skipping."
+            --target "$COMMIT_SHA" \
+            --notes-file rc-notes.md
+          bash scripts/verify-dev-release-target.sh
