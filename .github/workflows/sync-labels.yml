@@ -1,0 +1,31 @@
+name: Sync labels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/labels.yml
+      - .github/workflows/sync-labels.yml
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+
+concurrency:
+  group: sync-labels
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Sync labels from .github/labels.yml
+        uses: EndBug/label-sync@52074158190acb45f3077f9099fea818aa43f97a # v2.3.3
+        with:
+          config-file: .github/labels.yml
+          # Keep labels that are not listed (e.g. release-please / third-party).
+          delete-other-labels: false
+          token: ${{ secrets.GITHUB_TOKEN }}

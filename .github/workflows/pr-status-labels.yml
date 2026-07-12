@@ -1,0 +1,286 @@
+name: PR status labels
+
+# Reflects CI + mergeability on pull requests via labels:
+#   test-success / test-failure
+#   lint-success / lint-failure
+#   ci-success / ci-error
+#   ready-to-merge / needs-attention
+#   dev-release-cut
+#
+# Labels are defined in .github/labels.yml and synced by sync-labels.yml.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+  # Fires when a workflow run on a PR completes (CI, docs, etc.).
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  # Catch mergeability flips after reviews / branch updates.
+  pull_request_review:
+    types: [submitted, dismissed]
+  check_suite:
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: read
+  actions: read
+
+concurrency:
+  # One labelling pass per PR at a time.
+  group: pr-status-labels-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.check_suite.head_branch || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Skip drafts and closed PRs; only act when we can resolve a PR number.
+    if: >-
+      github.event_name != 'pull_request_target' ||
+      (github.event.pull_request.state == 'open' && !github.event.pull_request.draft)
+    steps:
+      - name: Resolve pull request number
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          WR_PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+          WR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          WR_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          CS_HEAD_SHA: ${{ github.event.check_suite.head_sha }}
+          CS_HEAD_BRANCH: ${{ github.event.check_suite.head_branch }}
+        run: |
+          set -euo pipefail
+          number=""
+          case "$EVENT_NAME" in
+            pull_request_target|pull_request_review)
+              number="${PR_NUMBER:-}"
+              ;;
+            workflow_run)
+              number="${WR_PR_NUMBER:-}"
+              if [ -z "$number" ] && [ -n "${WR_HEAD_SHA:-}" ]; then
+                number=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${WR_HEAD_SHA}/pulls" \
+                  --jq '.[0].number // empty' 2>/dev/null || true)
+              fi
+              if [ -z "$number" ] && [ -n "${WR_HEAD_BRANCH:-}" ]; then
+                number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$WR_HEAD_BRANCH" \
+                  --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)
+              fi
+              ;;
+            check_suite)
+              if [ -n "${CS_HEAD_SHA:-}" ]; then
+                number=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${CS_HEAD_SHA}/pulls" \
+                  --jq '.[0].number // empty' 2>/dev/null || true)
+              fi
+              if [ -z "$number" ] && [ -n "${CS_HEAD_BRANCH:-}" ]; then
+                number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$CS_HEAD_BRANCH" \
+                  --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)
+              fi
+              ;;
+          esac
+
+          if [ -z "$number" ]; then
+            echo "No open pull request associated with this event; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          state=$(gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json state,isDraft \
+            --jq '"\(.state) \(.isDraft)"')
+          pr_state=${state%% *}
+          is_draft=${state##* }
+          if [ "$pr_state" != "OPEN" ] || [ "$is_draft" = "true" ]; then
+            echo "PR #${number} is ${pr_state} (draft=${is_draft}); skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "number=${number}" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Apply status labels
+        if: steps.pr.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+
+          # Labels this workflow owns (others are left alone).
+          MANAGED=(
+            ci-success ci-error
+            test-success test-failure
+            lint-success lint-failure
+            ready-to-merge needs-attention
+            dev-release-cut
+          )
+
+          ensure_label() {
+            local name="$1" color="$2" desc="$3"
+            if ! gh label list --repo "$GITHUB_REPOSITORY" --json name --jq '.[].name' \
+              | grep -Fxq "$name"; then
+              gh label create "$name" --repo "$GITHUB_REPOSITORY" \
+                --color "$color" --description "$desc" || true
+            fi
+          }
+
+          ensure_label "ci-success" "0e8a16" "All required CI checks passed"
+          ensure_label "ci-error" "b60205" "One or more required CI checks failed"
+          ensure_label "test-success" "0e8a16" "Test job passed"
+          ensure_label "test-failure" "d93f0b" "Test job failed"
+          ensure_label "lint-success" "0e8a16" "Lint / pre-commit jobs passed"
+          ensure_label "lint-failure" "d93f0b" "Lint / pre-commit jobs failed"
+          ensure_label "ready-to-merge" "0e8a16" "CI green and PR is mergeable"
+          ensure_label "needs-attention" "fbca04" "CI failed or PR is not mergeable"
+          ensure_label "dev-release-cut" "5319e7" "A dev/RC pre-release was published for this PR"
+
+          # Combined status of checks that GitHub considers required for merge.
+          # rollupState: SUCCESS | FAILURE | PENDING | EXPECTED | ERROR | ...
+          pr_json=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json \
+            mergeable,mergeStateStatus,statusCheckRollup,headRefName,headRefOid,labels,url)
+
+          mergeable=$(echo "$pr_json" | jq -r '.mergeable // "UNKNOWN"')
+          merge_state=$(echo "$pr_json" | jq -r '.mergeStateStatus // "UNKNOWN"')
+          head_ref=$(echo "$pr_json" | jq -r '.headRefName')
+          head_sha=$(echo "$pr_json" | jq -r '.headRefOid')
+          current_labels=$(echo "$pr_json" | jq -r '.labels[].name' | sort -u)
+
+          echo "PR #${PR_NUMBER} head=${head_ref}@${head_sha}"
+          echo "mergeable=${mergeable} mergeStateStatus=${merge_state}"
+
+          # Classify individual check conclusions from the rollup.
+          # Names come from the job `name:` in ci.yml (defaults to the job id).
+          check_state() {
+            # $1 = regex matched against check name (case-insensitive)
+            # Prefer the most recent entry for that name.
+            echo "$pr_json" | jq -r --arg re "$1" '
+              [.statusCheckRollup[]?
+                | select((.name // "") | test($re; "i"))
+                | {name: .name, status: (.status // ""), conclusion: (.conclusion // "")}]
+              | if length == 0 then "missing"
+                elif any(.[]; .status != "COMPLETED") then "pending"
+                elif any(.[]; (.conclusion | ascii_upcase) as $c
+                    | ($c == "FAILURE" or $c == "TIMED_OUT" or $c == "CANCELLED" or $c == "ACTION_REQUIRED" or $c == "STARTUP_FAILURE"))
+                  then "failure"
+                elif all(.[]; (.conclusion | ascii_upcase) as $c
+                    | ($c == "SUCCESS" or $c == "NEUTRAL" or $c == "SKIPPED"))
+                  then "success"
+                else "pending"
+                end
+            '
+          }
+
+          test_state=$(check_state "^(test)$")
+          # lint + pre-commit + hacs_validate all contribute to "lint" quality signal
+          lint_state=$(check_state "^(lint|pre-commit|hacs_validate|conventional_commits)$")
+
+          # Overall CI: any required failure → error; any pending → pending; else success.
+          # Prefer GitHub's own rollup when available.
+          overall=$(echo "$pr_json" | jq -r '
+            [.statusCheckRollup[]? | {status: (.status // ""), conclusion: (.conclusion // "")}]
+            | if length == 0 then "pending"
+              elif any(.[]; .status != "COMPLETED") then "pending"
+              elif any(.[]; (.conclusion | ascii_upcase) as $c
+                  | ($c == "FAILURE" or $c == "TIMED_OUT" or $c == "CANCELLED"
+                     or $c == "ACTION_REQUIRED" or $c == "STARTUP_FAILURE" or $c == "ERROR"))
+                then "failure"
+              else "success"
+              end
+          ')
+
+          echo "test_state=${test_state} lint_state=${lint_state} overall=${overall}"
+
+          desired=()
+
+          case "$test_state" in
+            success) desired+=("test-success") ;;
+            failure) desired+=("test-failure") ;;
+          esac
+
+          case "$lint_state" in
+            success) desired+=("lint-success") ;;
+            failure) desired+=("lint-failure") ;;
+          esac
+
+          case "$overall" in
+            success) desired+=("ci-success") ;;
+            failure) desired+=("ci-error") ;;
+          esac
+
+          # ready-to-merge only when CI is green AND GitHub says the PR can merge.
+          # mergeable: MERGEABLE | CONFLICTING | UNKNOWN
+          # mergeStateStatus: CLEAN | HAS_HOOKS | UNSTABLE | … (CLEAN/HAS_HOOKS are good)
+          if [ "$overall" = "success" ] && [ "$mergeable" = "MERGEABLE" ] \
+            && { [ "$merge_state" = "CLEAN" ] || [ "$merge_state" = "HAS_HOOKS" ] || [ "$merge_state" = "UNSTABLE" ]; }; then
+            # UNSTABLE means non-required checks failed; still mergeable if required are green.
+            desired+=("ready-to-merge")
+          elif [ "$overall" = "failure" ] || [ "$mergeable" = "CONFLICTING" ] \
+            || [ "$merge_state" = "DIRTY" ] || [ "$merge_state" = "BLOCKED" ]; then
+            desired+=("needs-attention")
+          fi
+
+          # dev-release-cut: a dev-* pre-release exists whose notes mention this PR.
+          # Branch-style tags look like dev-<branch>-v*; main RCs are dev-vX.Y.Z-rc.N.
+          # Prefer matching the PR number in release notes; fall back to branch name in tag.
+          branch_slug=$(echo "$head_ref" | tr '/_' '-' | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//')
+          if gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,isPrerelease,name \
+            --jq '.[] | select(.isPrerelease) | .tagName' 2>/dev/null \
+            | grep -Eiq "(^dev-.*pr-?${PR_NUMBER}|(^|-)dev-${branch_slug}-|^dev-.*-pr${PR_NUMBER})"; then
+            desired+=("dev-release-cut")
+          else
+            # Inspect recent pre-release notes for "PR #<n>" (what ci.yml writes).
+            if gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName,isPrerelease \
+              --jq '.[] | select(.isPrerelease) | .tagName' 2>/dev/null \
+              | while read -r tag; do
+                  notes=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq '.body // ""' 2>/dev/null || true)
+                  if printf '%s' "$notes" | grep -Eq "PR #${PR_NUMBER}([^0-9]|$)"; then
+                    echo "hit"
+                    break
+                  fi
+                done | grep -q hit; then
+              desired+=("dev-release-cut")
+            fi
+          fi
+
+          printf 'desired labels: %s\n' "${desired[*]:-}"
+
+          # Diff against currently applied managed labels.
+          to_add=()
+          to_remove=()
+          for label in "${MANAGED[@]}"; do
+            is_desired=false
+            for d in "${desired[@]+"${desired[@]}"}"; do
+              if [ "$d" = "$label" ]; then
+                is_desired=true
+                break
+              fi
+            done
+            has_it=false
+            if printf '%s\n' "$current_labels" | grep -Fxq "$label"; then
+              has_it=true
+            fi
+            if $is_desired && ! $has_it; then
+              to_add+=("$label")
+            elif ! $is_desired && $has_it; then
+              to_remove+=("$label")
+            fi
+          done
+
+          if [ ${#to_add[@]} -gt 0 ]; then
+            echo "Adding: ${to_add[*]}"
+            gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label "$(IFS=,; echo "${to_add[*]}")"
+          fi
+          if [ ${#to_remove[@]} -gt 0 ]; then
+            echo "Removing: ${to_remove[*]}"
+            # --remove-label accepts one label per flag in some gh versions; loop safely.
+            for label in "${to_remove[@]}"; do
+              gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --remove-label "$label" || true
+            done
+          fi
+          if [ ${#to_add[@]} -eq 0 ] && [ ${#to_remove[@]} -eq 0 ]; then
+            echo "Labels already up to date."
+          fi
