@@ -19,12 +19,17 @@ def _mock_coordinator_payload():
         FriendlyName="My Hub",
         HubType="GatewayOther",
         ConnectionState=1,
+        FirmwareVersion="129.12.5",
+        BluetoothName="GW3042<Dimplex>",
     )
     zone = SimpleNamespace(ZoneName="Living Room")
     appliance = SimpleNamespace(
         ApplianceId="appliance-1",
         FriendlyName="Living Room Heater",
-        ApplianceModel="Model X",
+        ApplianceModel="QM100RF",
+        ApplianceType="Quantum",
+        FirmwareVersion="6",
+        SeriesIdentifier="G12",
         LastTelemDate=None,
     )
     status = SimpleNamespace(
@@ -103,3 +108,22 @@ async def test_sensor_and_binary_sensor_entities(hass):
         hub_connected_state = hass.states.get("binary_sensor.my_hub_connected")
     assert hub_connected_state is not None
     assert hub_connected_state.state == "on"
+
+    # Device registry should expose serial/firmware metadata from the cloud.
+    from homeassistant.helpers import device_registry as dr
+
+    device_registry = dr.async_get(hass)
+    appliance_device = device_registry.async_get_device(identifiers={(DOMAIN, "appliance-1")})
+    assert appliance_device is not None
+    assert appliance_device.serial_number == "appliance-1"
+    assert appliance_device.sw_version == "6"
+    assert appliance_device.hw_version == "G12"
+    assert appliance_device.model == "Quantum QM100RF"
+    assert appliance_device.manufacturer == "Dimplex"
+
+    hub_device = device_registry.async_get_device(identifiers={(DOMAIN, "hub-1")})
+    assert hub_device is not None
+    assert hub_device.serial_number == "hub-1"
+    assert hub_device.sw_version == "129.12.5"
+    assert hub_device.hw_version == "GW3042<Dimplex>"
+    assert hub_device.model == "GatewayOther"
