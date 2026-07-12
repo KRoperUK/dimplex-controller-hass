@@ -212,10 +212,11 @@ class DimplexLastTelemDateSensor(DimplexEntity, SensorEntity):
 class DimplexEnergySensor(DimplexEntity, SensorEntity):
     """Cumulative kWh energy used by an appliance (primary register).
 
-    The cloud returns daily kWh values (keyed as ``T1``) with Unix-epoch
-    timestamps (keyed as ``TS``) covering all available history. This
-    sensor sums every value and exposes the earliest timestamp as
-    ``last_reset``, so the Home Assistant Energy Dashboard computes
+    The cloud returns daily kWh values (keyed as ``ST`` on QRAD models,
+    and ``T1`` on some other appliances) with Unix-epoch timestamps
+    (keyed as ``TS``) covering all available history. This sensor sums
+    every value and exposes the earliest timestamp as ``last_reset``, so
+    the Home Assistant Energy Dashboard computes
     ``current_total - previous_reset_value`` correctly for the full
     reported period.
 

@@ -144,6 +144,50 @@ async def test_async_get_data_maps_appliances(hass):
     assert data["energy"]["hub-1"]["t2"]["appliance-1"] == []
 
 
+async def test_async_get_data_maps_st_telemetry(hass):
+    """QRAD models return energy values keyed as ``ST`` instead of ``T1``."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    hub = SimpleNamespace(HubId="hub-1")
+    appliance = SimpleNamespace(
+        ApplianceId="appliance-1",
+        FriendlyName="Living Room Heater",
+        ApplianceModel="QRAD075F",
+    )
+    zone = SimpleNamespace(ZoneName="Living Room", Appliances=[appliance])
+    status = SimpleNamespace(ApplianceId="appliance-1", EcoStartEnabled=True)
+    energy_report = SimpleNamespace(
+        ApplianceTelemetryData={
+            "appliance-1": [
+                {"TS": 1783773600, "ST": 0.06},
+            ]
+        }
+    )
+
+    with (
+        patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        patch.object(
+            api._client,
+            "get_hub_zones",
+            new=AsyncMock(return_value=[zone]),
+        ),
+        patch.object(
+            api._client,
+            "get_appliance_overview",
+            new=AsyncMock(return_value=[status]),
+        ),
+        patch.object(
+            api._client,
+            "get_tsi_energy_report",
+            new=AsyncMock(return_value=energy_report),
+        ),
+    ):
+        data = await api.async_get_data()
+
+    assert data["energy"]["hub-1"]["t1"]["appliance-1"] == [(datetime(2026, 7, 11, 12, 40, tzinfo=UTC), 0.06)]
+    assert data["energy"]["hub-1"]["t2"]["appliance-1"] == []
+
+
 async def test_async_get_data_overview_fallback(hass):
     """Test that if bulk get_appliance_overview fails, we retry individually."""
     api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")

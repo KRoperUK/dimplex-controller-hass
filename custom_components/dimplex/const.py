@@ -22,8 +22,9 @@ CONF_EXPIRES_AT = "expires_at"
 COORDINATOR_UPDATE_INTERVAL = timedelta(seconds=30)
 
 # Energy monitoring — POST /Reports/GetTsiEnergyReportDataForHub.
-# The real Dimplex Control iOS app uses a 10-minute interval. Daily kWh
-# values are returned keyed under "T1" with Unix-epoch "TS" timestamps.
+# The real Dimplex Control iOS app uses a 10-minute interval. kWh
+# values are returned keyed under "ST" (QRAD models) or "T1" (some
+# other appliances) with Unix-epoch "TS" timestamps.
 ENERGY_REPORT_DAYS = 30
 ENERGY_REPORT_INTERVAL = "00:10:00"
 
