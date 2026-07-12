@@ -130,10 +130,21 @@ class DimplexHubConnectedBinarySensor(DimplexEntity, BinarySensorEntity):
 
     @property
     def device_info(self):
-        return {
+        """Return hub device registry metadata.
+
+        No LAN IP is published by the Dimplex cloud API; HubId is the serial.
+        """
+        info = {
             "identifiers": {(DOMAIN, self._hub.HubId)},
             "name": getattr(self._hub, "FriendlyName", None) or self._hub.HubId,
-            "model": getattr(self._hub, "HubType", None),
             "manufacturer": "Dimplex",
-            "sw_version": getattr(self._hub, "FirmwareVersion", None),
+            "model": getattr(self._hub, "HubType", None) or "Hub",
+            "serial_number": self._hub.HubId,
         }
+        firmware = getattr(self._hub, "FirmwareVersion", None)
+        if firmware:
+            info["sw_version"] = str(firmware)
+        bluetooth = getattr(self._hub, "BluetoothName", None)
+        if bluetooth:
+            info["hw_version"] = str(bluetooth)
+        return info
