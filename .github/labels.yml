@@ -1,0 +1,77 @@
+# Managed by .github/workflows/sync-labels.yml (EndBug/label-sync).
+# CI status labels are applied/removed by .github/workflows/pr-status-labels.yml.
+
+# --- Conventional issue / PR labels ---
+- name: bug
+  color: "d73a4a"
+  description: Something isn't working
+- name: documentation
+  color: "0075ca"
+  description: Improvements or additions to documentation
+- name: duplicate
+  color: "cfd3d7"
+  description: This issue or pull request already exists
+- name: enhancement
+  color: "a2eeef"
+  description: New feature or request
+- name: good first issue
+  color: "7057ff"
+  description: Good for newcomers
+- name: help wanted
+  color: "008672"
+  description: Extra attention is needed
+- name: invalid
+  color: "e4e669"
+  description: This doesn't seem right
+- name: question
+  color: "d876e3"
+  description: Further information is requested
+- name: wontfix
+  color: "ffffff"
+  description: This will not be worked on
+- name: dependencies
+  color: "0366d6"
+  description: Pull requests that update a dependency file
+- name: python
+  color: "2b67c6"
+  description: Pull requests that update Python code
+- name: github_actions
+  color: "000000"
+  description: Pull requests that update GitHub Actions code
+
+# --- Release Please ---
+- name: "autorelease: pending"
+  color: "ededed"
+  description: Release-please is preparing a release
+- name: "autorelease: tagged"
+  color: "ededed"
+  description: Release-please has tagged a release
+
+# --- CI status (managed by pr-status-labels workflow) ---
+- name: ci-success
+  color: "0e8a16"
+  description: All required CI checks passed
+- name: ci-error
+  color: "b60205"
+  description: One or more required CI checks failed
+- name: test-success
+  color: "0e8a16"
+  description: Test job passed
+- name: test-failure
+  color: "d93f0b"
+  description: Test job failed
+- name: lint-success
+  color: "0e8a16"
+  description: Lint / pre-commit jobs passed
+- name: lint-failure
+  color: "d93f0b"
+  description: Lint / pre-commit jobs failed
+- name: ready-to-merge
+  color: "0e8a16"
+  description: CI green and PR is mergeable
+- name: dev-release-cut
+  color: "5319e7"
+  description: A dev/RC pre-release was published for this PR or main
+- name: needs-attention
+  color: "fbca04"
+  description: CI failed or PR is not mergeable
