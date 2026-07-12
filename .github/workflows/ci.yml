@@ -238,10 +238,15 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
           BRANCH_RAW: ${{ github.head_ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
           # Must pin the tag to the PR head SHA. Without --target, `gh release create`
           # defaults to the repo default branch (main), so HACS/installers get main's
           # tree instead of the PR commit advertised in the release notes.
           COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          # Predicted next version (no leading v), for the admonition text.
+          NEXT_VERSION: ${{ steps.nextver.outputs.version }}
+          SKIPPED: ${{ steps.nextver.outputs.skipped }}
         run: |
           set -euo pipefail
           if [ -z "${COMMIT_SHA}" ]; then
@@ -249,6 +254,15 @@ jobs:
             echo "available=false" >> "$GITHUB_OUTPUT"
             exit 1
           fi
+
+          if [ "${SKIPPED:-}" = "true" ] || [ -z "${NEXT_VERSION:-}" ]; then
+            PREVIEW_VERSION=$(jq -r .version custom_components/dimplex/manifest.json)
+          else
+            PREVIEW_VERSION="$NEXT_VERSION"
+          fi
+
+          # Ensure main is available for the commit list (checkout may only have PR head).
+          git fetch origin main --depth=50 2>/dev/null || true
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             # Existing tag must already point at this PR head; otherwise delete and recreate.
@@ -264,14 +278,49 @@ jobs:
               exit 0
             fi
             echo "Release ${TAG} points at ${existing_sha:-unknown}, expected ${COMMIT_SHA}; recreating."
-            gh release delete "$TAG" --yes --cleanup-tag
+            gh release delete "$TAG" --yes --cleanup-tag || true
           fi
+
+          latest_stable=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || true)
+          if [ -n "$latest_stable" ]; then
+            stable_line="For everyday use, install the latest **stable** release instead: [\`${latest_stable}\`](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${latest_stable})."
+          else
+            stable_line="No stable release has been published yet."
+          fi
+
+          short_sha=$(printf '%s' "$COMMIT_SHA" | cut -c1-7)
+          {
+            echo "> [!WARNING]"
+            echo "> **This is an automated pre-merge development build, not an official release.**"
+            echo "> It is built from PR [#${PR_NUMBER}](${PR_URL}) (\`${BRANCH_RAW}\`) at commit [\`${short_sha}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${COMMIT_SHA}) and may be unstable."
+            echo "> It is **not** a \`main\` release-candidate; do not treat it as production-ready."
+            echo "> ${stable_line}"
+            echo ""
+            echo "## Pull request"
+            echo ""
+            echo "- **Title:** ${PR_TITLE}"
+            echo "- **PR:** [#${PR_NUMBER}](${PR_URL})"
+            echo "- **Branch:** \`${BRANCH_RAW}\`"
+            echo "- **Commit:** [\`${COMMIT_SHA}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${COMMIT_SHA})"
+            echo "- **Preview of:** upcoming **v${PREVIEW_VERSION}** (after merge to \`main\`)"
+            echo ""
+            echo "## Commits on this branch"
+            echo ""
+            # Commits unique to the PR head vs the base branch (main).
+            if git rev-parse --verify origin/main >/dev/null 2>&1; then
+              git log --no-merges --pretty=format:'* %s ([%h](https://github.com/'"${GITHUB_REPOSITORY}"'/commit/%H))' \
+                "origin/main..${COMMIT_SHA}"
+              echo ""
+            else
+              echo "_Could not resolve \`origin/main\` for a commit list._"
+            fi
+          } > pr-dev-notes.md
 
           gh release create "$TAG" \
             --prerelease \
             --title "$TAG" \
             --target "$COMMIT_SHA" \
-            --notes "Development build from branch \`${BRANCH_RAW}\` (PR #${PR_NUMBER}) at commit \`${COMMIT_SHA}\`."
+            --notes-file pr-dev-notes.md
 
           bash scripts/verify-dev-release-target.sh
           echo "Created ${TAG} -> ${COMMIT_SHA}"
