@@ -54,7 +54,7 @@ _LOGGER: logging.Logger = logging.getLogger(__package__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 # entry_ids for which the next update_listener fire is a token write, not options.
-_SKIP_RELOAD_ENTRY_IDS: set[str] = set()
+# DEPRECATED: kept only as a comment for history; replaced by options-diff approach.
 
 type DimplexConfigEntry = ConfigEntry[DimplexRuntimeData]
 
@@ -67,6 +67,7 @@ class DimplexRuntimeData:
     status: DataUpdateCoordinator[dict[str, Any]]
     energy: DataUpdateCoordinator[dict[str, Any]]
     platforms: list[Platform]
+    options_snapshot: dict[str, Any]
 
 
 async def _preload_platforms(platforms: list[Platform]) -> None:
@@ -202,6 +203,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
         status=status_coordinator,
         energy=energy_coordinator,
         platforms=platforms,
+        options_snapshot=dict(entry.options),
     )
     entry.runtime_data = runtime
     hass.data[DOMAIN][entry.entry_id] = runtime
@@ -451,9 +453,6 @@ def _persist_tokens(
     ):
         _LOGGER.debug("Persisting refreshed tokens")
         data = {**entry.data, **current}
-        # Token writes fire the options update listener; skip the reload so we
-        # do not loop (reload → fetch → new tokens → update → reload …).
-        _SKIP_RELOAD_ENTRY_IDS.add(entry.entry_id)
         hass.config_entries.async_update_entry(entry, data=data)
 
 
@@ -470,8 +469,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> 
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload config entry when options change (not on token-only writes)."""
-    if entry.entry_id in _SKIP_RELOAD_ENTRY_IDS:
-        _SKIP_RELOAD_ENTRY_IDS.discard(entry.entry_id)
+    """Reload config entry only when options actually changed.
+
+    Token-only data writes fire the update listener too, but should not
+    trigger a full reload (that would loop: reload → fetch → new tokens →
+    update → reload). By comparing the current options against the snapshot
+    taken at setup, we distinguish user option changes (reload needed) from
+    token persistence (no reload).
+    """
+    runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    if runtime is not None and dict(entry.options) == runtime.options_snapshot:
         return
     await hass.config_entries.async_reload(entry.entry_id)

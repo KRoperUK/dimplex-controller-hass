@@ -1,0 +1,79 @@
+{
+  "entity": {
+    "sensor": {
+      "room_temperature": {
+        "default": "mdi:thermometer"
+      },
+      "target_temperature": {
+        "default": "mdi:thermometer"
+      },
+      "boost_temperature": {
+        "default": "mdi:thermometer-high"
+      },
+      "away_temperature": {
+        "default": "mdi:thermometer-low"
+      },
+      "setback_temperature": {
+        "default": "mdi:thermometer-minus"
+      },
+      "error_code": {
+        "default": "mdi:alert-circle"
+      },
+      "warning_code": {
+        "default": "mdi:alert"
+      },
+      "last_telem": {
+        "default": "mdi:clock-outline"
+      },
+      "rated_power": {
+        "default": "mdi:flash"
+      },
+      "charge_capacity": {
+        "default": "mdi:battery-high"
+      },
+      "estimated_power": {
+        "default": "mdi:flash-outline"
+      },
+      "energy_lifetime": {
+        "default": "mdi:lightning-bolt"
+      },
+      "energy_today": {
+        "default": "mdi:lightning-bolt"
+      },
+      "energy_t2_lifetime": {
+        "default": "mdi:lightning-bolt"
+      },
+      "energy_t2_today": {
+        "default": "mdi:lightning-bolt"
+      },
+      "schedule": {
+        "default": "mdi:calendar-clock"
+      },
+      "zone": {
+        "default": "mdi:floor-plan"
+      }
+    },
+    "binary_sensor": {
+      "comfort": {
+        "default": "mdi:fire"
+      },
+      "open_window": {
+        "default": "mdi:window-open-variant"
+      },
+      "setback": {
+        "default": "mdi:thermometer-minus"
+      },
+      "connected": {
+        "default": "mdi:wifi"
+      }
+    },
+    "switch": {
+      "ecostart": {
+        "default": "mdi:leaf"
+      },
+      "open_window_detection": {
+        "default": "mdi:window-open-variant"
+      }
+    }
+  }
+}

@@ -130,7 +130,6 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
     DimplexSensorEntityDescription(
         key="error_code",
         translation_key="error_code",
-        icon="mdi:alert-circle",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_status_attr("ErrorCode"),
@@ -138,7 +137,6 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
     DimplexSensorEntityDescription(
         key="warning_code",
         translation_key="warning_code",
-        icon="mdi:alert",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_status_attr("WarningCode"),
@@ -147,7 +145,6 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         key="last_telem",
         translation_key="last_telem",
         device_class=SensorDeviceClass.TIMESTAMP,
-        icon="mdi:clock-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_last_telem,
@@ -159,7 +156,6 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
-        icon="mdi:flash",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_provisioning_attr("rated_power"),
@@ -170,7 +166,6 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         translation_key="charge_capacity",
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
-        icon="mdi:battery-high",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_provisioning_attr("charge_capacity"),
@@ -182,7 +177,6 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPower.KILO_WATT,
-        icon="mdi:flash-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_estimated_power_kw,
@@ -202,7 +196,6 @@ ENERGY_SENSORS: tuple[DimplexEnergySensorEntityDescription, ...] = (
     DimplexEnergySensorEntityDescription(
         key="energy",
         translation_key="energy_lifetime",
-        icon="mdi:lightning-bolt",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -212,7 +205,6 @@ ENERGY_SENSORS: tuple[DimplexEnergySensorEntityDescription, ...] = (
     DimplexEnergySensorEntityDescription(
         key="energy_daily",
         translation_key="energy_today",
-        icon="mdi:lightning-bolt",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -222,7 +214,6 @@ ENERGY_SENSORS: tuple[DimplexEnergySensorEntityDescription, ...] = (
     DimplexEnergySensorEntityDescription(
         key="energy_t2",
         translation_key="energy_t2_lifetime",
-        icon="mdi:lightning-bolt",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -233,7 +224,6 @@ ENERGY_SENSORS: tuple[DimplexEnergySensorEntityDescription, ...] = (
     DimplexEnergySensorEntityDescription(
         key="energy_t2_daily",
         translation_key="energy_t2_today",
-        icon="mdi:lightning-bolt",
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
@@ -308,7 +298,6 @@ class DimplexScheduleSensor(DimplexEntity, SensorEntity):
     """Read-only timer mode / schedule summary (phase 1)."""
 
     _attr_translation_key = "schedule"
-    _attr_icon = "mdi:calendar-clock"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(
@@ -370,7 +359,6 @@ class DimplexZoneSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]
     _attr_translation_key = "zone"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_entity_registry_enabled_default = False
-    _attr_icon = "mdi:floor-plan"
 
     def __init__(
         self,
