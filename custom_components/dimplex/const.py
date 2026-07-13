@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 NAME = "Dimplex Hub"
 DOMAIN = "dimplex"
-VERSION = "2.0.0"  # x-release-please-version
+VERSION = "3.0.0-pr.88.4835d33"  # x-release-please-version
 DOCS_URL = "https://github.com/kroperuk/dimplex-controller-hass"
 ISSUE_URL = "https://github.com/kroperuk/dimplex-controller-hass/issues"
 
