@@ -1,43 +1,49 @@
 # Advanced usage
 
-This page covers advanced topics for users who want to get more from the Dimplex Hub integration.
-
 ## Energy Dashboard
 
-The integration exposes metered appliances as `SensorDeviceClass.ENERGY` sensors with `kWh` units. These integrate natively with the Home Assistant Energy Dashboard.
+Metered appliances expose `SensorDeviceClass.ENERGY` sensors in **kWh**:
+
+- **Energy lifetime** — cumulative sum of daily cloud points (best for long-term totals).
+- **Energy today** — local calendar-day total (midnight → now).
 
 ### Adding to the Energy Dashboard
 
-1. Go to **Settings** > **Dashboards** > **Energy**.
-2. Click **+ Add consumption**.
-3. Select **From an integration** and choose your Dimplex energy sensor.
-4. Click **Done**.
+1. Go to **Settings → Dashboards → Energy**.
+2. **Add consumption** → pick your Dimplex energy sensor(s).
+3. Prefer **Energy today** for daily dashboard graphs if the sensor has points; use **lifetime** for long-running totals with `last_reset` at the first telemetry day.
 
-### Understanding the data
+### Behaviour notes
 
-The Dimplex cloud provides a rolling 30-day window of daily kWh values. The integration maps these to Home Assistant's expected `state` and `last_reset` format so the Energy Dashboard can plot them correctly.
+- Points are **daily kWh** from the Dimplex cloud, not continuous live meters.
+- No data → sensor is **unavailable** (not `0`), so the dashboard is not fed fake zeros.
+- Energy is polled less often than status (default **30 minutes**).
 
-| Field                 | Value     | Description                                         |
-| --------------------- | --------- | --------------------------------------------------- |
-| `state`               | kWh       | Total energy consumed in the current 30-day window. |
-| `unit_of_measurement` | kWh       | Unit of measurement.                                |
-| `device_class`        | `energy`  | Marks the sensor as an energy meter.                |
-| `last_reset`          | Timestamp | Start of the current 30-day window.                 |
+### Static power (diagnostics)
 
-### Limitations
+**Rated power** and **charge capacity** (from `AUTOMATIC_PROVISIONING`) are optional diagnostic sensors. They are **not** live consumption. Enable them under the entity registry if useful for reference.
 
-- Only metered appliances (for example, QRAD radiators) report energy data.
-- During warmer months, when heaters are not running, the sensor will be **unavailable**. This is correct behaviour — the Energy Dashboard ignores `unavailable` readings.
+## Options
+
+**Settings → Devices & services → Dimplex Hub → Configure**:
+
+| Option               | Default | Meaning                                               |
+| -------------------- | ------- | ----------------------------------------------------- |
+| Platform toggles     | all on  | Enable/disable climate, sensor, binary_sensor, switch |
+| Status poll interval | 30 s    | Overview / temperatures / modes                       |
+| Energy poll interval | 1800 s  | TSI energy report                                     |
+
+Changing options reloads the integration.
 
 ## Automations
 
-### Example: Boost heating when temperature drops
+### Boost when temperature drops
 
 ```yaml
-alias: Boost if temperature drops too low
+alias: Boost if living room is cold
 trigger:
   - platform: numeric_state
-    entity_id: sensor.living_room_temperature
+    entity_id: sensor.living_room_room_temperature
     below: 17
 condition:
   - condition: time
@@ -51,53 +57,49 @@ action:
       preset_mode: boost
 ```
 
-### Example: Notify on open window detection
+### Notify on open window
 
 ```yaml
 alias: Notify on open window
 trigger:
   - platform: state
-    entity_id: binary_sensor.k_radiator_open_window
+    entity_id: binary_sensor.living_room_open_window
     to: "on"
 action:
   - service: notify.notify
     data:
-      message: "Window detected as open — heating paused for {{ state_attr('binary_sensor.k_radiator_open_window', 'friendly_name') }}"
+      message: "Open window detection active on {{ trigger.to_state.name }}"
+```
+
+### Set target temperature
+
+```yaml
+alias: Evening setpoint
+trigger:
+  - platform: time
+    at: "18:00:00"
+action:
+  - service: climate.set_temperature
+    target:
+      entity_id: climate.living_room
+    data:
+      temperature: 21
 ```
 
 ## Developer notes
 
 ### PyPI dependency
 
-This integration depends on [`dimplex-controller>=0.5.0`](https://pypi.org/project/dimplex-controller/). When a new version of the library is released, bump the version requirement in `manifest.json`.
+Requires [`dimplex-controller>=0.7.0`](https://pypi.org/project/dimplex-controller/). Bump `custom_components/dimplex/manifest.json` when adopting a new library floor.
 
 ### Local development
 
-If you want to test changes to the Python client alongside the integration:
+1. Clone `dimplex-controller-py` and `dimplex-controller-hass`.
+2. Install the library editable into the Home Assistant / test venv.
+3. Restart HA or re-run tests after library changes.
 
-1. Clone both repositories.
-2. Install the local `dimplex-controller-py` in editable mode in the same environment as Home Assistant.
-3. Restart Home Assistant.
+### Known cloud limits
 
-> **Note:** Running local development code on a production Home Assistant instance is not recommended. Use a test instance instead.
-
-### Data coordinator
-
-The integration uses a `DataUpdateCoordinator` to fetch appliance data every 30 seconds. The coordinator stores the latest snapshot in `coordinator.data["appliances"]`. Platform entities read from this snapshot rather than making individual API calls.
-
-If you are developing new platforms or entities, access data through the coordinator:
-
-```python
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-
-class MyEntity(CoordinatorEntity):
-    @property
-    def available(self) -> bool:
-        return self.coordinator.last_update_success
-```
-
-## Support and feedback
-
-- [GitHub Issues](https://github.com/kroperuk/dimplex-controller-hass/issues)
-- [Home Assistant Community Forum](https://community.home-assistant.io/)
-- [Discord](https://discord.gg/Qa5fW2R)
+- Empty `GetApplianceOverview` is success when appliances are offline — entities go **unavailable**.
+- No reverse-engineered **live wattage** stream; energy is historical daily kWh.
+- Full weekly schedule UI is not exposed (setpoint writes rewrite timer periods).

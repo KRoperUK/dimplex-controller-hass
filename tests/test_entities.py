@@ -23,6 +23,7 @@ def _mock_coordinator_payload():
         BluetoothName="GW3042<Dimplex>",
     )
     zone = SimpleNamespace(ZoneName="Living Room")
+    prov = SimpleNamespace(rated_power=2.22, charge_capacity=15.5)
     appliance = SimpleNamespace(
         ApplianceId="appliance-1",
         FriendlyName="Living Room Heater",
@@ -31,6 +32,7 @@ def _mock_coordinator_payload():
         FirmwareVersion="6",
         SeriesIdentifier="G12",
         LastTelemDate=None,
+        automatic_provisioning=prov,
     )
     status = SimpleNamespace(
         EcoStartEnabled=False,

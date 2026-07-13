@@ -1,78 +1,117 @@
 # Entities
 
-This page lists every entity type exposed by the Dimplex Hub integration, along with their attributes, device classes and example values.
+This page lists the entity types exposed by the Dimplex Hub integration.
 
-## Sensor entities
+Entity names use Home Assistant’s `has_entity_name` pattern: the **device** is the appliance (or hub), and each entity has a short name such as “Room temperature” or “EcoStart”.
 
-Sensors provide numeric readings for each Zone and Appliance.
+## Climate
 
-| Entity ID pattern           | Name             | Unit | Device class  | Description                                        |
-| --------------------------- | ---------------- | ---- | ------------- | -------------------------------------------------- |
-| `sensor.<zone>_temperature` | Room Temperature | °C   | `temperature` | Current room temperature.                          |
-| `sensor.<appliance>_energy` | Energy           | kWh  | `energy`      | Cumulative energy used in a rolling 30-day window. |
+One climate entity per appliance.
 
-### Sensor attributes
+| Name            | Entity ID pattern     | Description                                                                    |
+| --------------- | --------------------- | ------------------------------------------------------------------------------ |
+| _(device name)_ | `climate.<appliance>` | Thermostat: current room temperature, target setpoint, HVAC heat/off, presets. |
 
-| Attribute                      | Description                           |
-| ------------------------------ | ------------------------------------- |
-| `active_set_point_temperature` | The current target temperature.       |
-| `comfort_status`               | Comfort mode status string.           |
-| `eco_start_enabled`            | Whether EcoStart is currently active. |
-| `appliance_modes`              | Bitmask of active appliance modes.    |
-| `boost_active`                 | Whether Boost is active.              |
-| `away_mode_active`             | Whether Away mode is active.          |
-| `open_window_detected`         | Whether an open window is detected.   |
+### Presets
 
-> **Note:** Attribute availability depends on your appliance firmware. Not all attributes will be present for every device.
+| Preset    | Behaviour                                                          |
+| --------- | ------------------------------------------------------------------ |
+| `comfort` | Clears boost/away and turns EcoStart off when active.              |
+| `boost`   | Enables boost (default ~60 minutes, boost temperature when known). |
+| `away`    | Enables away mode at the appliance away temperature when known.    |
+| `eco`     | Enables EcoStart.                                                  |
 
-## Binary sensor entities
+### Services
 
-Binary sensors report on/off or active/inactive states.
+- `climate.set_temperature` — writes the target via the cloud timer schedule.
+- `climate.set_preset_mode` — boost / away / eco / comfort.
+- `climate.turn_on` / `climate.turn_off` — heat mode; off clears boost/away.
 
-| Entity ID pattern                   | Name           | Device class | Description                               |
-| ----------------------------------- | -------------- | ------------ | ----------------------------------------- |
-| `binary_sensor.<appliance>_comfort` | Comfort Status | `plug`       | Whether the appliance is in Comfort mode. |
+> Climate (and most status entities) are **unavailable** when the cloud returns an empty appliance overview (common when heaters have not telemetered recently).
 
-## Switch entities
+## Sensors
 
-Switches allow you to toggle appliance features.
+| Name                | Unit      | Device class | Description                                                               |
+| ------------------- | --------- | ------------ | ------------------------------------------------------------------------- |
+| Room temperature    | °C        | temperature  | Current room temperature.                                                 |
+| Target temperature  | °C        | temperature  | Active setpoint.                                                          |
+| Boost temperature   | °C        | temperature  | Boost mode target.                                                        |
+| Away temperature    | °C        | temperature  | Away mode target.                                                         |
+| Setback temperature | °C        | temperature  | Setback target.                                                           |
+| Energy lifetime     | kWh       | energy       | Sum of all known daily cloud points (primary register).                   |
+| Energy today        | kWh       | energy       | kWh for the current local calendar day.                                   |
+| Energy T2 lifetime  | kWh       | energy       | Secondary energy register (when present).                                 |
+| Energy T2 today     | kWh       | energy       | Secondary register, today only.                                           |
+| Rated power         | kW        | power        | Static nameplate power from product provisioning (_disabled by default_). |
+| Charge capacity     | kWh       | energy       | Static storage capacity from provisioning (_disabled by default_).        |
+| Error code          | —         | —            | Appliance error code (_disabled by default_).                             |
+| Warning code        | —         | —            | Appliance warning code (_disabled by default_).                           |
+| Last telemetry      | timestamp | timestamp    | Last cloud telemetry time (_disabled by default_).                        |
 
-| Entity ID pattern             | Name     | Description                                   |
-| ----------------------------- | -------- | --------------------------------------------- |
-| `switch.<appliance>_ecostart` | EcoStart | Toggle EcoStart energy-saving mode on or off. |
+### Energy attributes
 
-### Switch behaviour
+| Attribute                     | Description                         |
+| ----------------------------- | ----------------------------------- |
+| `mode`                        | `lifetime` or `daily`.              |
+| `register`                    | `t1` (primary) or `t2`.             |
+| `window_start` / `window_end` | Bounds of points used in the total. |
+| `telemetry_points`            | Number of points included.          |
 
-When you turn on the EcoStart switch:
+Energy data is **daily kWh history** from the cloud, not live watts. Sensors are **unavailable** (not `0`) when there are no points.
 
-1. The integration sends a `set_eco_start` command to the Dimplex cloud.
-2. The cloud applies the change to the appliance.
-3. The integration refreshes its data and updates the entity state.
+## Binary sensors
 
-If the command fails, the switch will revert to its previous state and an error will appear in the Home Assistant logs.
+| Name        | Device class | Description                                                 |
+| ----------- | ------------ | ----------------------------------------------------------- |
+| Comfort     | —            | Comfort status from overview.                               |
+| Open window | window       | Open-window detection **status** (enabled flag from cloud). |
+| Setback     | —            | Setback mode active.                                        |
+| Connected   | connectivity | Hub connection (one per hub).                               |
 
-## Entity unique IDs
+## Switches
 
-Entity unique IDs are derived from the appliance ID provided by the Dimplex cloud. They remain stable across Home Assistant restarts, so you can safely use them in automations and templates.
+| Name                  | Description                                                                   |
+| --------------------- | ----------------------------------------------------------------------------- |
+| EcoStart              | Toggle EcoStart energy-saving mode.                                           |
+| Open window detection | Enable/disable open-window detection (control; pairs with the binary sensor). |
+
+## Unique IDs
+
+Unique IDs are derived from the config entry id and the cloud appliance (or hub) id, plus a stable suffix (`_climate`, `_energy`, `_ecostart`, …). They remain stable across renames in the UI.
 
 ## Templates and automations
 
-### Example: Alert if room is too cold
+### Alert if room is too cold
 
 ```yaml
 alias: Living room is too cold
 trigger:
   - platform: numeric_state
-    entity_id: sensor.living_room_temperature
+    entity_id: sensor.living_room_room_temperature
     below: 18
-condition: []
 action:
   - service: notify.notify
     data:
-      message: "Living room is {{ states('sensor.living_room_temperature') }}°C"
+      message: "Living room is {{ states('sensor.living_room_room_temperature') }} °C"
 ```
 
-### Example: Turn on EcoStart when away
+### Boost via climate preset
+
+```yaml
+alias: Boost living room
+trigger:
+  - platform: state
+    entity_id: input_boolean.boost_living_room
+    to: "on"
+action:
+  - service: climate.set_preset_mode
+    target:
+      entity_id: climate.living_room
+    data:
+      preset_mode: boost
+```
+
+### EcoStart when away
 
 ```yaml
 alias: Enable EcoStart when away
@@ -80,28 +119,10 @@ trigger:
   - platform: state
     entity_id: person.yourself
     to: "not_home"
-condition: []
 action:
   - service: switch.turn_on
     target:
-      entity_id: switch.k_radiator_ecostart
+      entity_id: switch.living_room_ecostart
 ```
 
-### Example: Energy dashboard card
-
-```yaml
-type: energy-date-selection
-title: Heating energy
-```
-
-Use the built-in Energy Dashboard to view daily, weekly and monthly energy consumption.
-
-## Naming and renaming
-
-Entity names are generated from the appliance names reported by the Dimplex cloud. You can rename entities in Home Assistant without breaking the integration:
-
-1. Go to **Settings** > **Devices & Services** > **Entities**.
-2. Search for the entity.
-3. Click the pencil icon and enter a new name.
-
-Renaming does not affect the unique ID or the integration's ability to communicate with the appliance.
+Entity IDs depend on your appliance names; adjust to match **Settings → Devices & services → Entities**.
