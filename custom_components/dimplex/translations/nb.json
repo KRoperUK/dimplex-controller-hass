@@ -102,6 +102,9 @@
       "charge_capacity": {
         "name": "Ladekapasitet"
       },
+      "estimated_power": {
+        "name": "Estimert effekt"
+      },
       "energy_lifetime": {
         "name": "Energi totalt"
       },

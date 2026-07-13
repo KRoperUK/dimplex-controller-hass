@@ -33,6 +33,10 @@ DEFAULT_BOOST_DURATION = 60
 DEFAULT_STATUS_INTERVAL = timedelta(seconds=30)
 # Energy history rarely changes more than hourly; full history is heavy.
 DEFAULT_ENERGY_INTERVAL = timedelta(minutes=30)
+# After this many consecutive empty-but-successful energy polls, back off.
+ENERGY_EMPTY_BACKOFF_THRESHOLD = 3
+# Cap for adaptive energy polling when history is empty (e.g. summer).
+DEFAULT_ENERGY_BACKOFF_INTERVAL = timedelta(hours=3)
 
 COORDINATOR_UPDATE_INTERVAL = DEFAULT_STATUS_INTERVAL  # backwards-compatible alias
 

@@ -69,6 +69,27 @@ def _last_telem(status: Any, appliance: Any) -> Any:
     return getattr(appliance, "LastTelemDate", None)
 
 
+def _estimated_power_kw(status: Any, appliance: Any) -> float | None:
+    """Heuristic power estimate: rated_kW when heating indicators active, else 0.
+
+    Not a live meter — daily kWh remains the only cloud energy measurement.
+    """
+    rated = _provisioning_attr("rated_power")(status, appliance)
+    if rated is None:
+        return None
+    heating = False
+    if status is not None:
+        if getattr(status, "ComfortStatus", None):
+            heating = True
+        modes = getattr(status, "ApplianceModes", None) or 0
+        if modes & 16:  # boost flag
+            heating = True
+        duration = getattr(status, "BoostDuration", None)
+        if duration is not None and duration > 0:
+            heating = True
+    return float(rated) if heating else 0.0
+
+
 STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
     DimplexSensorEntityDescription(
         key="room_temperature",
@@ -154,6 +175,17 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_provisioning_attr("charge_capacity"),
         available_when_no_status=True,
+    ),
+    DimplexSensorEntityDescription(
+        key="estimated_power",
+        translation_key="estimated_power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        icon="mdi:flash-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_estimated_power_kw,
     ),
 )
 
