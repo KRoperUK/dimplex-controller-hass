@@ -34,10 +34,12 @@ jobs:
             component:
               - 'custom_components/**'
               - 'tests/**'
+              - 'scripts/**'
               - 'pyproject.toml'
               - 'requirements_test.txt'
               - 'hacs.json'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/hacs-release-asset.yml'
 
   conventional_commits:
     runs-on: ubuntu-latest
