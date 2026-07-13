@@ -123,7 +123,7 @@ action:
 
 ### PyPI dependency
 
-Requires [`dimplex-controller>=0.10.0`](https://pypi.org/project/dimplex-controller/) (capabilities matrix, schedule helpers, HTTP retry, T1/T2 register separation). Bump `custom_components/dimplex/manifest.json` when adopting a new library floor.
+Requires [`dimplex-controller>=0.10.1`](https://pypi.org/project/dimplex-controller/) (capabilities matrix, schedule helpers, HTTP retry, request timeouts, T1/T2 register separation). Bump `custom_components/dimplex/manifest.json` when adopting a new library floor.
 
 ### Local development
 

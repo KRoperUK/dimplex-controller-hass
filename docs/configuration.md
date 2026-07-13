@@ -26,25 +26,32 @@ See [Getting started](getting-started.md) for the full manual auth code walkthro
 
 ## Options flow
 
-After installation, you can enable or disable platforms:
+After installation, you can enable or disable platforms and tune polling:
 
 1. Go to **Settings** > **Devices & Services**.
 2. Find **Dimplex Hub** and click **Configure**.
-3. Toggle the platforms you want on or off:
-   - `sensor` — room temperature and energy sensors.
-   - `binary_sensor` — comfort status.
-   - `switch` — EcoStart toggle.
-4. Click **Submit**.
+3. Adjust any of the following, then click **Submit**:
 
-Disabling a platform removes its entities from Home Assistant without deleting your config entry.
+| Option                   | Default | Range    | Meaning                                        |
+| ------------------------ | ------- | -------- | ---------------------------------------------- |
+| `climate`                | on      | on/off   | Climate entities (temperature + presets).      |
+| `sensor`                 | on      | on/off   | Room temperature and energy sensors.           |
+| `binary_sensor`          | on      | on/off   | Comfort / open-window / setback / connected.   |
+| `switch`                 | on      | on/off   | EcoStart and open-window-detection toggles.    |
+| Status poll interval (s) | 30      | 15–3600  | How often temperatures/modes are polled.       |
+| Energy poll interval (s) | 1800    | 60–86400 | How often the energy report is fetched.        |
+| Boost duration (min)     | 60      | 1–1440   | Default duration for the boost service/preset. |
+
+Disabling a platform removes its entities from Home Assistant without deleting your config entry. Changing any option reloads the integration.
 
 ## Re-authentication
 
-If your tokens expire, the integration will show a notification in Home Assistant prompting you to re-authenticate.
+If your tokens expire or are rejected, the integration raises Home Assistant's
+built-in reauthentication flow against the affected config entry.
 
 1. Go to **Settings** > **Devices & Services**.
-2. Find **Dimplex Hub** and click **Fix issue** (or **Re-authenticate**).
-3. Follow the same steps as the initial setup.
+2. Find **Dimplex Hub** and click **Reconfigure** / **Re-authenticate** (a notification also links here).
+3. Choose email/password or the manual auth code, exactly as during initial setup.
 
 ## Data retention
 
@@ -61,7 +68,12 @@ Tokens are never written to plain-text files outside the Home Assistant config s
 
 ## Update interval
 
-The integration polls the Dimplex cloud every **30 seconds** by default. This interval is not currently configurable.
+The integration polls the Dimplex cloud every **30 seconds** by default for
+status (temperatures and modes), and every **30 minutes** for the energy report.
+Both intervals — and the default boost duration — are configurable from the
+options flow (**Configure**); see [Options flow](#options-flow) above. When the
+energy history stays empty (e.g. idle heaters in summer) the energy poll backs
+off automatically to reduce cloud load.
 
 ## Behind a proxy
 
