@@ -131,7 +131,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         raw = self.config_entry.options.get(CONF_BOOST_DURATION, DEFAULT_BOOST_MINUTES)
         try:
             minutes = int(raw)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return DEFAULT_BOOST_MINUTES
         return max(1, min(minutes, 24 * 60))
 
