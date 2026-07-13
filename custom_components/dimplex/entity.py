@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 
 
 class DimplexEntity(CoordinatorEntity):
-    """Shared entity behavior."""
+    """Shared entity behavior for status-backed entities."""
 
-    def __init__(self, coordinator, config_entry, appliance_row):
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator, config_entry, appliance_row: dict[str, Any]) -> None:
         super().__init__(coordinator)
         self.config_entry = config_entry
         self._appliance_row = appliance_row
@@ -21,10 +25,18 @@ class DimplexEntity(CoordinatorEntity):
     @property
     def _status(self):
         """Return current appliance status from coordinator snapshot."""
-        for row in self.coordinator.data.get("appliances", []):
+        data = self.coordinator.data or {}
+        for row in data.get("appliances", []):
             if row["appliance"].ApplianceId == self._appliance.ApplianceId:
                 return row.get("status")
         return None
+
+    @property
+    def available(self) -> bool:
+        """Entities that need live overview are unavailable when status is missing."""
+        if not super().available:
+            return False
+        return self._status is not None
 
     @property
     def unique_id(self):

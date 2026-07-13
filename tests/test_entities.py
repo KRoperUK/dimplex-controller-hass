@@ -56,58 +56,61 @@ async def test_sensor_and_binary_sensor_entities(hass):
     with (
         patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
         patch(
-            "custom_components.dimplex.DimplexApiClient.async_get_data",
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
             return_value=_mock_coordinator_payload(),
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value={"energy": {}},
         ),
     ):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    # Entity ID format varies by Home Assistant version
-    sensor_state = hass.states.get("sensor.living_room_heater_room_temperature")
-    if sensor_state is None:
-        sensor_state = hass.states.get("sensor.living_room_living_room_heater_room_temperature")
+    def _find(prefix: str, *needles: str):
+        for state in hass.states.async_all():
+            if not state.entity_id.startswith(prefix):
+                continue
+            if all(n in state.entity_id for n in needles):
+                return state
+        return None
+
+    sensor_state = _find("sensor.", "room_temperature")
     assert sensor_state is not None
     assert sensor_state.state == "21.5"
 
-    binary_state = hass.states.get("binary_sensor.living_room_heater_comfort")
-    if binary_state is None:
-        binary_state = hass.states.get("binary_sensor.living_room_living_room_heater_comfort")
+    binary_state = _find("binary_sensor.", "comfort")
     assert binary_state is not None
     assert binary_state.state == "on"
     # Comfort active -> sofa icon (matches HA climate "comfort" preset).
     assert binary_state.attributes.get("icon") == "mdi:sofa"
 
     # EcoStart is disabled in the mock payload -> leaf-off icon.
-    switch_state = hass.states.get("switch.living_room_heater_ecostart")
-    if switch_state is None:
-        switch_state = hass.states.get("switch.living_room_living_room_heater_ecostart")
+    switch_state = _find("switch.", "ecostart")
     assert switch_state is not None
     assert switch_state.attributes.get("icon") == "mdi:leaf-off"
 
-    target_state = hass.states.get("sensor.living_room_heater_target_temperature")
-    if target_state is None:
-        target_state = hass.states.get("sensor.living_room_living_room_heater_target_temperature")
+    target_state = _find("sensor.", "target_temperature")
     assert target_state is not None
     assert target_state.state == "20"
 
-    open_window_state = hass.states.get("binary_sensor.living_room_heater_open_window")
-    if open_window_state is None:
-        open_window_state = hass.states.get("binary_sensor.living_room_living_room_heater_open_window")
+    open_window_state = _find("binary_sensor.", "open_window")
     assert open_window_state is not None
     assert open_window_state.state == "on"
 
-    setback_state = hass.states.get("binary_sensor.living_room_heater_setback")
-    if setback_state is None:
-        setback_state = hass.states.get("binary_sensor.living_room_living_room_heater_setback")
+    setback_state = _find("binary_sensor.", "setback")
     assert setback_state is not None
     assert setback_state.state == "on"
 
-    hub_connected_state = hass.states.get("binary_sensor.hub_1_connected")
-    if hub_connected_state is None:
-        hub_connected_state = hass.states.get("binary_sensor.my_hub_connected")
+    hub_connected_state = _find("binary_sensor.", "connected")
     assert hub_connected_state is not None
     assert hub_connected_state.state == "on"
+
+    climate_state = _find("climate.")
+    assert climate_state is not None
+    assert climate_state.state in ("heat", "off")
+    assert climate_state.attributes.get("current_temperature") == 21.5
+    assert climate_state.attributes.get("temperature") == 20
 
     # Device registry should expose serial/firmware metadata from the cloud.
     from homeassistant.helpers import device_registry as dr

@@ -10,7 +10,12 @@ VERSION = "2.0.0"  # x-release-please-version
 DOCS_URL = "https://github.com/kroperuk/dimplex-controller-hass"
 ISSUE_URL = "https://github.com/kroperuk/dimplex-controller-hass/issues"
 
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [
+    Platform.BINARY_SENSOR,
+    Platform.CLIMATE,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
@@ -19,12 +24,19 @@ CONF_REFRESH_TOKEN = "refresh_token"
 CONF_ACCESS_TOKEN = "access_token"
 CONF_EXPIRES_AT = "expires_at"
 
-COORDINATOR_UPDATE_INTERVAL = timedelta(seconds=30)
+CONF_STATUS_INTERVAL = "status_interval"
+CONF_ENERGY_INTERVAL = "energy_interval"
+
+# Status (temps, modes) — cloud polling, relatively light.
+DEFAULT_STATUS_INTERVAL = timedelta(seconds=30)
+# Energy history rarely changes more than hourly; full history is heavy.
+DEFAULT_ENERGY_INTERVAL = timedelta(minutes=30)
+
+COORDINATOR_UPDATE_INTERVAL = DEFAULT_STATUS_INTERVAL  # backwards-compatible alias
 
 # Energy monitoring — POST /Reports/GetTsiEnergyReportDataForHub.
-# The real Dimplex Control iOS app uses a 10-minute interval. kWh
-# values are returned keyed under "ST" (QRAD models) or "T1" (some
-# other appliances) with Unix-epoch "TS" timestamps.
+# Fetch with IncludePreviousPeriod so idle heaters still return history;
+# daily / lifetime totals are computed client-side.
 ENERGY_REPORT_DAYS = 30
 ENERGY_REPORT_INTERVAL = "00:10:00"
 

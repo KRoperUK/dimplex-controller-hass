@@ -61,8 +61,11 @@
       "user": {
         "data": {
           "binary_sensor": "Binary sensor enabled",
+          "climate": "Climate enabled",
           "sensor": "Sensor enabled",
-          "switch": "Switch enabled"
+          "switch": "Switch enabled",
+          "status_interval": "Status poll interval (seconds)",
+          "energy_interval": "Energy poll interval (seconds)"
         }
       }
     }

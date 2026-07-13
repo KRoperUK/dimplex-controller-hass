@@ -13,10 +13,14 @@ from .api import CannotConnect, DimplexApiClient, InvalidAuth
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_AUTH_CODE,
+    CONF_ENERGY_INTERVAL,
     CONF_EXPIRES_AT,
     CONF_PASSWORD,
     CONF_REFRESH_TOKEN,
+    CONF_STATUS_INTERVAL,
     CONF_USERNAME,
+    DEFAULT_ENERGY_INTERVAL,
+    DEFAULT_STATUS_INTERVAL,
     DOMAIN,
     NAME,
     PLATFORMS,
@@ -302,18 +306,27 @@ class DimplexOptionsFlowHandler(config_entries.OptionsFlow):
             self.options.update(user_input)
             return await self._update_options()
 
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        x.value,
-                        default=self.options.get(x.value, True),
-                    ): bool
-                    for x in sorted(PLATFORMS)
-                }
-            ),
-        )
+        schema: dict = {
+            vol.Required(
+                x.value,
+                default=self.options.get(x.value, True),
+            ): bool
+            for x in sorted(PLATFORMS)
+        }
+        schema[
+            vol.Optional(
+                CONF_STATUS_INTERVAL,
+                default=int(self.options.get(CONF_STATUS_INTERVAL, DEFAULT_STATUS_INTERVAL.total_seconds())),
+            )
+        ] = vol.All(vol.Coerce(int), vol.Range(min=15, max=3600))
+        schema[
+            vol.Optional(
+                CONF_ENERGY_INTERVAL,
+                default=int(self.options.get(CONF_ENERGY_INTERVAL, DEFAULT_ENERGY_INTERVAL.total_seconds())),
+            )
+        ] = vol.All(vol.Coerce(int), vol.Range(min=60, max=86400))
+
+        return self.async_show_form(step_id="user", data_schema=vol.Schema(schema))
 
     async def _update_options(self):
         """Update config entry options."""

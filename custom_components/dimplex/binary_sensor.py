@@ -6,49 +6,43 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import DimplexEntity
 
 
-async def async_setup_entry(hass, entry, async_add_devices):
-    """Setup binary_sensor platform."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
+    """Set up binary_sensor platform."""
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    coordinator = runtime.status
+    rows = (coordinator.data or {}).get("appliances", [])
     devices: list[BinarySensorEntity] = [
-        DimplexComfortBinarySensor(coordinator, entry, appliance_row)
-        for appliance_row in coordinator.data.get("appliances", [])
+        DimplexComfortBinarySensor(coordinator, entry, appliance_row) for appliance_row in rows
     ]
-    devices.extend(
-        DimplexOpenWindowBinarySensor(coordinator, entry, appliance_row)
-        for appliance_row in coordinator.data.get("appliances", [])
-    )
-    devices.extend(
-        DimplexSetbackBinarySensor(coordinator, entry, appliance_row)
-        for appliance_row in coordinator.data.get("appliances", [])
-    )
+    devices.extend(DimplexOpenWindowBinarySensor(coordinator, entry, appliance_row) for appliance_row in rows)
+    devices.extend(DimplexSetbackBinarySensor(coordinator, entry, appliance_row) for appliance_row in rows)
 
     seen_hubs: set[str] = set()
-    for appliance_row in coordinator.data.get("appliances", []):
+    for appliance_row in rows:
         hub = appliance_row["hub"]
         if hub.HubId in seen_hubs:
             continue
         seen_hubs.add(hub.HubId)
         devices.append(DimplexHubConnectedBinarySensor(coordinator, entry, appliance_row))
 
-    async_add_devices(devices)
+    async_add_entities(devices)
 
 
 class DimplexComfortBinarySensor(DimplexEntity, BinarySensorEntity):
     """Comfort status binary sensor."""
 
+    _attr_name = "Comfort"
+
     @property
     def unique_id(self) -> str:
         return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_comfort"
-
-    @property
-    def name(self):
-        """Return the name of the binary_sensor."""
-        return f"{self._appliance.FriendlyName} Comfort"
 
     @property
     def icon(self):
@@ -66,14 +60,11 @@ class DimplexOpenWindowBinarySensor(DimplexEntity, BinarySensorEntity):
     """Open-window detection active binary sensor."""
 
     _attr_device_class = BinarySensorDeviceClass.WINDOW
+    _attr_name = "Open window"
 
     @property
     def unique_id(self) -> str:
         return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_open_window"
-
-    @property
-    def name(self):
-        return f"{self._appliance.FriendlyName} Open Window"
 
     @property
     def icon(self):
@@ -88,13 +79,11 @@ class DimplexOpenWindowBinarySensor(DimplexEntity, BinarySensorEntity):
 class DimplexSetbackBinarySensor(DimplexEntity, BinarySensorEntity):
     """Setback mode active binary sensor."""
 
+    _attr_name = "Setback"
+
     @property
     def unique_id(self) -> str:
         return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_setback"
-
-    @property
-    def name(self):
-        return f"{self._appliance.FriendlyName} Setback"
 
     @property
     def icon(self):
@@ -114,10 +103,16 @@ class DimplexHubConnectedBinarySensor(DimplexEntity, BinarySensorEntity):
     """
 
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_name = "Connected"
 
     @property
     def unique_id(self) -> str:
         return f"{self.config_entry.entry_id}_{self._hub.HubId}_connected"
+
+    @property
+    def available(self) -> bool:
+        """Hub connectivity does not require per-appliance overview."""
+        return self.coordinator.last_update_success
 
     @property
     def name(self):
