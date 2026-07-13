@@ -128,7 +128,7 @@ Metered appliances only report energy data when they are actively consuming powe
 3. When the real `vX.Y.Z` ships, updating from `X.Y.Z-rc.N` to stable is expected and correct.
 4. PR pre-releases may be deleted when the PR closes; do not rely on them long-term.
 
-Maintainers can also track branch `dev` (force-updated to the latest **main** RC tree only). Prefer tagged pre-releases for HACS installs.
+Prefer tagged pre-releases (`vX.Y.Z-rc.N`) from [GitHub Releases](https://github.com/kroperuk/dimplex-controller-hass/releases) or HACS when dogfooding.
 
 ## Log analysis
 

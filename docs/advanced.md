@@ -108,7 +108,7 @@ CI publishes **prerelease** GitHub Releases when component-impacting PRs or `mai
 | PR build | `vX.Y.Z-pr.P.R` | `X.Y.Z-pr.P.<shortsha>`                  |
 | Stable   | `vX.Y.Z`        | `X.Y.Z` (release-please on `main`)       |
 
-Each pre-release tag points at a **synthetic commit** that only rewrites those version files on top of the tested SHA. **`main` is never rewritten** for RCs. Branch `dev` is force-updated to the latest main RC tip for dogfooding; prefer tags for HACS.
+Each pre-release tag points at a **synthetic commit** that only rewrites those version files on top of the tested SHA. **`main` is never rewritten** for RCs. Install release candidates via the GitHub pre-release tag or HACS pre-releases (not a moving branch tip).
 
 Legacy tags of the form `dev-v…` may still appear until they age out of cleanup; new builds use the semver shapes above.
 
