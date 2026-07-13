@@ -222,9 +222,16 @@ async def async_setup_entry(
     status = runtime.status
     energy = runtime.energy
     devices: list[SensorEntity] = []
+    seen_zones: set[str] = set()
     for appliance_row in (status.data or {}).get("appliances", []):
         devices.extend(DimplexSensor(status, entry, appliance_row, description) for description in STATUS_SENSORS)
         devices.extend(DimplexEnergySensor(energy, entry, appliance_row, description) for description in ENERGY_SENSORS)
+        devices.append(DimplexScheduleSensor(status, entry, appliance_row))
+        zone = appliance_row.get("zone")
+        zone_id = getattr(zone, "ZoneId", None) if zone is not None else None
+        if zone_id and zone_id not in seen_zones:
+            seen_zones.add(zone_id)
+            devices.append(DimplexZoneSensor(status, entry, appliance_row))
     async_add_entities(devices)
 
 
@@ -257,6 +264,114 @@ class DimplexSensor(DimplexEntity, SensorEntity):
         return self.entity_description.value_fn(self._status, self._appliance)
 
 
+_TIMER_MODE_NAMES = {
+    0: "user_timer",
+    1: "manual",
+    2: "frost_protection",
+    3: "off",
+}
+
+
+class DimplexScheduleSensor(DimplexEntity, SensorEntity):
+    """Read-only timer mode / schedule summary (phase 1)."""
+
+    _attr_translation_key = "schedule"
+    _attr_icon = "mdi:calendar-clock"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+    ) -> None:
+        super().__init__(coordinator, config_entry, appliance_row, unique_id_suffix="schedule")
+        self._attr_unique_id = f"{config_entry.entry_id}_{self._appliance.ApplianceId}_schedule"
+
+    @property
+    def available(self) -> bool:
+        if not CoordinatorEntity.available.__get__(self, type(self)):
+            return False
+        return self._schedule is not None
+
+    @property
+    def _schedule(self) -> Any:
+        schedules = (self.coordinator.data or {}).get("schedules") or {}
+        return schedules.get(self._appliance.ApplianceId)
+
+    @property
+    def native_value(self) -> str | None:
+        schedule = self._schedule
+        if schedule is None:
+            return None
+        mode = getattr(schedule, "TimerMode", None)
+        if mode is None:
+            return None
+        return _TIMER_MODE_NAMES.get(int(mode), str(mode))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        schedule = self._schedule
+        if schedule is None:
+            return {}
+        periods_out: list[dict[str, Any]] = []
+        for period in getattr(schedule, "TimerPeriods", None) or []:
+            periods_out.append(
+                {
+                    "day_of_week": getattr(period, "DayOfWeek", None),
+                    "start": getattr(period, "StartTime", None),
+                    "end": getattr(period, "EndTime", None),
+                    "temperature": getattr(period, "Temperature", None),
+                }
+            )
+        return {
+            "timer_mode": getattr(schedule, "TimerMode", None),
+            "period_count": len(periods_out),
+            "periods": periods_out,
+        }
+
+
+class DimplexZoneSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):
+    """Zone device anchor (exposes zone in the device registry)."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "zone"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+    _attr_icon = "mdi:floor-plan"
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+    ) -> None:
+        super().__init__(coordinator)
+        self.config_entry = config_entry
+        self._hub = appliance_row["hub"]
+        self._zone = appliance_row["zone"]
+        self._attr_unique_id = f"{config_entry.entry_id}_zone_{self._zone.ZoneId}"
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
+    @property
+    def native_value(self) -> str | None:
+        return getattr(self._zone, "ZoneName", None)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return {
+            "identifiers": {(DOMAIN, f"zone_{self._zone.ZoneId}")},
+            "name": self._zone.ZoneName,
+            "manufacturer": "Dimplex",
+            "model": getattr(self._zone, "ZoneType", None) or "Zone",
+            "via_device": (DOMAIN, self._hub.HubId),
+            "suggested_area": self._zone.ZoneName,
+        }
+
+
 class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):
     """Energy sensor backed by the energy coordinator."""
 
@@ -285,6 +400,8 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         model = self._appliance.ApplianceModel
         if appliance_type and model and appliance_type not in str(model):
             model = f"{appliance_type} {model}"
+        zone_id = getattr(self._zone, "ZoneId", None)
+        via: tuple[str, str] = (DOMAIN, f"zone_{zone_id}") if zone_id else (DOMAIN, self._hub.HubId)
         info: DeviceInfo = {
             "identifiers": {(DOMAIN, self._appliance.ApplianceId)},
             "name": self._appliance.FriendlyName,
@@ -292,7 +409,7 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
             "model": model,
             "serial_number": self._appliance.ApplianceId,
             "suggested_area": self._zone.ZoneName,
-            "via_device": (DOMAIN, self._hub.HubId),
+            "via_device": via,
         }
         firmware = getattr(self._appliance, "FirmwareVersion", None)
         if firmware:
