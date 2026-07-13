@@ -65,7 +65,8 @@
           "sensor": "Sensor enabled",
           "switch": "Switch enabled",
           "status_interval": "Status poll interval (seconds)",
-          "energy_interval": "Energy poll interval (seconds)"
+          "energy_interval": "Energy poll interval (seconds)",
+          "boost_duration": "Boost duration (minutes)"
         }
       }
     }

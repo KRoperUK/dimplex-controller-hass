@@ -327,10 +327,11 @@ async def test_options_flow(hass):
     user_input = {x.value: True for x in sorted(PLATFORMS)}
     user_input["status_interval"] = 30
     user_input["energy_interval"] = 1800
+    user_input["boost_duration"] = 60
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         user_input=user_input,
     )
 
     assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
-    assert config_entry.options == user_input
+    assert dict(config_entry.options) == user_input
