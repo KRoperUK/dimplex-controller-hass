@@ -350,11 +350,15 @@ jobs:
             fi
           } > pr-dev-notes.md
 
+          # HACS zip_release asset: contents of custom_components/dimplex only.
+          bash scripts/package-hacs-zip.sh dimplex.zip
+
           gh release create "$TAG" \
             --prerelease \
             --title "$TAG" \
             --target "$SYNTHETIC_SHA" \
-            --notes-file pr-dev-notes.md
+            --notes-file pr-dev-notes.md \
+            dimplex.zip
 
           bash scripts/verify-dev-release-target.sh
           echo "Created ${TAG} -> ${SYNTHETIC_SHA} (base ${BASE_SHA}, version ${DEV_VERSION})"
@@ -558,12 +562,16 @@ jobs:
               exit "${push_status}"
             fi
 
+            # HACS zip_release asset: package from the synthetic tree (version files set).
+            bash scripts/package-hacs-zip.sh dimplex.zip
+
             set +e
             create_out=$(gh release create "$TAG" \
               --prerelease \
               --title "$TAG" \
               --target "$SYNTHETIC_SHA" \
-              --notes-file rc-notes.md 2>&1)
+              --notes-file rc-notes.md \
+              dimplex.zip 2>&1)
             create_status=$?
             set -e
             if [ "${create_status}" -eq 0 ]; then
