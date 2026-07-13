@@ -31,33 +31,42 @@ One climate entity per appliance.
 
 ## Sensors
 
-| Name                | Unit      | Device class | Description                                                               |
-| ------------------- | --------- | ------------ | ------------------------------------------------------------------------- |
-| Room temperature    | °C        | temperature  | Current room temperature.                                                 |
-| Target temperature  | °C        | temperature  | Active setpoint.                                                          |
-| Boost temperature   | °C        | temperature  | Boost mode target.                                                        |
-| Away temperature    | °C        | temperature  | Away mode target.                                                         |
-| Setback temperature | °C        | temperature  | Setback target.                                                           |
-| Energy lifetime     | kWh       | energy       | Sum of all known daily cloud points (primary register).                   |
-| Energy today        | kWh       | energy       | kWh for the current local calendar day.                                   |
-| Energy T2 lifetime  | kWh       | energy       | Secondary energy register (when present).                                 |
-| Energy T2 today     | kWh       | energy       | Secondary register, today only.                                           |
-| Rated power         | kW        | power        | Static nameplate power from product provisioning (_disabled by default_). |
-| Charge capacity     | kWh       | energy       | Static storage capacity from provisioning (_disabled by default_).        |
-| Error code          | —         | —            | Appliance error code (_disabled by default_).                             |
-| Warning code        | —         | —            | Appliance warning code (_disabled by default_).                           |
-| Last telemetry      | timestamp | timestamp    | Last cloud telemetry time (_disabled by default_).                        |
+| Name                | Unit      | Device class | Description                                                                   |
+| ------------------- | --------- | ------------ | ----------------------------------------------------------------------------- |
+| Room temperature    | °C        | temperature  | Current room temperature.                                                     |
+| Target temperature  | °C        | temperature  | Active setpoint.                                                              |
+| Boost temperature   | °C        | temperature  | Boost mode target.                                                            |
+| Away temperature    | °C        | temperature  | Away mode target.                                                             |
+| Setback temperature | °C        | temperature  | Setback target.                                                               |
+| Energy lifetime     | kWh       | energy       | Sum of daily cloud points for register **T1** only (off-peak / cheaper rate). |
+| Energy today        | kWh       | energy       | T1 (off-peak) kWh for the current local calendar day.                         |
+| Energy T2 lifetime  | kWh       | energy       | Register **T2** only (peak / more expensive; disabled by default).            |
+| Energy T2 today     | kWh       | energy       | T2 (peak) kWh for the current local calendar day (disabled by default).       |
+| Rated power         | kW        | power        | Static nameplate power from product provisioning (_disabled by default_).     |
+| Charge capacity     | kWh       | energy       | Static storage capacity from provisioning (_disabled by default_).            |
+| Error code          | —         | —            | Appliance error code (_disabled by default_).                                 |
+| Warning code        | —         | —            | Appliance warning code (_disabled by default_).                               |
+| Last telemetry      | timestamp | timestamp    | Last cloud telemetry time (_disabled by default_).                            |
 
 ### Energy attributes
 
 | Attribute                     | Description                         |
 | ----------------------------- | ----------------------------------- |
 | `mode`                        | `lifetime` or `daily`.              |
-| `register`                    | `t1` (primary) or `t2`.             |
+| `register`                    | `t1` or `t2` (always separate).     |
 | `window_start` / `window_end` | Bounds of points used in the total. |
 | `telemetry_points`            | Number of points included.          |
 
 Energy data is **daily kWh history** from the cloud, not live watts. Sensors are **unavailable** (not `0`) when there are no points.
+
+**T1 and T2 are never combined.** They are separate dual-rate registers:
+
+| Register | Sensors                                      | Tariff (observed)     |
+| -------- | -------------------------------------------- | --------------------- |
+| **T1**   | **Energy today** / **Energy lifetime**       | Off-peak (cheaper)    |
+| **T2**   | **Energy T2 today** / **Energy T2 lifetime** | Peak (more expensive) |
+
+Confirm against your tariff and the official app if unsure. Do not sum T1+T2 into one helper — add **Energy today** and **Energy T2 today** as separate series (or map each to the matching tariff) in the Energy Dashboard.
 
 ## Binary sensors
 
@@ -74,6 +83,14 @@ Energy data is **daily kWh history** from the cloud, not live watts. Sensors are
 | --------------------- | ----------------------------------------------------------------------------- |
 | EcoStart              | Toggle EcoStart energy-saving mode.                                           |
 | Open window detection | Enable/disable open-window detection (control; pairs with the binary sensor). |
+
+## Schedule (read-only)
+
+Diagnostic **Schedule** sensor per appliance: native value is timer mode (`manual`, `user_timer`, `frost_protection`, `off`). Attributes include `periods` (day/start/end/temperature). Write path is deferred (library schedule helpers).
+
+## Zones
+
+Zone devices appear in the device registry (`via` hub; appliances `via` zone when zone id is known). A disabled diagnostic zone sensor anchors each zone device.
 
 ## Unique IDs
 

@@ -4,6 +4,8 @@ repos:
     hooks:
       - id: check-added-large-files
       - id: check-yaml
+        # HA blueprints use !input tags that are not plain YAML.
+        exclude: ^blueprints/
       - id: check-json
         # VS Code config files are JSONC (allow comments/trailing commas).
         exclude: ^\.vscode/
