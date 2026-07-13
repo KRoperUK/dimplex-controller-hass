@@ -31,6 +31,9 @@ DEFAULT_BOOST_DURATION = 60
 
 # Status (temps, modes) — cloud polling, relatively light.
 DEFAULT_STATUS_INTERVAL = timedelta(seconds=30)
+# Timer schedules change rarely and cost one API call per appliance, so they
+# are refreshed on a slow cadence rather than on every status poll.
+DEFAULT_SCHEDULE_INTERVAL = timedelta(minutes=15)
 # Energy history rarely changes more than hourly; full history is heavy.
 DEFAULT_ENERGY_INTERVAL = timedelta(minutes=30)
 # After this many consecutive empty-but-successful energy polls, back off.
