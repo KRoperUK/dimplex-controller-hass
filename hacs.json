@@ -3,5 +3,5 @@
   "filename": "dimplex.zip",
   "zip_release": true,
   "hacs": "1.6.0",
-  "homeassistant": "2024.4.0"
+  "homeassistant": "2025.1.0"
 }
