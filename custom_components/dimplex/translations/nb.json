@@ -3,19 +3,45 @@
     "step": {
       "user": {
         "title": "Dimplex Hub",
-        "description": "Logg inn med ditt Dimplex-brukernavn og -passord under. Hvis kontoen din krever manuell kodeinnlogging, åpne denne URL-en: {auth_url}. I nettleserens utviklerverktøy fanger du den endelige msal-omdirigerings-URL-en (eller kopier bare code-parameteren) og limer den inn under.",
+        "description": "Velg foretrukket autentiseringsmetode.",
         "data": {
-          "username": "Brukernavn (e-post)",
-          "password": "Passord",
+          "auth_method": "Autentiseringsmetode"
+        }
+      },
+      "credentials": {
+        "title": "Logg inn med e-post",
+        "description": "Skriv inn e-post og passord for Dimplex-kontoen for automatisk innlogging.",
+        "data": {
+          "username": "E-post",
+          "password": "Passord"
+        }
+      },
+      "auth_code": {
+        "title": "Manuell autentiseringskode",
+        "description": "Åpne denne URL-en i en nettleser: {auth_url}\n\nLogg inn, og hent omdirigerings-URL-en (eller bare `code`-parameteren) fra adresselinjen eller nettverksfanen i utviklerverktøy. Lim den inn under.",
+        "data": {
           "auth_code": "Omdirigerings-URL eller kode"
         }
       },
-      "reauth_confirm": {
+      "reauth": {
         "title": "Autentiser Dimplex Hub på nytt",
-        "description": "Autentiseringen for Dimplex Hub har utløpt. Logg inn med brukernavn og passord under, eller bruk manuell kodeinnlogging via: {auth_url}.",
+        "description": "Autentiseringen har utløpt. Velg en metode for å logge inn igjen.",
         "data": {
-          "username": "Brukernavn (e-post)",
-          "password": "Passord",
+          "auth_method": "Autentiseringsmetode"
+        }
+      },
+      "reauth_credentials": {
+        "title": "Re-autentiser med e-post",
+        "description": "Skriv inn Dimplex-kontoens påloggingsdetaljer.",
+        "data": {
+          "username": "E-post",
+          "password": "Passord"
+        }
+      },
+      "reauth_auth_code": {
+        "title": "Re-autentiser med kode",
+        "description": "Åpne denne URL-en i en nettleser: {auth_url}\n\nLogg inn, hent omdirigerings-URL/kode, og lim inn under.",
+        "data": {
           "auth_code": "Omdirigerings-URL eller kode"
         }
       }
@@ -46,31 +72,73 @@
   },
   "entity": {
     "sensor": {
-      "room_temperature": { "name": "Romtemperatur" },
-      "target_temperature": { "name": "Måltemperatur" },
-      "boost_temperature": { "name": "Boost-temperatur" },
-      "away_temperature": { "name": "Borte-temperatur" },
-      "setback_temperature": { "name": "Senketemperatur" },
-      "error_code": { "name": "Feilkode" },
-      "warning_code": { "name": "Advarselskode" },
-      "last_telem": { "name": "Siste telemetri" },
-      "rated_power": { "name": "Nominell effekt" },
-      "charge_capacity": { "name": "Ladekapasitet" },
-      "estimated_power": { "name": "Estimert effekt" },
-      "energy_lifetime": { "name": "Energi totalt" },
-      "energy_today": { "name": "Energi i dag" },
-      "energy_t2_lifetime": { "name": "Energi T2 totalt" },
-      "energy_t2_today": { "name": "Energi T2 i dag" }
+      "room_temperature": {
+        "name": "Romtemperatur"
+      },
+      "target_temperature": {
+        "name": "Måltemperatur"
+      },
+      "boost_temperature": {
+        "name": "Boost-temperatur"
+      },
+      "away_temperature": {
+        "name": "Borte-temperatur"
+      },
+      "setback_temperature": {
+        "name": "Senketemperatur"
+      },
+      "error_code": {
+        "name": "Feilkode"
+      },
+      "warning_code": {
+        "name": "Advarselskode"
+      },
+      "last_telem": {
+        "name": "Siste telemetri"
+      },
+      "rated_power": {
+        "name": "Nominell effekt"
+      },
+      "charge_capacity": {
+        "name": "Ladekapasitet"
+      },
+      "estimated_power": {
+        "name": "Estimert effekt"
+      },
+      "energy_lifetime": {
+        "name": "Energi totalt"
+      },
+      "energy_today": {
+        "name": "Energi i dag"
+      },
+      "energy_t2_lifetime": {
+        "name": "Energi T2 totalt"
+      },
+      "energy_t2_today": {
+        "name": "Energi T2 i dag"
+      }
     },
     "binary_sensor": {
-      "comfort": { "name": "Komfort" },
-      "open_window": { "name": "Åpent vindu" },
-      "setback": { "name": "Senking" },
-      "connected": { "name": "Tilkoblet" }
+      "comfort": {
+        "name": "Komfort"
+      },
+      "open_window": {
+        "name": "Åpent vindu"
+      },
+      "setback": {
+        "name": "Senking"
+      },
+      "connected": {
+        "name": "Tilkoblet"
+      }
     },
     "switch": {
-      "ecostart": { "name": "EcoStart" },
-      "open_window_detection": { "name": "Deteksjon av åpent vindu" }
+      "ecostart": {
+        "name": "EcoStart"
+      },
+      "open_window_detection": {
+        "name": "Deteksjon av åpent vindu"
+      }
     }
   }
 }

@@ -3,19 +3,45 @@
     "step": {
       "user": {
         "title": "Dimplex Hub",
-        "description": "Connectez-vous avec votre nom d'utilisateur et mot de passe Dimplex ci-dessous. Si votre compte nécessite une connexion manuelle par code d'authentification, ouvrez cette URL : {auth_url}. Dans les outils de développement du navigateur, capturez l'URL de redirection msal finale (ou copiez uniquement le paramètre code) et collez-la ci-dessous.",
+        "description": "Choisissez votre méthode d'authentification préférée.",
         "data": {
-          "username": "Nom d'utilisateur (email)",
-          "password": "Mot de passe",
+          "auth_method": "Méthode d'authentification"
+        }
+      },
+      "credentials": {
+        "title": "Connexion par e-mail",
+        "description": "Entrez l'e-mail et le mot de passe de votre compte Dimplex pour vous connecter automatiquement.",
+        "data": {
+          "username": "E-mail",
+          "password": "Mot de passe"
+        }
+      },
+      "auth_code": {
+        "title": "Code d'authentification manuel",
+        "description": "Ouvrez cette URL dans un navigateur : {auth_url}\n\nConnectez-vous, puis capturez l'URL de redirection (ou uniquement le paramètre `code`) depuis la barre d'adresse ou l'onglet Réseau des outils de développement. Collez-la ci-dessous.",
+        "data": {
           "auth_code": "URL de redirection ou code"
         }
       },
-      "reauth_confirm": {
+      "reauth": {
         "title": "Ré-authentifier Dimplex Hub",
-        "description": "Votre authentification Dimplex Hub a expiré. Connectez-vous avec votre nom d'utilisateur et mot de passe ci-dessous, ou utilisez la connexion manuelle par code d'authentification via : {auth_url}.",
+        "description": "Votre authentification a expiré. Choisissez une méthode pour vous reconnecter.",
         "data": {
-          "username": "Nom d'utilisateur (email)",
-          "password": "Mot de passe",
+          "auth_method": "Méthode d'authentification"
+        }
+      },
+      "reauth_credentials": {
+        "title": "Ré-authentification par e-mail",
+        "description": "Entrez les identifiants de votre compte Dimplex.",
+        "data": {
+          "username": "E-mail",
+          "password": "Mot de passe"
+        }
+      },
+      "reauth_auth_code": {
+        "title": "Ré-authentification par code",
+        "description": "Ouvrez cette URL dans un navigateur : {auth_url}\n\nConnectez-vous, capturez l'URL/code de redirection, et collez-le ci-dessous.",
+        "data": {
           "auth_code": "URL de redirection ou code"
         }
       }
@@ -46,31 +72,73 @@
   },
   "entity": {
     "sensor": {
-      "room_temperature": { "name": "Température de la pièce" },
-      "target_temperature": { "name": "Température cible" },
-      "boost_temperature": { "name": "Température boost" },
-      "away_temperature": { "name": "Température absence" },
-      "setback_temperature": { "name": "Température réduite" },
-      "error_code": { "name": "Code d'erreur" },
-      "warning_code": { "name": "Code d'avertissement" },
-      "last_telem": { "name": "Dernière télémétrie" },
-      "rated_power": { "name": "Puissance nominale" },
-      "charge_capacity": { "name": "Capacité de charge" },
-      "estimated_power": { "name": "Puissance estimée" },
-      "energy_lifetime": { "name": "Énergie totale" },
-      "energy_today": { "name": "Énergie aujourd'hui" },
-      "energy_t2_lifetime": { "name": "Énergie T2 totale" },
-      "energy_t2_today": { "name": "Énergie T2 aujourd'hui" }
+      "room_temperature": {
+        "name": "Température de la pièce"
+      },
+      "target_temperature": {
+        "name": "Température cible"
+      },
+      "boost_temperature": {
+        "name": "Température boost"
+      },
+      "away_temperature": {
+        "name": "Température absence"
+      },
+      "setback_temperature": {
+        "name": "Température réduite"
+      },
+      "error_code": {
+        "name": "Code d'erreur"
+      },
+      "warning_code": {
+        "name": "Code d'avertissement"
+      },
+      "last_telem": {
+        "name": "Dernière télémétrie"
+      },
+      "rated_power": {
+        "name": "Puissance nominale"
+      },
+      "charge_capacity": {
+        "name": "Capacité de charge"
+      },
+      "estimated_power": {
+        "name": "Puissance estimée"
+      },
+      "energy_lifetime": {
+        "name": "Énergie totale"
+      },
+      "energy_today": {
+        "name": "Énergie aujourd'hui"
+      },
+      "energy_t2_lifetime": {
+        "name": "Énergie T2 totale"
+      },
+      "energy_t2_today": {
+        "name": "Énergie T2 aujourd'hui"
+      }
     },
     "binary_sensor": {
-      "comfort": { "name": "Confort" },
-      "open_window": { "name": "Fenêtre ouverte" },
-      "setback": { "name": "Réduction" },
-      "connected": { "name": "Connecté" }
+      "comfort": {
+        "name": "Confort"
+      },
+      "open_window": {
+        "name": "Fenêtre ouverte"
+      },
+      "setback": {
+        "name": "Réduction"
+      },
+      "connected": {
+        "name": "Connecté"
+      }
     },
     "switch": {
-      "ecostart": { "name": "EcoStart" },
-      "open_window_detection": { "name": "Détection fenêtre ouverte" }
+      "ecostart": {
+        "name": "EcoStart"
+      },
+      "open_window_detection": {
+        "name": "Détection fenêtre ouverte"
+      }
     }
   }
 }
