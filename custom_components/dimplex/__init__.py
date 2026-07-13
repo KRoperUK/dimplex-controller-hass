@@ -68,7 +68,9 @@ def _interval_from_options(options: dict, key: str, default: timedelta) -> timed
         return default
     try:
         seconds = int(raw)
-    except TypeError, ValueError:
+    except ValueError:
+        return default
+    except TypeError:
         return default
     if seconds < 15:
         return default
