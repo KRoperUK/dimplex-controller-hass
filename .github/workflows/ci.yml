@@ -49,6 +49,24 @@ jobs:
       - name: Lint commit messages and PR title
         run: bash scripts/lint-commits.sh
 
+  # Translation parity — fails when a non-English translation file under
+  # custom_components/dimplex/translations/ is missing keys present in
+  # en.json, or has keys that don't exist there. Reference language is
+  # en.json; everything else must mirror its key shape.
+  #
+  # Catches drift like the v3.0.0-rc.16 issues/release translations that
+  # were never back-ported to fr.json / nb.json.
+  translations:
+    needs: changes
+    if: needs.changes.outputs.component == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Check translation key parity with en.json
+        run: bash scripts/check-translation-parity.sh
+
   lint:
     needs: changes
     if: needs.changes.outputs.component == 'true'
@@ -68,6 +86,11 @@ jobs:
         # Pin to the same ruff as the test env (requirements_test.txt) so lint and
         # format can't drift between the two jobs.
         run: pip install "$(grep -E '^ruff==' requirements_test.txt)"
+
+      - name: Verify ruff pin parity
+        # Fails fast if requirements_test.txt and .pre-commit-config.yaml disagree
+        # on the ruff version — they must stay in sync.
+        run: bash scripts/check-ruff-pin.sh
 
       - name: Lint with ruff
         # --output-format=github emits ::error annotations inline on the offending
