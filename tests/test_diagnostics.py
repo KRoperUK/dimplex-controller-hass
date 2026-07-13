@@ -177,6 +177,160 @@ async def test_diagnostics_with_no_runtime(hass: HomeAssistant) -> None:
     assert data["coordinators"]["energy"]["last_update_success"] is None
 
 
+async def test_model_snapshot_uses_model_dump_dict() -> None:
+    """``_model_snapshot`` returns the pydantic ``model_dump`` dict verbatim.
+
+    The happy path (``model_dump`` returns a ``dict``) was previously only
+    exercised indirectly. Cover dimplex-controller-hass#119 line 53.
+    """
+    from custom_components.dimplex.diagnostics import _model_snapshot
+
+    class PydanticLike:
+        def model_dump(self, mode=None):  # type: ignore[override]
+            return {"a": 1, "b": "two"}
+
+    assert _model_snapshot(PydanticLike()) == {"a": 1, "b": "two"}
+
+
+async def test_model_snapshot_skips_attributes_that_raise() -> None:
+    """``_model_snapshot`` skips attributes whose access raises.
+
+    Covers dimplex-controller-hass#119 lines 60-61: the ``except`` branch of
+    the ``dir()`` attribute walk must tolerate raising properties.
+    """
+    from custom_components.dimplex.diagnostics import _model_snapshot
+
+    class Flaky:
+        @property
+        def boom(self):
+            raise RuntimeError("nope")
+
+        ok = "fine"
+
+    snap = _model_snapshot(Flaky())
+    assert snap.get("ok") == "fine"
+    assert "boom" not in snap
+
+
+async def test_iso_or_none_calls_isoformat() -> None:
+    """``_iso_or_none`` serialises values that expose ``isoformat``.
+
+    Covers dimplex-controller-hass#119 lines 72-75 (the non-None branch).
+    """
+    from datetime import datetime
+
+    from custom_components.dimplex.diagnostics import _iso_or_none
+
+    dt = datetime(2026, 1, 2, 3, 4, 5)
+    assert _iso_or_none(dt) == dt.isoformat()
+    assert _iso_or_none(None) is None
+    # Non-None value without an isoformat callable is returned unchanged.
+    assert _iso_or_none("plain") == "plain"
+
+
+async def test_energy_meta_computes_window_from_timestamps() -> None:
+    """``_energy_meta`` derives the point window when timestamps are present.
+
+    Covers dimplex-controller-hass#119 lines 93-94 (``min``/``max`` over the
+    real timestamp list) and the ``isoformat`` serialisation in passing.
+    """
+    from datetime import datetime
+
+    from custom_components.dimplex.diagnostics import _energy_meta
+
+    t1 = datetime(2026, 1, 1, 0, 0)
+    t2 = datetime(2026, 1, 1, 12, 0)
+    series = {"app-1": [(t1, 1.0), (t2, 2.0)]}
+    registers = {"t1": series}
+    energy = {"energy": {"hub-1": registers}}
+    meta = _energy_meta(energy)
+    point = meta["hub-1"]["t1"]["app-1"]
+    assert point["point_count"] == 2
+    assert point["window_start"] == t1.isoformat()
+    assert point["window_end"] == t2.isoformat()
+
+
+async def test_lib_version_none_when_package_missing() -> None:
+    """``_lib_version`` returns ``None`` when the library is not installed.
+
+    Covers dimplex-controller-hass#119 lines 108-109 (``PackageNotFoundError``
+    fallback) so the diagnostics payload degrades gracefully.
+    """
+    from importlib.metadata import PackageNotFoundError
+
+    from custom_components.dimplex.diagnostics import _lib_version
+
+    with patch("custom_components.dimplex.diagnostics.version", side_effect=PackageNotFoundError):
+        assert _lib_version() is None
+
+
+async def test_diagnostics_provisioning_property_branch(hass: HomeAssistant) -> None:
+    """Diagnostics resolve ``automatic_provisioning`` when it is a property.
+
+    Covers dimplex-controller-hass#119 line 150: the branch where the
+    appliance type exposes ``automatic_provisioning`` as a descriptor rather
+    than a plain attribute.
+    """
+    from types import SimpleNamespace
+
+    from custom_components.dimplex.diagnostics import async_get_config_entry_diagnostics
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_ENTRY_DATA,
+        options={"status_interval": 30, "energy_interval": 1800},
+        entry_id="diag-prov",
+    )
+    entry.add_to_hass(hass)
+
+    hub = SimpleNamespace(
+        HubId="hub-1",
+        FriendlyName="My Hub",
+        Name="My Hub",
+        ConnectionState=1,
+        FirmwareVersion="1.0",
+        HubType="Gateway",
+        PrimaryUserEmail="owner@example.com",
+        SecurityCode="SECRET",
+    )
+    zone = SimpleNamespace(ZoneName="Living Room")
+
+    class Appliance:
+        ApplianceId = "app-p"
+        FriendlyName = "Heater"
+        ApplianceModel = "QM100RF"
+        ApplianceType = "Quantum"
+        FirmwareVersion = "6"
+
+        @property
+        def automatic_provisioning(self):
+            return SimpleNamespace(rated_power=3.0, charge_capacity=12.0)
+
+    status_coord = MagicMock()
+    status_coord.data = {
+        "hubs": [hub],
+        "appliances": [{"hub": hub, "zone": zone, "appliance": Appliance(), "status": None}],
+    }
+    status_coord.last_update_success = True
+    status_coord.last_exception = None
+    status_coord.update_interval = "0:00:30"
+
+    energy_coord = MagicMock()
+    energy_coord.data = {"energy": {}}
+    energy_coord.last_update_success = True
+    energy_coord.last_exception = None
+    energy_coord.update_interval = "0:30:00"
+
+    runtime = SimpleNamespace(status=status_coord, energy=energy_coord)
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+
+    with patch("custom_components.dimplex.diagnostics.version", return_value="0.9.0"):
+        data = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert data["appliances"][0]["provisioning"]["rated_power"] == 3.0
+    assert data["appliances"][0]["provisioning"]["charge_capacity"] == 12.0
+
+
 async def test_diagnostics_redacts_tokens_and_summarises_energy(hass: HomeAssistant) -> None:
     """Diagnostics must never include tokens and only energy metadata."""
     entry = MockConfigEntry(
