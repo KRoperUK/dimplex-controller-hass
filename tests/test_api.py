@@ -514,3 +514,30 @@ async def test_async_get_energy_report_api_error_returns_empty(hass):
     ):
         result = await api.async_get_energy_report("hub-1")
     assert result == {"t1": {}, "t2": {}}
+
+
+async def test_control_helpers_delegate_to_library(hass):
+    """Boost/away/target helpers wrap library methods."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with (
+        patch.object(api._client, "set_boost", new=AsyncMock()) as set_boost,
+        patch.object(api._client, "set_away", new=AsyncMock()) as set_away,
+        patch.object(api._client, "set_target_temperature", new=AsyncMock()) as set_temp,
+    ):
+        await api.async_set_boost("h", "a", temperature=24.0, duration_minutes=45, enable=True)
+        await api.async_set_away("h", "a", temperature=16.0, enable=True)
+        await api.async_set_target_temperature("h", "a", 21.0)
+
+    set_boost.assert_awaited_once()
+    set_away.assert_awaited_once()
+    set_temp.assert_awaited_once_with("h", "a", 21.0)
+
+
+async def test_async_get_energy_for_hubs(hass):
+    """Energy-for-hubs helper returns t1/t2 maps per hub."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    report = SimpleNamespace(ApplianceTelemetryData={"a-1": [{"TS": 1767225600, "T1": 1.5}]})
+    with patch.object(api._client, "get_tsi_energy_report", new=AsyncMock(return_value=report)):
+        data = await api.async_get_energy_for_hubs(["hub-1"])
+    assert "hub-1" in data["energy"]
+    assert data["energy"]["hub-1"]["t1"]["a-1"]
