@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from custom_components.dimplex.binary_sensor import DimplexComfortBinarySensor
-from custom_components.dimplex.switch import DimplexEcoStartSwitch
+from custom_components.dimplex.binary_sensor import APPLIANCE_BINARY_SENSORS, DimplexBinarySensor
+from custom_components.dimplex.switch import SWITCHES, DimplexSwitch
 
 
 def _appliance_row(eco_start: bool, comfort: bool):
@@ -24,6 +24,13 @@ def _appliance_row(eco_start: bool, comfort: bool):
     return coordinator, config_entry, row
 
 
+def _description(key: str, descriptions):
+    for description in descriptions:
+        if description.key == key:
+            return description
+    raise KeyError(key)
+
+
 @pytest.mark.parametrize(
     ("eco_start", "expected_icon"),
     [(True, "mdi:leaf"), (False, "mdi:leaf-off")],
@@ -31,7 +38,13 @@ def _appliance_row(eco_start: bool, comfort: bool):
 def test_ecostart_switch_icon(eco_start, expected_icon):
     """The EcoStart switch icon reflects its on/off state."""
     coordinator, config_entry, row = _appliance_row(eco_start=eco_start, comfort=False)
-    switch = DimplexEcoStartSwitch(coordinator, config_entry, row, api=SimpleNamespace())
+    switch = DimplexSwitch(
+        coordinator,
+        config_entry,
+        row,
+        api=SimpleNamespace(),
+        description=_description("ecostart", SWITCHES),
+    )
     assert switch.is_on is eco_start
     assert switch.icon == expected_icon
     assert switch.unique_id.endswith("_ecostart")
@@ -44,6 +57,11 @@ def test_ecostart_switch_icon(eco_start, expected_icon):
 def test_comfort_binary_sensor_icon(comfort, expected_icon):
     """The Comfort binary sensor icon reflects its on/off state."""
     coordinator, config_entry, row = _appliance_row(eco_start=False, comfort=comfort)
-    sensor = DimplexComfortBinarySensor(coordinator, config_entry, row)
+    sensor = DimplexBinarySensor(
+        coordinator,
+        config_entry,
+        row,
+        _description("comfort", APPLIANCE_BINARY_SENSORS),
+    )
     assert sensor.is_on is comfort
     assert sensor.icon == expected_icon

@@ -2,90 +2,118 @@
 
 from __future__ import annotations
 
-from homeassistant.components.switch import SwitchEntity
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any
+
+from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .api import DimplexApiClient
 from .const import DOMAIN
 from .entity import DimplexEntity
 
 
-async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
+@dataclass(frozen=True, kw_only=True)
+class DimplexSwitchEntityDescription(SwitchEntityDescription):
+    """Describe a Dimplex toggle switch."""
+
+    is_on_fn: Callable[[Any], bool]
+    set_fn: Callable[[DimplexApiClient, str, str, bool], Awaitable[None]]
+    icon_on: str
+    icon_off: str
+
+
+async def _set_eco_start(api: DimplexApiClient, hub_id: str, appliance_id: str, enabled: bool) -> None:
+    await api.async_set_eco_start(hub_id, appliance_id, enabled)
+
+
+async def _set_open_window(api: DimplexApiClient, hub_id: str, appliance_id: str, enabled: bool) -> None:
+    await api.async_set_open_window_detection(hub_id, appliance_id, enabled)
+
+
+SWITCHES: tuple[DimplexSwitchEntityDescription, ...] = (
+    DimplexSwitchEntityDescription(
+        key="ecostart",
+        translation_key="ecostart",
+        is_on_fn=lambda status: bool(status and status.EcoStartEnabled),
+        set_fn=_set_eco_start,
+        icon_on="mdi:leaf",
+        icon_off="mdi:leaf-off",
+    ),
+    DimplexSwitchEntityDescription(
+        key="open_window_detection",
+        translation_key="open_window_detection",
+        is_on_fn=lambda status: bool(status and getattr(status, "OpenWindowEnabled", False)),
+        set_fn=_set_open_window,
+        icon_on="mdi:window-open",
+        icon_off="mdi:window-closed",
+    ),
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up switch platform."""
     runtime = hass.data[DOMAIN][entry.entry_id]
     rows = (runtime.status.data or {}).get("appliances", [])
-    entities: list[SwitchEntity] = []
-    for appliance_row in rows:
-        entities.append(DimplexEcoStartSwitch(runtime.status, entry, appliance_row, runtime.api))
-        entities.append(DimplexOpenWindowSwitch(runtime.status, entry, appliance_row, runtime.api))
+    entities = [
+        DimplexSwitch(runtime.status, entry, appliance_row, runtime.api, description)
+        for appliance_row in rows
+        for description in SWITCHES
+    ]
     async_add_entities(entities)
 
 
-class _DimplexToggleSwitch(DimplexEntity, SwitchEntity):
-    """Base toggle that calls a boolean API helper."""
+class DimplexSwitch(DimplexEntity, SwitchEntity):
+    """Toggle switch driven by an entity description."""
 
-    _entity_suffix: str
+    entity_description: DimplexSwitchEntityDescription
 
-    def __init__(self, coordinator, config_entry, appliance_row, api) -> None:
-        super().__init__(coordinator, config_entry, appliance_row)
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+        api: DimplexApiClient,
+        description: DimplexSwitchEntityDescription,
+    ) -> None:
+        super().__init__(coordinator, config_entry, appliance_row, description)
         self._api = api
 
     @property
-    def unique_id(self) -> str:
-        return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_{self._entity_suffix}"
-
-
-class DimplexEcoStartSwitch(_DimplexToggleSwitch):
-    """EcoStart toggle switch."""
-
-    _attr_name = "EcoStart"
-    _entity_suffix = "ecostart"
-
-    async def async_turn_on(self, **kwargs) -> None:  # pylint: disable=unused-argument
-        """Turn on EcoStart."""
-        await self._api.async_set_eco_start(self._hub.HubId, self._appliance.ApplianceId, True)
-        await self.coordinator.async_request_refresh()
-
-    async def async_turn_off(self, **kwargs) -> None:  # pylint: disable=unused-argument
-        """Turn off EcoStart."""
-        await self._api.async_set_eco_start(self._hub.HubId, self._appliance.ApplianceId, False)
-        await self.coordinator.async_request_refresh()
+    def is_on(self) -> bool:
+        """Return true if the switch is on."""
+        return self.entity_description.is_on_fn(self._status)
 
     @property
     def icon(self) -> str:
-        """Return a leaf icon reflecting the EcoStart state."""
-        return "mdi:leaf" if self.is_on else "mdi:leaf-off"
+        """Return a state-aware icon."""
+        description = self.entity_description
+        return description.icon_on if self.is_on else description.icon_off
 
-    @property
-    def is_on(self) -> bool:
-        """Return true if EcoStart is enabled."""
-        status = self._status
-        return bool(status and status.EcoStartEnabled)
-
-
-class DimplexOpenWindowSwitch(_DimplexToggleSwitch):
-    """Open Window Detection enable/disable switch."""
-
-    _attr_name = "Open window detection"
-    _entity_suffix = "open_window_detection"
-
-    async def async_turn_on(self, **kwargs) -> None:  # pylint: disable=unused-argument
-        """Enable open-window detection."""
-        await self._api.async_set_open_window_detection(self._hub.HubId, self._appliance.ApplianceId, True)
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the switch on."""
+        await self.entity_description.set_fn(
+            self._api,
+            self._hub.HubId,
+            self._appliance.ApplianceId,
+            True,
+        )
         await self.coordinator.async_request_refresh()
 
-    async def async_turn_off(self, **kwargs) -> None:  # pylint: disable=unused-argument
-        """Disable open-window detection."""
-        await self._api.async_set_open_window_detection(self._hub.HubId, self._appliance.ApplianceId, False)
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the switch off."""
+        await self.entity_description.set_fn(
+            self._api,
+            self._hub.HubId,
+            self._appliance.ApplianceId,
+            False,
+        )
         await self.coordinator.async_request_refresh()
-
-    @property
-    def icon(self) -> str:
-        """Return a window icon reflecting detection state."""
-        return "mdi:window-open" if self.is_on else "mdi:window-closed"
-
-    @property
-    def is_on(self) -> bool:
-        """Return true if open-window detection is enabled."""
-        status = self._status
-        return bool(status and getattr(status, "OpenWindowEnabled", False))

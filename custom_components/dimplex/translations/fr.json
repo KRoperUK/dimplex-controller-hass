@@ -35,10 +35,41 @@
       "user": {
         "data": {
           "binary_sensor": "Capteur binaire activé",
+          "climate": "Climatisation activée",
           "sensor": "Capteur activé",
-          "switch": "Interrupteur activé"
+          "switch": "Interrupteur activé",
+          "status_interval": "Intervalle de statut (secondes)",
+          "energy_interval": "Intervalle d'énergie (secondes)"
         }
       }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "room_temperature": { "name": "Température de la pièce" },
+      "target_temperature": { "name": "Température cible" },
+      "boost_temperature": { "name": "Température boost" },
+      "away_temperature": { "name": "Température absence" },
+      "setback_temperature": { "name": "Température réduite" },
+      "error_code": { "name": "Code d'erreur" },
+      "warning_code": { "name": "Code d'avertissement" },
+      "last_telem": { "name": "Dernière télémétrie" },
+      "rated_power": { "name": "Puissance nominale" },
+      "charge_capacity": { "name": "Capacité de charge" },
+      "energy_lifetime": { "name": "Énergie totale" },
+      "energy_today": { "name": "Énergie aujourd'hui" },
+      "energy_t2_lifetime": { "name": "Énergie T2 totale" },
+      "energy_t2_today": { "name": "Énergie T2 aujourd'hui" }
+    },
+    "binary_sensor": {
+      "comfort": { "name": "Confort" },
+      "open_window": { "name": "Fenêtre ouverte" },
+      "setback": { "name": "Réduction" },
+      "connected": { "name": "Connecté" }
+    },
+    "switch": {
+      "ecostart": { "name": "EcoStart" },
+      "open_window_detection": { "name": "Détection fenêtre ouverte" }
     }
   }
 }
