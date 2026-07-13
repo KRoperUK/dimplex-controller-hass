@@ -1,0 +1,147 @@
+set_boost:
+  name: Set boost
+  description: Enable boost for a Dimplex appliance.
+  fields:
+    device_id:
+      name: Device
+      description: Appliance device
+      selector:
+        device:
+          integration: dimplex
+    entity_id:
+      name: Entity
+      description: Any entity belonging to the appliance
+      selector:
+        entity:
+          integration: dimplex
+    temperature:
+      name: Temperature
+      description: Boost target temperature (°C)
+      default: 25
+      selector:
+        number:
+          min: 5
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+    duration:
+      name: Duration
+      description: Boost duration in minutes
+      default: 60
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: min
+
+clear_boost:
+  name: Clear boost
+  description: Disable boost for a Dimplex appliance.
+  fields:
+    device_id:
+      name: Device
+      selector:
+        device:
+          integration: dimplex
+    entity_id:
+      name: Entity
+      selector:
+        entity:
+          integration: dimplex
+    temperature:
+      name: Temperature
+      default: 25
+      selector:
+        number:
+          min: 5
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+
+set_away:
+  name: Set away
+  description: Enable away mode for a Dimplex appliance.
+  fields:
+    device_id:
+      name: Device
+      selector:
+        device:
+          integration: dimplex
+    entity_id:
+      name: Entity
+      selector:
+        entity:
+          integration: dimplex
+    temperature:
+      name: Temperature
+      default: 16
+      selector:
+        number:
+          min: 5
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+
+clear_away:
+  name: Clear away
+  description: Disable away mode for a Dimplex appliance.
+  fields:
+    device_id:
+      name: Device
+      selector:
+        device:
+          integration: dimplex
+    entity_id:
+      name: Entity
+      selector:
+        entity:
+          integration: dimplex
+    temperature:
+      name: Temperature
+      default: 16
+      selector:
+        number:
+          min: 5
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+
+set_eco_start:
+  name: Set EcoStart
+  description: Enable or disable EcoStart.
+  fields:
+    device_id:
+      name: Device
+      selector:
+        device:
+          integration: dimplex
+    entity_id:
+      name: Entity
+      selector:
+        entity:
+          integration: dimplex
+    enable:
+      name: Enable
+      default: true
+      selector:
+        boolean:
+
+set_open_window_detection:
+  name: Set open window detection
+  description: Enable or disable open-window detection.
+  fields:
+    device_id:
+      name: Device
+      selector:
+        device:
+          integration: dimplex
+    entity_id:
+      name: Entity
+      selector:
+        entity:
+          integration: dimplex
+    enable:
+      name: Enable
+      default: true
+      selector:
+        boolean:

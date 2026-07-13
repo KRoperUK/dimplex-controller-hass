@@ -42,3 +42,11 @@ async def test_setup_entry_exception(hass, error_on_get_data):
 
     assert not await hass.config_entries.async_setup(config_entry.entry_id)
     assert config_entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_setup_entry_invalid_auth(hass, invalid_auth_on_init):
+    """Test setup triggers reauth flow on invalid credentials."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    assert not await hass.config_entries.async_setup(config_entry.entry_id)

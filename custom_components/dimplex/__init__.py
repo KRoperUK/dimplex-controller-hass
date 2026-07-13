@@ -39,6 +39,13 @@ from .const import (
     PLATFORMS,
     STARTUP_MESSAGE,
 )
+from .repairs import (
+    async_create_reauth_issue,
+    async_delete_reauth_issue,
+    async_update_empty_energy_issue,
+    async_update_empty_overview_issue,
+)
+from .services import async_setup_services, async_unload_services
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -100,10 +107,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
     try:
         await client.async_initialize()
     except InvalidAuth:
+        async_create_reauth_issue(hass, entry.entry_id)
         entry.async_start_reauth(hass)
         return False
     except CannotConnect as exception:
         raise ConfigEntryNotReady from exception
+
+    async_delete_reauth_issue(hass, entry.entry_id)
 
     status_interval = _interval_from_options(entry.options, CONF_STATUS_INTERVAL, DEFAULT_STATUS_INTERVAL)
     energy_interval = _interval_from_options(entry.options, CONF_ENERGY_INTERVAL, DEFAULT_ENERGY_INTERVAL)
@@ -130,6 +140,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
     hass.data[DOMAIN][entry.entry_id] = runtime
 
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
+    await async_setup_services(hass)
 
     # Persist tokens after platform setup. Token writes must not trigger a full
     # reload (would loop); options changes do via the listener below.
@@ -167,6 +178,7 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data = await self.api.async_get_status_data()
         except InvalidAuth as exception:
             _LOGGER.warning("Authentication expired — triggering reauth")
+            async_create_reauth_issue(self.hass, self._entry.entry_id)
             self._entry.async_start_reauth(self.hass)
             raise UpdateFailed("Authentication expired") from exception
         except CannotConnect as exception:
@@ -193,6 +205,14 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data["schedules"] = schedules
 
         _persist_tokens(self.hass, self._entry, self.api)
+        async_delete_reauth_issue(self.hass, self._entry.entry_id)
+        appliances = data.get("appliances") or []
+        has_status = any(row.get("status") is not None for row in appliances)
+        async_update_empty_overview_issue(
+            self.hass,
+            self._entry.entry_id,
+            empty=bool(appliances) and not has_status,
+        )
         return data
 
 
@@ -211,6 +231,7 @@ class DimplexEnergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.api = client
         self._entry = entry
         self._status = status_coordinator
+        self._empty_successes = 0
         self._base_interval = update_interval
         self._empty_polls = 0
         super().__init__(
@@ -284,6 +305,7 @@ class DimplexEnergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data = await self.api.async_get_energy_for_hubs(hub_ids)
         except InvalidAuth as exception:
             _LOGGER.warning("Authentication expired during energy poll — triggering reauth")
+            async_create_reauth_issue(self.hass, self._entry.entry_id)
             self._entry.async_start_reauth(self.hass)
             raise UpdateFailed("Authentication expired") from exception
         except CannotConnect as exception:
@@ -292,7 +314,17 @@ class DimplexEnergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed() from exception
 
         _persist_tokens(self.hass, self._entry, self.api)
+        async_delete_reauth_issue(self.hass, self._entry.entry_id)
         self._adapt_interval(data)
+        if self._energy_is_empty(data):
+            self._empty_successes += 1
+        else:
+            self._empty_successes = 0
+        async_update_empty_energy_issue(
+            self.hass,
+            self._entry.entry_id,
+            empty=self._empty_successes >= ENERGY_EMPTY_BACKOFF_THRESHOLD,
+        )
         return data
 
 
@@ -328,6 +360,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> 
     unloaded = await hass.config_entries.async_unload_platforms(entry, runtime.platforms)
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id)
+        await async_unload_services(hass)
+        async_delete_reauth_issue(hass, entry.entry_id)
+        async_update_empty_energy_issue(hass, entry.entry_id, empty=False)
+        async_update_empty_overview_issue(hass, entry.entry_id, empty=False)
     return unloaded
 
 

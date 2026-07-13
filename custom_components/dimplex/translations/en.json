@@ -71,6 +71,20 @@
       }
     }
   },
+  "issues": {
+    "reauth_required": {
+      "title": "Dimplex Hub needs reauthentication",
+      "description": "The cloud session expired or was rejected. Open the integration and complete reauthentication (email/password or auth code)."
+    },
+    "empty_energy_season": {
+      "title": "No energy telemetry this season",
+      "description": "Energy polls succeed but return no history points. This is common in summer when heaters are idle. Sensors stay unavailable until the cloud reports daily kWh again."
+    },
+    "empty_overview": {
+      "title": "All appliances unavailable",
+      "description": "The hub was found but appliance overview is empty. Check power, network, and the official Dimplex app."
+    }
+  },
   "entity": {
     "sensor": {
       "room_temperature": { "name": "Room temperature" },
