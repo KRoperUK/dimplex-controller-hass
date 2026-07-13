@@ -35,10 +35,41 @@
       "user": {
         "data": {
           "binary_sensor": "Binær sensor aktivert",
+          "climate": "Klima aktivert",
           "sensor": "Sensor aktivert",
-          "switch": "Bryter aktivert"
+          "switch": "Bryter aktivert",
+          "status_interval": "Statusintervall (sekunder)",
+          "energy_interval": "Energiintervall (sekunder)"
         }
       }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "room_temperature": { "name": "Romtemperatur" },
+      "target_temperature": { "name": "Måltemperatur" },
+      "boost_temperature": { "name": "Boost-temperatur" },
+      "away_temperature": { "name": "Borte-temperatur" },
+      "setback_temperature": { "name": "Senketemperatur" },
+      "error_code": { "name": "Feilkode" },
+      "warning_code": { "name": "Advarselskode" },
+      "last_telem": { "name": "Siste telemetri" },
+      "rated_power": { "name": "Nominell effekt" },
+      "charge_capacity": { "name": "Ladekapasitet" },
+      "energy_lifetime": { "name": "Energi totalt" },
+      "energy_today": { "name": "Energi i dag" },
+      "energy_t2_lifetime": { "name": "Energi T2 totalt" },
+      "energy_t2_today": { "name": "Energi T2 i dag" }
+    },
+    "binary_sensor": {
+      "comfort": { "name": "Komfort" },
+      "open_window": { "name": "Åpent vindu" },
+      "setback": { "name": "Senking" },
+      "connected": { "name": "Tilkoblet" }
+    },
+    "switch": {
+      "ecostart": { "name": "EcoStart" },
+      "open_window_detection": { "name": "Deteksjon av åpent vindu" }
     }
   }
 }

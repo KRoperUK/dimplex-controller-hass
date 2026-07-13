@@ -4,26 +4,40 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.entity import EntityDescription
+from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
 from .const import DOMAIN
 
 
-class DimplexEntity(CoordinatorEntity):
+class DimplexEntity(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]):
     """Shared entity behavior for status-backed entities."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator, config_entry, appliance_row: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+        description: EntityDescription | None = None,
+        *,
+        unique_id_suffix: str | None = None,
+    ) -> None:
         super().__init__(coordinator)
         self.config_entry = config_entry
         self._appliance_row = appliance_row
         self._appliance = appliance_row["appliance"]
         self._hub = appliance_row["hub"]
         self._zone = appliance_row["zone"]
+        if description is not None:
+            self.entity_description = description
+            suffix = unique_id_suffix if unique_id_suffix is not None else description.key
+            self._attr_unique_id = f"{config_entry.entry_id}_{self._appliance.ApplianceId}_{suffix}"
 
     @property
-    def _status(self):
+    def _status(self) -> Any:
         """Return current appliance status from coordinator snapshot."""
         data = self.coordinator.data or {}
         for row in data.get("appliances", []):
@@ -39,12 +53,7 @@ class DimplexEntity(CoordinatorEntity):
         return self._status is not None
 
     @property
-    def unique_id(self):
-        """Return a unique ID to use for this entity."""
-        return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}"
-
-    @property
-    def device_info(self):
+    def device_info(self) -> dict[str, Any]:
         """Return appliance device registry metadata.
 
         The Dimplex cloud does not expose a local IP/MAC for radiators; the
@@ -55,7 +64,7 @@ class DimplexEntity(CoordinatorEntity):
         if appliance_type and model and appliance_type not in model:
             model = f"{appliance_type} {model}"
 
-        info = {
+        info: dict[str, Any] = {
             "identifiers": {(DOMAIN, self._appliance.ApplianceId)},
             "name": self._appliance.FriendlyName,
             "manufacturer": "Dimplex",
