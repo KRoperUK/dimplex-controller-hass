@@ -18,6 +18,8 @@ This guide walks you through installing and configuring the Dimplex Hub integrat
 4. Restart Home Assistant.
 5. Go to **Settings** > **Devices & Services** > **Add Integration** and search for **Dimplex Hub**.
 
+Install the **stable** channel for everyday use. Pre-releases (`vX.Y.Z-rc.N` release candidates and `vX.Y.Z-pr.*` PR builds) are optional for testers — enable them in HACS only if you intend to dogfood unreleased code. See [Pre-releases and update entity](troubleshooting.md#hacs-shows-an-update-after-installing-a-pre-release).
+
 ### Manual installation
 
 1. Open your Home Assistant configuration directory.

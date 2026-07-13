@@ -110,6 +110,26 @@ Metered appliances only report energy data when they are actively consuming powe
 2. Ensure Home Assistant has write access to the `custom_components` directory.
 3. Restart Home Assistant after the update completes.
 
+### HACS shows an update after installing a pre-release
+
+**Symptom:** You installed a development build (for example `3.0.0-rc.2` or a PR pre-release). HACS or the Home Assistant update entity still shows an “update” to an older **stable** tag (for example `v2.0.0`), sometimes with restart-required messaging.
+
+**What is going on:**
+
+- **Stable** installs use exact tags like `vX.Y.Z` (release-please).
+- **Main release candidates** use semver pre-release tags `vX.Y.Z-rc.N` with matching `manifest.json` / `const.VERSION` (`X.Y.Z-rc.N`).
+- **PR builds** use `vX.Y.Z-pr.P.R` with version `X.Y.Z-pr.P.<shortsha>`.
+- Pre-release versions sort **above** the previous stable and **below** the final `X.Y.Z`.
+
+**Steps to resolve:**
+
+1. If you want the pre-release: enable **pre-releases / beta** for this repository in HACS so “latest” tracks newer RCs instead of only stable. The update entity should not demand a downgrade to an older stable when comparison is correct.
+2. If you want production stability: reinstall the latest **stable** release from HACS (or [GitHub Releases](https://github.com/kroperuk/dimplex-controller-hass/releases)) and disable pre-releases.
+3. When the real `vX.Y.Z` ships, updating from `X.Y.Z-rc.N` to stable is expected and correct.
+4. PR pre-releases may be deleted when the PR closes; do not rely on them long-term.
+
+Maintainers can also track branch `dev` (force-updated to the latest **main** RC tree only). Prefer tagged pre-releases for HACS installs.
+
 ## Log analysis
 
 ### Where to find logs

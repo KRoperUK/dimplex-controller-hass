@@ -231,6 +231,7 @@ Key points:
 - Use **Conventional Commits** (`feat:`, `fix:`, `chore:`, etc.) — this drives the automated changelog and release process.
 - Run `ruff check`, `ruff format --check` and `pytest` locally before pushing.
 - Pre-commit hooks are available — run `pre-commit install` once.
+- CI publishes pre-releases as semver tags (`vX.Y.Z-rc.N` on main, `vX.Y.Z-pr.P.R` for PRs) with matching `manifest` versions; stable remains `vX.Y.Z`. See [docs/advanced.md](docs/advanced.md#pre-release-dev-builds).
 
 ## Credits
 

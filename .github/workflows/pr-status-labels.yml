@@ -223,16 +223,16 @@ jobs:
             desired+=("needs-attention")
           fi
 
-          # dev-release-cut: a dev-* pre-release exists whose notes mention this PR.
-          # Branch-style tags look like dev-<branch>-v*; main RCs are dev-vX.Y.Z-rc.N.
-          # Prefer matching the PR number in release notes; fall back to branch name in tag.
+          # dev-release-cut: a pre-release exists for this PR.
+          # Current tags: vX.Y.Z-pr.<PR>.<run_id>
+          # Legacy tags:  dev-vX.Y.Z-<branch>-<run_id>
+          # Prefer tag match; fall back to release notes "PR #<n>".
           branch_slug=$(echo "$head_ref" | tr '/_' '-' | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9-]+/-/g; s/^-+//; s/-+$//')
           if gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,isPrerelease,name \
             --jq '.[] | select(.isPrerelease) | .tagName' 2>/dev/null \
-            | grep -Eiq "(^dev-.*pr-?${PR_NUMBER}|(^|-)dev-${branch_slug}-|^dev-.*-pr${PR_NUMBER})"; then
+            | grep -Eiq "(^v[0-9]+\\.[0-9]+\\.[0-9]+-pr\\.${PR_NUMBER}\\.|^(dev-)?v[0-9]+\\.[0-9]+\\.[0-9]+-${branch_slug}-|^dev-.*-pr${PR_NUMBER})"; then
             desired+=("dev-release-cut")
           else
-            # Inspect recent pre-release notes for "PR #<n>" (what ci.yml writes).
             if gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName,isPrerelease \
               --jq '.[] | select(.isPrerelease) | .tagName' 2>/dev/null \
               | while read -r tag; do
