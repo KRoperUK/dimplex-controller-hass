@@ -249,6 +249,19 @@ class DimplexApiClient:
         except DimplexApiError as exception:
             raise CannotConnect from exception
 
+    async def async_get_schedule(self, hub_id: str, appliance_id: str) -> Any:
+        """Return timer mode settings for an appliance (read-only schedule)."""
+        try:
+            if hasattr(self._client, "get_schedule"):
+                return await self._client.get_schedule(hub_id, appliance_id)
+            return await self._client.get_appliance_features(hub_id, appliance_id)
+        except DimplexAuthError as exception:
+            raise InvalidAuth from exception
+        except DimplexConnectionError as exception:
+            raise CannotConnect from exception
+        except DimplexApiError as exception:
+            raise CannotConnect from exception
+
     async def async_set_boost(
         self,
         hub_id: str,

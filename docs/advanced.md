@@ -35,6 +35,14 @@ Metered appliances expose `SensorDeviceClass.ENERGY` sensors in **kWh**:
 
 Changing options reloads the integration.
 
+## Multi-account
+
+See [multi-config.md](multi-config.md).
+
+## Blueprints
+
+Automation blueprints live under `blueprints/automation/dimplex/` in the repository (boost if cold, open-window notify, away when everyone leaves).
+
 ## Automations
 
 ### Boost when temperature drops

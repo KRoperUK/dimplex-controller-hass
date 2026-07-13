@@ -1,0 +1,38 @@
+blueprint:
+  name: Dimplex notify on open window
+  description: Send a notification when open-window detection is active.
+  domain: automation
+  input:
+    open_window_entity:
+      name: Open window binary sensor
+      selector:
+        entity:
+          domain: binary_sensor
+          integration: dimplex
+    notify_service:
+      name: Notify service (e.g. notify.mobile_app_phone)
+      selector:
+        text:
+    title:
+      name: Notification title
+      default: Dimplex open window
+      selector:
+        text:
+    message:
+      name: Notification message
+      default: Open window detected on a Dimplex heater.
+      selector:
+        text:
+
+trigger:
+  - platform: state
+    entity_id: !input open_window_entity
+    to: "on"
+
+action:
+  - service: !input notify_service
+    data:
+      title: !input title
+      message: !input message
+
+mode: single

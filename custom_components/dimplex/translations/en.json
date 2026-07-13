@@ -85,7 +85,9 @@
       "energy_lifetime": { "name": "Energy lifetime" },
       "energy_today": { "name": "Energy today" },
       "energy_t2_lifetime": { "name": "Energy T2 lifetime" },
-      "energy_t2_today": { "name": "Energy T2 today" }
+      "energy_t2_today": { "name": "Energy T2 today" },
+      "schedule": { "name": "Schedule" },
+      "zone": { "name": "Zone" }
     },
     "binary_sensor": {
       "comfort": { "name": "Comfort" },

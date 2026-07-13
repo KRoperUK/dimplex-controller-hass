@@ -75,6 +75,14 @@ Energy data is **daily kWh history** from the cloud, not live watts. Sensors are
 | EcoStart              | Toggle EcoStart energy-saving mode.                                           |
 | Open window detection | Enable/disable open-window detection (control; pairs with the binary sensor). |
 
+## Schedule (read-only)
+
+Diagnostic **Schedule** sensor per appliance: native value is timer mode (`manual`, `user_timer`, `frost_protection`, `off`). Attributes include `periods` (day/start/end/temperature). Write path is deferred (library schedule helpers).
+
+## Zones
+
+Zone devices appear in the device registry (`via` hub; appliances `via` zone when zone id is known). A disabled diagnostic zone sensor anchors each zone device.
+
 ## Unique IDs
 
 Unique IDs are derived from the config entry id and the cloud appliance (or hub) id, plus a stable suffix (`_climate`, `_energy`, `_ecostart`, …). They remain stable across renames in the UI.

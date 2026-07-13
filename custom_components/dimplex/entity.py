@@ -65,6 +65,9 @@ class DimplexEntity(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]):
         if appliance_type and model and appliance_type not in model:
             model = f"{appliance_type} {model}"
 
+        zone_id = getattr(self._zone, "ZoneId", None)
+        via: tuple[str, str] = (DOMAIN, f"zone_{zone_id}") if zone_id else (DOMAIN, self._hub.HubId)
+
         info: DeviceInfo = {
             "identifiers": {(DOMAIN, self._appliance.ApplianceId)},
             "name": self._appliance.FriendlyName,
@@ -72,7 +75,7 @@ class DimplexEntity(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]):
             "model": model,
             "serial_number": self._appliance.ApplianceId,
             "suggested_area": self._zone.ZoneName,
-            "via_device": (DOMAIN, self._hub.HubId),
+            "via_device": via,
         }
         firmware = getattr(self._appliance, "FirmwareVersion", None)
         if firmware:
