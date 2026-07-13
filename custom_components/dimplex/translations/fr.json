@@ -65,7 +65,8 @@
           "sensor": "Capteur activé",
           "switch": "Interrupteur activé",
           "status_interval": "Intervalle de statut (secondes)",
-          "energy_interval": "Intervalle d'énergie (secondes)"
+          "energy_interval": "Intervalle d'énergie (secondes)",
+          "boost_duration": "Durée du boost (minutes)"
         }
       }
     }
@@ -116,6 +117,12 @@
       },
       "energy_t2_today": {
         "name": "Énergie T2 aujourd'hui"
+      },
+      "schedule": {
+        "name": "Programme"
+      },
+      "zone": {
+        "name": "Zone"
       }
     },
     "binary_sensor": {
@@ -139,6 +146,20 @@
       "open_window_detection": {
         "name": "Détection fenêtre ouverte"
       }
+    }
+  },
+  "issues": {
+    "reauth_required": {
+      "title": "Le hub Dimplex nécessite une réauthentification",
+      "description": "La session cloud a expiré ou a été refusée. Ouvrez l'intégration et terminez la réauthentification (e-mail/mot de passe ou code d'authentification)."
+    },
+    "empty_energy_season": {
+      "title": "Pas de télémétrie d'énergie cette saison",
+      "description": "Les sondages d'énergie réussissent mais ne renvoient aucun point d'historique. C'est courant en été lorsque les chauffages sont inactifs. Les capteurs restent indisponibles jusqu'à ce que le cloud rapporte à nouveau les kWh quotidiens."
+    },
+    "empty_overview": {
+      "title": "Tous les appareils sont indisponibles",
+      "description": "Le hub a été trouvé mais la vue d'ensemble des appareils est vide. Vérifiez l'alimentation, le réseau et l'application officielle Dimplex."
     }
   }
 }

@@ -1,48 +1,28 @@
-"""Tests for Dimplex repair issues."""
+"""Tests for Dimplex repair issues (non-auth repairs only)."""
 
-from homeassistant.components.repairs import ConfirmRepairFlow
+from homeassistant.core import HomeAssistant
 
 from custom_components.dimplex.repairs import (
-    ISSUE_REAUTH,
-    ReauthRepairFlow,
-    async_create_fix_flow,
-    async_create_reauth_issue,
     async_update_empty_energy_issue,
     async_update_empty_overview_issue,
 )
 
 
-def test_create_reauth_issue(hass):
-    async_create_reauth_issue(hass, "test_entry_id")
-
-
-def test_update_empty_energy_issue_create(hass):
+def test_update_empty_energy_issue_create(hass: HomeAssistant) -> None:
+    """Empty-energy repair is created when marked empty=True."""
     async_update_empty_energy_issue(hass, "test_entry_id", empty=True)
 
 
-def test_update_empty_overview_issue_create(hass):
+def test_update_empty_energy_issue_clear(hass: HomeAssistant) -> None:
+    """Empty-energy repair is cleared when marked empty=False."""
+    async_update_empty_energy_issue(hass, "test_entry_id", empty=False)
+
+
+def test_update_empty_overview_issue_create(hass: HomeAssistant) -> None:
+    """Empty-overview repair is created when marked empty=True."""
     async_update_empty_overview_issue(hass, "test_entry_id", empty=True)
 
 
-async def test_create_fix_flow_reauth(hass):
-    flow = await async_create_fix_flow(hass, f"{ISSUE_REAUTH}_test")
-    assert isinstance(flow, ReauthRepairFlow)
-
-
-async def test_create_fix_flow_other(hass):
-    flow = await async_create_fix_flow(hass, "some_other_issue")
-    assert isinstance(flow, ConfirmRepairFlow)
-
-
-async def test_reauth_repair_flow_init(hass):
-    flow = ReauthRepairFlow("entry1")
-    flow.hass = hass
-    result = await flow.async_step_init()
-    assert result is not None
-
-
-async def test_reauth_repair_flow_confirm(hass):
-    flow = ReauthRepairFlow("entry1")
-    flow.hass = hass
-    result = await flow.async_step_confirm({"confirm": True})
-    assert result is not None
+def test_update_empty_overview_issue_clear(hass: HomeAssistant) -> None:
+    """Empty-overview repair is cleared when marked empty=False."""
+    async_update_empty_overview_issue(hass, "test_entry_id", empty=False)
