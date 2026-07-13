@@ -38,6 +38,18 @@ jobs:
               - 'requirements_test.txt'
               - 'hacs.json'
               - '.github/workflows/ci.yml'
+              - 'scripts/**'
+              - '.github/workflows/hacs-release-asset.yml'
+
+  hacs_zip_smoke:
+    needs: changes
+    if: needs.changes.outputs.component == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Package and smoke-test HACS zip
+        run: bash scripts/test-hacs-zip.sh
 
   conventional_commits:
     runs-on: ubuntu-latest
