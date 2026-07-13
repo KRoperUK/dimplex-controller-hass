@@ -35,7 +35,9 @@ cp custom_components/dimplex/const.py /tmp/dimplex-const.bak
 trap 'mv /tmp/dimplex-manifest.bak custom_components/dimplex/manifest.json
       mv /tmp/dimplex-const.bak custom_components/dimplex/const.py' EXIT
 
-bash scripts/write-dev-version.sh 3.1.0-rc.4
+# write-dev-version must not pollute stdout (used in SHA-capture pipelines).
+write_out=$(bash scripts/write-dev-version.sh 3.1.0-rc.4 2>/dev/null)
+assert_eq "write-dev-version stdout empty" "" "$write_out"
 mv=$(jq -r .version custom_components/dimplex/manifest.json)
 cv=$(sed -n 's/^VERSION = "\([^"]*\)".*/\1/p' custom_components/dimplex/const.py | head -1)
 assert_eq "manifest version" "3.1.0-rc.4" "$mv"

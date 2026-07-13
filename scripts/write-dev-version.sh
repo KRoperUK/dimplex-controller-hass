@@ -40,4 +40,5 @@ else
   exit 2
 fi
 
-echo "Wrote version ${VERSION} to ${MANIFEST} and ${CONST}"
+# stderr only — callers may capture stdout (e.g. synthetic-commit SHA pipeline).
+echo "Wrote version ${VERSION} to ${MANIFEST} and ${CONST}" >&2

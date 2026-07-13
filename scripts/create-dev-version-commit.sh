@@ -25,5 +25,6 @@ fi
 
 # Bot-only synthetic commit (version files); skip hooks so local pre-commit
 # pins cannot block CI when hooks are not installed the same way.
-git commit --no-verify -m "chore(dev): set version ${VERSION}"
+# --quiet keeps stdout clean: only the SHA below is emitted for capture.
+git commit --quiet --no-verify -m "chore(dev): set version ${VERSION}"
 git rev-parse HEAD
