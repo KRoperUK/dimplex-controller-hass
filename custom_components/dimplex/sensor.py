@@ -397,6 +397,8 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
 
     _attr_has_entity_name = True
     entity_description: DimplexEnergySensorEntityDescription
+    _summary_cached: Any | None = None
+    _summary_ts: Any | None = None
 
     def __init__(
         self,
