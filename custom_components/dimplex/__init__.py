@@ -8,11 +8,13 @@ https://github.com/kroperuk/dimplex-controller-hass
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
@@ -53,15 +55,15 @@ class DimplexRuntimeData:
     api: DimplexApiClient
     status: DataUpdateCoordinator[dict[str, Any]]
     energy: DataUpdateCoordinator[dict[str, Any]]
-    platforms: list
+    platforms: list[Platform]
 
 
-async def async_setup(hass: HomeAssistant, config: ConfigType):
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up this integration using YAML is not supported."""
     return True
 
 
-def _interval_from_options(options: dict, key: str, default: timedelta) -> timedelta:
+def _interval_from_options(options: Mapping[str, Any], key: str, default: timedelta) -> timedelta:
     """Read a seconds value from options, falling back to ``default``."""
     raw = options.get(key)
     if raw is None:
@@ -77,7 +79,7 @@ def _interval_from_options(options: dict, key: str, default: timedelta) -> timed
     return timedelta(seconds=seconds)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry):
+async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> bool:
     """Set up this integration using UI."""
     if hass.data.get(DOMAIN) is None:
         hass.data.setdefault(DOMAIN, {})

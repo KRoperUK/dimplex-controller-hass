@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
@@ -53,7 +54,7 @@ class DimplexEntity(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]):
         return self._status is not None
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return appliance device registry metadata.
 
         The Dimplex cloud does not expose a local IP/MAC for radiators; the
@@ -64,7 +65,7 @@ class DimplexEntity(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]):
         if appliance_type and model and appliance_type not in model:
             model = f"{appliance_type} {model}"
 
-        info: dict[str, Any] = {
+        info: DeviceInfo = {
             "identifiers": {(DOMAIN, self._appliance.ApplianceId)},
             "name": self._appliance.FriendlyName,
             "manufacturer": "Dimplex",

@@ -18,6 +18,7 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfEnergy, UnitOfPower, UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
@@ -278,13 +279,13 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         self._attr_unique_id = f"{config_entry.entry_id}_{self._appliance.ApplianceId}_{description.key}"
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return appliance device registry metadata."""
         appliance_type = getattr(self._appliance, "ApplianceType", None)
         model = self._appliance.ApplianceModel
         if appliance_type and model and appliance_type not in str(model):
             model = f"{appliance_type} {model}"
-        info: dict[str, Any] = {
+        info: DeviceInfo = {
             "identifiers": {(DOMAIN, self._appliance.ApplianceId)},
             "name": self._appliance.FriendlyName,
             "manufacturer": "Dimplex",
@@ -302,7 +303,8 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
     def _energy_points(self) -> list[tuple[datetime | None, float]]:
         energy = (self.coordinator.data or {}).get("energy") or {}
         hub_points = energy.get(self._hub.HubId) or {}
-        return hub_points.get(self.entity_description.register, {}).get(self._appliance.ApplianceId, [])
+        points = hub_points.get(self.entity_description.register, {}).get(self._appliance.ApplianceId, [])
+        return list(points)
 
     def _local_tz(self) -> Any:
         try:
@@ -310,7 +312,7 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         except Exception:
             return ZoneInfo("UTC")
 
-    def _summary(self) -> Any:
+    def _summary(self) -> Any | None:
         points = self._energy_points
         if not points:
             return None
@@ -335,7 +337,7 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         summary = self._summary()
         if summary is None or summary.point_count == 0:
             return None
-        return summary.total_kwh
+        return float(summary.total_kwh)
 
     @property
     def last_reset(self) -> datetime | None:
@@ -343,7 +345,8 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         summary = self._summary()
         if summary is None:
             return None
-        return summary.start
+        start = summary.start
+        return start if isinstance(start, datetime) else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

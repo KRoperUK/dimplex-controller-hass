@@ -13,6 +13,7 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -142,9 +143,9 @@ class DimplexHubConnectedBinarySensor(DimplexEntity, BinarySensorEntity):
         return HUB_CONNECTED_DESCRIPTION.is_on_fn(self._hub)
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return hub device registry metadata."""
-        info: dict[str, Any] = {
+        info: DeviceInfo = {
             "identifiers": {(DOMAIN, self._hub.HubId)},
             "name": getattr(self._hub, "FriendlyName", None) or self._hub.HubId,
             "manufacturer": "Dimplex",
