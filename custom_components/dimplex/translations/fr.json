@@ -53,6 +53,7 @@
     },
     "abort": {
       "single_instance_allowed": "Une seule instance est autorisée.",
+      "already_configured": "Ce compte Dimplex est déjà configuré.",
       "reauth_successful": "La ré-authentification a réussi."
     }
   },

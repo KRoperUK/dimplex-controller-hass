@@ -48,13 +48,14 @@ async def test_validate_connection_success(hass):
         patch.object(
             api._client,
             "get_user_context",
-            new=AsyncMock(return_value=SimpleNamespace(Name="Test User")),
+            new=AsyncMock(return_value=SimpleNamespace(Id="acct-1", Name="Test User")),
         ),
     ):
         api._client.auth._refresh_token = "refresh"
         token_data = await api.async_validate_connection()
 
     assert token_data["refresh_token"] == "refresh"
+    assert api.account_id == "acct-1"
 
 
 async def test_validate_connection_invalid_auth(hass):
@@ -283,7 +284,7 @@ async def test_exchange_code_success(hass):
         patch.object(
             api._client,
             "get_user_context",
-            new=AsyncMock(return_value=SimpleNamespace(Name="Test User")),
+            new=AsyncMock(return_value=SimpleNamespace(Id="acct-2", Name="Test User")),
         ),
     ):
         api._client.auth._access_token = "access"
@@ -293,6 +294,7 @@ async def test_exchange_code_success(hass):
 
     assert token_data["access_token"] == "access"
     assert token_data["refresh_token"] == "refresh"
+    assert api.account_id == "acct-2"
 
 
 # ---------------------------------------------------------------------------

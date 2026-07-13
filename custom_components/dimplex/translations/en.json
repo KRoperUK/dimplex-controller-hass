@@ -53,6 +53,7 @@
     },
     "abort": {
       "single_instance_allowed": "Only a single instance is allowed.",
+      "already_configured": "This Dimplex account is already configured.",
       "reauth_successful": "Re-authentication was successful."
     }
   },
@@ -87,33 +88,79 @@
   },
   "entity": {
     "sensor": {
-      "room_temperature": { "name": "Room temperature" },
-      "target_temperature": { "name": "Target temperature" },
-      "boost_temperature": { "name": "Boost temperature" },
-      "away_temperature": { "name": "Away temperature" },
-      "setback_temperature": { "name": "Setback temperature" },
-      "error_code": { "name": "Error code" },
-      "warning_code": { "name": "Warning code" },
-      "last_telem": { "name": "Last telemetry" },
-      "rated_power": { "name": "Rated power" },
-      "charge_capacity": { "name": "Charge capacity" },
-      "estimated_power": { "name": "Estimated power" },
-      "energy_lifetime": { "name": "Energy lifetime" },
-      "energy_today": { "name": "Energy today" },
-      "energy_t2_lifetime": { "name": "Energy T2 lifetime" },
-      "energy_t2_today": { "name": "Energy T2 today" },
-      "schedule": { "name": "Schedule" },
-      "zone": { "name": "Zone" }
+      "room_temperature": {
+        "name": "Room temperature"
+      },
+      "target_temperature": {
+        "name": "Target temperature"
+      },
+      "boost_temperature": {
+        "name": "Boost temperature"
+      },
+      "away_temperature": {
+        "name": "Away temperature"
+      },
+      "setback_temperature": {
+        "name": "Setback temperature"
+      },
+      "error_code": {
+        "name": "Error code"
+      },
+      "warning_code": {
+        "name": "Warning code"
+      },
+      "last_telem": {
+        "name": "Last telemetry"
+      },
+      "rated_power": {
+        "name": "Rated power"
+      },
+      "charge_capacity": {
+        "name": "Charge capacity"
+      },
+      "estimated_power": {
+        "name": "Estimated power"
+      },
+      "energy_lifetime": {
+        "name": "Energy lifetime"
+      },
+      "energy_today": {
+        "name": "Energy today"
+      },
+      "energy_t2_lifetime": {
+        "name": "Energy T2 lifetime"
+      },
+      "energy_t2_today": {
+        "name": "Energy T2 today"
+      },
+      "schedule": {
+        "name": "Schedule"
+      },
+      "zone": {
+        "name": "Zone"
+      }
     },
     "binary_sensor": {
-      "comfort": { "name": "Comfort" },
-      "open_window": { "name": "Open window" },
-      "setback": { "name": "Setback" },
-      "connected": { "name": "Connected" }
+      "comfort": {
+        "name": "Comfort"
+      },
+      "open_window": {
+        "name": "Open window"
+      },
+      "setback": {
+        "name": "Setback"
+      },
+      "connected": {
+        "name": "Connected"
+      }
     },
     "switch": {
-      "ecostart": { "name": "EcoStart" },
-      "open_window_detection": { "name": "Open window detection" }
+      "ecostart": {
+        "name": "EcoStart"
+      },
+      "open_window_detection": {
+        "name": "Open window detection"
+      }
     }
   }
 }

@@ -65,6 +65,7 @@ class DimplexApiClient:
         self._session = session
         self._username = username
         self._password = password
+        self._account_id: str | None = None
         self._client = DimplexControl(
             session=session,
             token_bundle=TokenBundle(
@@ -78,6 +79,16 @@ class DimplexApiClient:
     def token_data(self) -> dict[str, Any]:
         """Return current auth token payload for persistence."""
         return self._client.export_tokens().as_dict()
+
+    @property
+    def account_id(self) -> str | None:
+        """Return the stable Dimplex account id, if a user context was fetched.
+
+        Populated by :meth:`async_validate_connection` / :meth:`async_exchange_code`.
+        Used by the config flow as the config-entry unique id so the same
+        account cannot be added twice.
+        """
+        return self._account_id
 
     @staticmethod
     def _extract_expiry(access_token: str) -> float:
@@ -138,7 +149,8 @@ class DimplexApiClient:
         """Validate credentials/token and return token payload."""
         try:
             await self.async_initialize()
-            await self._client.get_user_context()
+            context = await self._client.get_user_context()
+            self._account_id = getattr(context, "Id", None)
         except DimplexAuthError as exception:
             raise InvalidAuth from exception
         except DimplexConnectionError as exception:
@@ -152,7 +164,8 @@ class DimplexApiClient:
         """Exchange auth code for tokens and validate the session."""
         try:
             await self._client.auth.exchange_code(code)
-            await self._client.get_user_context()
+            context = await self._client.get_user_context()
+            self._account_id = getattr(context, "Id", None)
         except DimplexAuthError as exception:
             raise InvalidAuth from exception
         except DimplexConnectionError as exception:

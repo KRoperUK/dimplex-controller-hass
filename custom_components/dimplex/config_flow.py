@@ -44,22 +44,28 @@ def _extract_auth_code(raw_input: str) -> str:
     return raw_input.strip()
 
 
-async def validate_auth_code(hass: HomeAssistant, auth_input: str) -> dict[str, Any]:
-    """Exchange auth code and validate user session."""
+async def validate_auth_code(hass: HomeAssistant, auth_input: str) -> tuple[dict[str, Any], str | None]:
+    """Exchange auth code and validate user session.
+
+    Returns ``(token_data, account_id)`` where ``account_id`` is the stable
+    Dimplex account id used as the config-entry unique id.
+    """
     code = _extract_auth_code(auth_input)
     if not code:
         raise InvalidAuth
 
     session = async_create_clientsession(hass)
     client = DimplexApiClient(session=session)
-    return await client.async_exchange_code(code)
+    token_data = await client.async_exchange_code(code)
+    return token_data, client.account_id
 
 
-async def validate_credentials(hass: HomeAssistant, username: str, password: str) -> dict[str, Any]:
-    """Validate username/password login and return token details."""
+async def validate_credentials(hass: HomeAssistant, username: str, password: str) -> tuple[dict[str, Any], str | None]:
+    """Validate username/password login and return ``(token_data, account_id)``."""
     session = async_create_clientsession(hass)
     client = DimplexApiClient(session, None, None, 0, username, password)
-    return await client.async_validate_connection()
+    token_data = await client.async_validate_connection()
+    return token_data, client.account_id
 
 
 class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -111,7 +117,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 self._errors["base"] = "invalid_auth"
             else:
                 try:
-                    token_data = await validate_credentials(self.hass, username, password)
+                    token_data, account_id = await validate_credentials(self.hass, username, password)
                 except InvalidAuth:
                     self._errors["base"] = "invalid_auth"
                 except CannotConnect:
@@ -119,6 +125,9 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 except Exception:
                     self._errors["base"] = "unknown"
                 else:
+                    if account_id:
+                        await self.async_set_unique_id(account_id)
+                        self._abort_if_unique_id_configured()
                     return self.async_create_entry(
                         title=NAME,
                         data={
@@ -155,7 +164,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 self._errors["base"] = "invalid_auth"
             else:
                 try:
-                    token_data = await validate_auth_code(self.hass, auth_code)
+                    token_data, account_id = await validate_auth_code(self.hass, auth_code)
                 except InvalidAuth:
                     self._errors["base"] = "invalid_auth"
                 except CannotConnect:
@@ -163,6 +172,9 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 except Exception:
                     self._errors["base"] = "unknown"
                 else:
+                    if account_id:
+                        await self.async_set_unique_id(account_id)
+                        self._abort_if_unique_id_configured()
                     return self.async_create_entry(
                         title=NAME,
                         data={
@@ -224,7 +236,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 self._errors["base"] = "invalid_auth"
             else:
                 try:
-                    token_data = await validate_credentials(self.hass, username, password)
+                    token_data, _ = await validate_credentials(self.hass, username, password)
                 except InvalidAuth:
                     self._errors["base"] = "invalid_auth"
                 except CannotConnect:
@@ -259,7 +271,7 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 self._errors["base"] = "invalid_auth"
             else:
                 try:
-                    token_data = await validate_auth_code(self.hass, auth_code)
+                    token_data, _ = await validate_auth_code(self.hass, auth_code)
                 except InvalidAuth:
                     self._errors["base"] = "invalid_auth"
                 except CannotConnect:

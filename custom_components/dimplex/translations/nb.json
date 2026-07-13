@@ -53,6 +53,7 @@
     },
     "abort": {
       "single_instance_allowed": "Denne integrasjonen kan kun konfigureres en gang.",
+      "already_configured": "Denne Dimplex-kontoen er allerede konfigurert.",
       "reauth_successful": "Re-autentisering var vellykket."
     }
   },
