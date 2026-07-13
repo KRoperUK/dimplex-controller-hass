@@ -1,0 +1,29 @@
+blueprint:
+  name: Dimplex away when everyone leaves
+  description: Set climate away preset when a person/group is not home.
+  domain: automation
+  input:
+    presence_entity:
+      name: Person or group entity
+      selector:
+        entity:
+    climate_entity:
+      name: Dimplex climate entity
+      selector:
+        entity:
+          domain: climate
+          integration: dimplex
+
+trigger:
+  - platform: state
+    entity_id: !input presence_entity
+    to: "not_home"
+
+action:
+  - service: climate.set_preset_mode
+    target:
+      entity_id: !input climate_entity
+    data:
+      preset_mode: away
+
+mode: single

@@ -23,6 +23,23 @@ from .const import ENERGY_REPORT_DAYS, ENERGY_REPORT_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
+# Primary register keys — never include T2 (off-peak T1 vs peak T2 stay separate).
+# Prefer library export when present (dimplex-controller ≥ fixed release).
+try:
+    from dimplex_controller import VALUE_KEY_T1 as _VALUE_KEY_T1
+except ImportError:  # pragma: no cover - older wheels
+    _VALUE_KEY_T1 = (
+        "t1",
+        "st",
+        "value",
+        "kwh",
+        "energy",
+        "consumption",
+        "energykwh",
+        "amount",
+        "v",
+    )
+
 
 class CannotConnect(Exception):
     """Error to indicate we cannot connect."""
@@ -249,6 +266,19 @@ class DimplexApiClient:
         except DimplexApiError as exception:
             raise CannotConnect from exception
 
+    async def async_get_schedule(self, hub_id: str, appliance_id: str) -> Any:
+        """Return timer mode settings for an appliance (read-only schedule)."""
+        try:
+            if hasattr(self._client, "get_schedule"):
+                return await self._client.get_schedule(hub_id, appliance_id)
+            return await self._client.get_appliance_features(hub_id, appliance_id)
+        except DimplexAuthError as exception:
+            raise InvalidAuth from exception
+        except DimplexConnectionError as exception:
+            raise CannotConnect from exception
+        except DimplexApiError as exception:
+            raise CannotConnect from exception
+
     async def async_set_boost(
         self,
         hub_id: str,
@@ -305,10 +335,16 @@ class DimplexApiClient:
     ) -> dict[str, dict[str, list[tuple[datetime | None, float]]]]:
         """Fetch the per-appliance energy telemetry report for a hub.
 
-        Returns a dict with ``t1`` and ``t2`` keys. Each maps appliance id to
-        normalised ``(timestamp, value)`` tuples. Empty lists are normal for
-        hubs without metered appliances or when heaters have not been running
-        *and* IncludePreviousPeriod returns nothing.
+        Returns a dict with separate ``t1`` and ``t2`` maps (never combined).
+        Each maps appliance id to normalised ``(timestamp, value)`` tuples.
+
+        T1 and T2 are independent dual-rate registers (T1 off-peak / cheaper,
+        T2 peak / more expensive). Do not sum them into a single total —
+        expose each series as its own sensor.
+
+        Empty lists are normal for hubs without metered appliances or when
+        heaters have not been running *and* IncludePreviousPeriod returns
+        nothing.
         """
         try:
             report = await self._client.get_tsi_energy_report(
@@ -332,7 +368,7 @@ class DimplexApiClient:
 
         return {
             "t1": {
-                appliance_id: parse_telemetry_points(points)
+                appliance_id: parse_telemetry_points(points, value_keys=_VALUE_KEY_T1)
                 for appliance_id, points in report.ApplianceTelemetryData.items()
             },
             "t2": {
