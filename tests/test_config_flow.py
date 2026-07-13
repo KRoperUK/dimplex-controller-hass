@@ -60,11 +60,14 @@ async def test_credentials_path_success(hass):
     # Step 2: submit credentials
     with patch(
         "custom_components.dimplex.config_flow.validate_credentials",
-        return_value={
-            "refresh_token": "rt",
-            "access_token": "at",
-            "expires_at": 123,
-        },
+        return_value=(
+            {
+                "refresh_token": "rt",
+                "access_token": "at",
+                "expires_at": 123,
+            },
+            "acct-1",
+        ),
     ) as mock_val:
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -76,6 +79,33 @@ async def test_credentials_path_success(hass):
     assert result["title"] == "Dimplex Hub"
     assert result["data"]["access_token"] == "at"
     assert result["data"]["refresh_token"] == "rt"
+
+
+async def test_credentials_duplicate_account_aborts(hass):
+    """A second entry for the same Dimplex account aborts as already_configured."""
+    existing = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="existing", unique_id="acct-1")
+    existing.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+
+    with patch(
+        "custom_components.dimplex.config_flow.validate_credentials",
+        return_value=(
+            {"refresh_token": "rt", "access_token": "at", "expires_at": 123},
+            "acct-1",
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CREDENTIALS,
+        )
+
+    assert result["type"] == data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
 
 
 async def test_auth_code_path_success(hass):
@@ -92,11 +122,14 @@ async def test_auth_code_path_success(hass):
     # Step 2: submit auth code
     with patch(
         "custom_components.dimplex.config_flow.validate_auth_code",
-        return_value={
-            "refresh_token": "rt",
-            "access_token": "at",
-            "expires_at": 123,
-        },
+        return_value=(
+            {
+                "refresh_token": "rt",
+                "access_token": "at",
+                "expires_at": 123,
+            },
+            "acct-1",
+        ),
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -217,11 +250,14 @@ async def test_reauth_credentials_success(hass):
 
     with patch(
         "custom_components.dimplex.config_flow.validate_credentials",
-        return_value={
-            "refresh_token": "new_rt",
-            "access_token": "new_at",
-            "expires_at": 456,
-        },
+        return_value=(
+            {
+                "refresh_token": "new_rt",
+                "access_token": "new_at",
+                "expires_at": 456,
+            },
+            "acct-1",
+        ),
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -257,11 +293,14 @@ async def test_reauth_code_success(hass):
 
     with patch(
         "custom_components.dimplex.config_flow.validate_auth_code",
-        return_value={
-            "refresh_token": "new_rt",
-            "access_token": "new_at",
-            "expires_at": 456,
-        },
+        return_value=(
+            {
+                "refresh_token": "new_rt",
+                "access_token": "new_at",
+                "expires_at": 456,
+            },
+            "acct-1",
+        ),
     ):
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"],
