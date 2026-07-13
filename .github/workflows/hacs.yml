@@ -1,0 +1,35 @@
+name: HACS
+
+# Validates the repository against HACS requirements before merge.
+# Fails if hacs.json, the integration directory, or any HACS-relevant file
+# stops matching HACS's published-validation rules (filename, structure,
+# archive presence, codeowners, etc.).
+#
+# This is a release-blocker because every release is published via HACS
+# zip_release; if HACS rejects the tree, installs break for end users.
+#
+# See https://hacs.xyz/docs/publish/action for the action's contract.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  hacs:
+    name: HACS repository validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: HACS Action
+        uses: hacs/action@22.5.0
+        with:
+          category: integration
+          # Keep the default validation surface; override only if HACS adds
+          # optional checks we want to opt into.
