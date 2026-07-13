@@ -462,15 +462,31 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
             return ZoneInfo("UTC")
 
     def _summary(self) -> Any | None:
+        """Memoised energy summary — computed once per coordinator update cycle.
+
+        The summary is used by available, native_value, last_reset, and
+        extra_state_attributes. Computing summarise_energy multiple times per
+        state read is wasted work for accounts with long telemetry histories.
+        """
+        # Use the coordinator's last_updated timestamp as the cache key.
+        last_updated = getattr(self.coordinator, "last_update_success_time", None)
+        if last_updated is not None and last_updated == getattr(self, "_summary_ts", None):
+            return self._summary_cached
+
         points = self._energy_points
         if not points:
-            return None
-        return summarise_energy(
-            points,
-            mode=self.entity_description.mode,  # type: ignore[arg-type]
-            now=dt_util.now(),
-            tz=self._local_tz(),
-        )
+            result = None
+        else:
+            result = summarise_energy(
+                points,
+                mode=self.entity_description.mode,  # type: ignore[arg-type]
+                now=dt_util.now(),
+                tz=self._local_tz(),
+            )
+
+        self._summary_cached = result
+        self._summary_ts = last_updated
+        return result
 
     @property
     def available(self) -> bool:
