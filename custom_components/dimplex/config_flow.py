@@ -15,12 +15,14 @@ from .api import CannotConnect, DimplexApiClient, InvalidAuth
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_AUTH_CODE,
+    CONF_BOOST_DURATION,
     CONF_ENERGY_INTERVAL,
     CONF_EXPIRES_AT,
     CONF_PASSWORD,
     CONF_REFRESH_TOKEN,
     CONF_STATUS_INTERVAL,
     CONF_USERNAME,
+    DEFAULT_BOOST_DURATION,
     DEFAULT_ENERGY_INTERVAL,
     DEFAULT_STATUS_INTERVAL,
     DOMAIN,
@@ -330,6 +332,12 @@ class DimplexOptionsFlowHandler(config_entries.OptionsFlow):
                 default=int(self.options.get(CONF_ENERGY_INTERVAL, DEFAULT_ENERGY_INTERVAL.total_seconds())),
             )
         ] = vol.All(vol.Coerce(int), vol.Range(min=60, max=86400))
+        schema[
+            vol.Optional(
+                CONF_BOOST_DURATION,
+                default=int(self.options.get(CONF_BOOST_DURATION, DEFAULT_BOOST_DURATION)),
+            )
+        ] = vol.All(vol.Coerce(int), vol.Range(min=1, max=1440))
 
         return self.async_show_form(step_id="user", data_schema=vol.Schema(schema))
 
