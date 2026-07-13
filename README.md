@@ -1,13 +1,14 @@
 # Dimplex Hub
 
 [![GitHub Release](https://img.shields.io/github/release/kroperuk/dimplex-controller-hass.svg)](https://github.com/kroperuk/dimplex-controller-hass/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/KRoperUK/dimplex-controller-hass/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/KRoperUK/dimplex-controller-hass/actions/workflows/ci.yml)
 [![GitHub Activity](https://img.shields.io/github/commit-activity/y/kroperuk/dimplex-controller-hass.svg?style=for-the-badge)](https://github.com/kroperuk/dimplex-controller-hass/commits/main)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://hacs.xyz)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?style=for-the-badge)](https://github.com/pre-commit/pre-commit)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=for-the-badge)](https://github.com/astral-sh/ruff)
 [![Maintainer](https://img.shields.io/badge/maintainer-%40kroperuk-blue.svg?style=for-the-badge)](https://github.com/kroperuk)
-[![Buy me a coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge)](https://www.buymeacoffee.com/kroperuk)
+[![Buy me a coffee](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge)](https://buymeacoffee.com/kroperukc)
 [![Discord](https://img.shields.io/discord/330944238910963714.svg?style=for-the-badge)](https://discord.gg/Qa5fW2R)
 [![Community Forum](https://img.shields.io/badge/community-forum-brightgreen.svg?style=for-the-badge)](https://community.home-assistant.io/)
 [![HACS Install](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=kroperuk&repository=dimplex-controller-hass&category=integration)
