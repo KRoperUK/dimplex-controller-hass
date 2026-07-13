@@ -376,8 +376,10 @@ jobs:
   # once CI is green. Never for the "chore(main): release X.Y.Z" commit (matched via
   # ": release ") which release-please lands when its PR merges.
   #
-  # Tags are vX.Y.Z-rc.N on a synthetic version commit; branch `dev` is force-updated
-  # to that commit for tip-of-dev dogfooding. main is never mutated.
+  # Tags are vX.Y.Z-rc.N on a synthetic version commit (version files only).
+  # We do not force-push a moving `dev` branch: those commits are unsigned bot
+  # commits and conflict with "Commits must have verified signatures" rules.
+  # Install RCs via the prerelease tag / HACS instead. main is never mutated.
   dev-release-main:
     needs: [changes, lint, mypy, test, hacs_validate]
     if: >-
@@ -513,8 +515,6 @@ jobs:
               parent=$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${existing_target}" --jq '.parents[0].sha' 2>/dev/null || true)
               if [ -n "$existing_target" ] && [ "$parent" = "$BASE_SHA" ]; then
                 echo "Release ${TAG} already built from ${BASE_SHA}; keeping."
-                # Still refresh the moving dev branch tip.
-                git push origin "${existing_target}:refs/heads/dev" --force
                 exit 0
               fi
               echo "Release/tag ${TAG} exists (target ${existing_target:-unknown}); rolling over."
@@ -569,9 +569,7 @@ jobs:
             if [ "${create_status}" -eq 0 ]; then
               export TAG COMMIT_SHA
               bash scripts/verify-dev-release-target.sh
-              # Moving tip for dogfood installs (version files only; same code as main).
-              git push origin "${SYNTHETIC_SHA}:refs/heads/dev" --force
-              echo "Created ${TAG} -> ${SYNTHETIC_SHA} (base ${BASE_SHA}, version ${DEV_VERSION}); updated branch dev"
+              echo "Created ${TAG} -> ${SYNTHETIC_SHA} (base ${BASE_SHA}, version ${DEV_VERSION})"
               exit 0
             fi
             echo "gh release create failed for ${TAG} (attempt ${attempt}):"
