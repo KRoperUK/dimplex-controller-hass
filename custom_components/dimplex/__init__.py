@@ -7,6 +7,8 @@ https://github.com/kroperuk/dimplex-controller-hass
 
 from __future__ import annotations
 
+import asyncio
+import importlib
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -16,8 +18,9 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -40,8 +43,6 @@ from .const import (
     STARTUP_MESSAGE,
 )
 from .repairs import (
-    async_create_reauth_issue,
-    async_delete_reauth_issue,
     async_update_empty_energy_issue,
     async_update_empty_overview_issue,
 )
@@ -65,6 +66,73 @@ class DimplexRuntimeData:
     status: DataUpdateCoordinator[dict[str, Any]]
     energy: DataUpdateCoordinator[dict[str, Any]]
     platforms: list[Platform]
+
+
+async def _preload_platforms(platforms: list[Platform]) -> None:
+    """Import every platform module off the event loop.
+
+    `async_forward_entry_setups` performs a lazy ``import_module`` for each
+    platform on the event loop, which on a cold start produces
+    ``Detected blocking call to import_module`` warnings in the HA log
+    (dimplex-controller-hass#118). Pre-importing the modules in an executor
+    means the subsequent ``async_forward_entry_setups`` call hits the
+    import cache and completes without blocking the loop.
+    """
+    if not platforms:
+        return
+    module_names = [f"custom_components.{DOMAIN}.{platform.value}" for platform in platforms]
+
+    def _import_all() -> None:
+        for name in module_names:
+            importlib.import_module(name)
+
+    await asyncio.to_thread(_import_all)
+
+
+def _ensure_parent_devices(hass: HomeAssistant, entry: DimplexConfigEntry, data: dict[str, Any]) -> None:
+    """Pre-register hub and zone devices before platforms set up.
+
+    The Dimplex device tree is three levels deep: Hub → Zone → Appliance.
+    Appliance entities declare ``via_device`` pointing at the zone they
+    belong to, and zone entities declare ``via_device`` pointing at the
+    hub. To avoid Home Assistant's 2025.12 hard-failure on
+    ``via_device`` references whose target does not yet exist, we
+    register hubs and zones here, synchronously, before forwarding to
+    any platform. Platforms then only ever need to create appliance
+    devices — which always have an existing parent.
+    """
+    registry = dr.async_get(hass)
+    seen_zones: set[tuple[str, str]] = set()
+    seen_hubs: set[str] = set()
+    for row in data.get("appliances") or []:
+        hub = row.get("hub")
+        zone = row.get("zone")
+        hub_id = getattr(hub, "HubId", None) if hub is not None else None
+        zone_id = getattr(zone, "ZoneId", None) if zone is not None else None
+        if hub_id and hub_id not in seen_hubs:
+            seen_hubs.add(hub_id)
+            registry.async_get_or_create(
+                config_entry_id=entry.entry_id,
+                identifiers={(DOMAIN, hub_id)},
+                manufacturer="Dimplex",
+                model=getattr(hub, "HubModel", None) or "Dimplex Hub",
+                name=getattr(hub, "HubName", None) or "Dimplex Hub",
+            )
+        if not zone_id:
+            continue
+        zone_key = (DOMAIN, f"zone_{zone_id}")
+        if zone_key in seen_zones:
+            continue
+        seen_zones.add(zone_key)
+        registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={zone_key},
+            manufacturer="Dimplex",
+            model=getattr(zone, "ZoneType", None) or "Zone",
+            name=getattr(zone, "ZoneName", None) or "Zone",
+            suggested_area=getattr(zone, "ZoneName", None),
+            via_device=(DOMAIN, hub_id) if hub_id else None,
+        )
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -106,14 +174,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
 
     try:
         await client.async_initialize()
-    except InvalidAuth:
-        async_create_reauth_issue(hass, entry.entry_id)
-        entry.async_start_reauth(hass)
-        return False
+    except InvalidAuth as exception:
+        # ConfigEntryAuthFailed makes Home Assistant auto-start the reauth flow
+        # for this config entry. See dimplex-controller-hass#114.
+        raise ConfigEntryAuthFailed("Authentication failed during setup") from exception
     except CannotConnect as exception:
         raise ConfigEntryNotReady from exception
-
-    async_delete_reauth_issue(hass, entry.entry_id)
 
     status_interval = _interval_from_options(entry.options, CONF_STATUS_INTERVAL, DEFAULT_STATUS_INTERVAL)
     energy_interval = _interval_from_options(entry.options, CONF_ENERGY_INTERVAL, DEFAULT_ENERGY_INTERVAL)
@@ -138,6 +204,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
     )
     entry.runtime_data = runtime
     hass.data[DOMAIN][entry.entry_id] = runtime
+
+    # Register hub and zone devices up front so platform entities can safely
+    # reference them via via_device (see dimplex-controller-hass#117).
+    _ensure_parent_devices(hass, entry, status_coordinator.data or {})
+
+    # Pre-import the platform modules off the event loop so that the lazy
+    # import inside async_forward_entry_setups hits the import cache and
+    # does not produce a "Detected blocking call to import_module" warning
+    # on a cold start (see dimplex-controller-hass#118).
+    await _preload_platforms(platforms)
 
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
     await async_setup_services(hass)
@@ -177,10 +253,8 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             data = await self.api.async_get_status_data()
         except InvalidAuth as exception:
-            _LOGGER.warning("Authentication expired — triggering reauth")
-            async_create_reauth_issue(self.hass, self._entry.entry_id)
-            self._entry.async_start_reauth(self.hass)
-            raise UpdateFailed("Authentication expired") from exception
+            _LOGGER.warning("Authentication expired — surfacing reauth")
+            raise ConfigEntryAuthFailed("Authentication expired") from exception
         except CannotConnect as exception:
             raise UpdateFailed("Cannot connect") from exception
         except Exception as exception:
@@ -205,7 +279,6 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data["schedules"] = schedules
 
         _persist_tokens(self.hass, self._entry, self.api)
-        async_delete_reauth_issue(self.hass, self._entry.entry_id)
         appliances = data.get("appliances") or []
         has_status = any(row.get("status") is not None for row in appliances)
         async_update_empty_overview_issue(
@@ -304,17 +377,14 @@ class DimplexEnergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             data = await self.api.async_get_energy_for_hubs(hub_ids)
         except InvalidAuth as exception:
-            _LOGGER.warning("Authentication expired during energy poll — triggering reauth")
-            async_create_reauth_issue(self.hass, self._entry.entry_id)
-            self._entry.async_start_reauth(self.hass)
-            raise UpdateFailed("Authentication expired") from exception
+            _LOGGER.warning("Authentication expired during energy poll — surfacing reauth")
+            raise ConfigEntryAuthFailed("Authentication expired") from exception
         except CannotConnect as exception:
             raise UpdateFailed("Cannot connect") from exception
         except Exception as exception:
             raise UpdateFailed() from exception
 
         _persist_tokens(self.hass, self._entry, self.api)
-        async_delete_reauth_issue(self.hass, self._entry.entry_id)
         self._adapt_interval(data)
         if self._energy_is_empty(data):
             self._empty_successes += 1
@@ -361,7 +431,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> 
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id)
         await async_unload_services(hass)
-        async_delete_reauth_issue(hass, entry.entry_id)
         async_update_empty_energy_issue(hass, entry.entry_id, empty=False)
         async_update_empty_overview_issue(hass, entry.entry_id, empty=False)
     return unloaded
