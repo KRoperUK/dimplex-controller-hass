@@ -2,7 +2,7 @@
 
 **Issue:** [KRoperUK/dimplex-controller-hass#77](https://github.com/KRoperUK/dimplex-controller-hass/issues/77)
 **Date:** 2026-07-13
-**Status:** Approved direction (Approach A) — awaiting implementation plan
+**Status:** Implementation in progress (Approach A)
 
 ## Problem
 

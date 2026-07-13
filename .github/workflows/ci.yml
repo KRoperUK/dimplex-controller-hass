@@ -176,6 +176,10 @@ jobs:
   # Branch dev builds — a same-repo PR that changed the component, once CI is green.
   # Fork PRs get a read-only token (release would fail) and this job holds
   # contents: write, so keep it to same-repo. Never for the release-please PR branch.
+  #
+  # Pre-releases use semver tags (vX.Y.Z-pr.P.R) pointing at a *synthetic* commit that
+  # rewrites only manifest/const version files so HACS installs a version that sorts
+  # above the last stable and below the eventual X.Y.Z. main is never mutated.
   dev-release:
     needs: [changes, lint, test, hacs_validate]
     if: >-
@@ -213,13 +217,16 @@ jobs:
           git-push: false
           output-file: false
 
-      - name: Compute dev tag
+      - name: Compute dev version and tag
         id: tag
         env:
           SKIPPED: ${{ steps.nextver.outputs.skipped }}
           NEXT_VERSION: ${{ steps.nextver.outputs.version }}
           HEAD_BRANCH: ${{ github.head_ref }}
-          RUN_ID: ${{ github.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SHORT_SHA: ${{ github.event.pull_request.head.sha }}
+          # Include run_attempt so workflow re-runs mint a unique tag.
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           if [ "$SKIPPED" = "true" ] || [ -z "$NEXT_VERSION" ]; then
             VERSION=$(jq -r .version custom_components/dimplex/manifest.json)
@@ -227,59 +234,62 @@ jobs:
             VERSION="$NEXT_VERSION"
           fi
           WORKFLOW_EVENT=pull_request
-          export VERSION HEAD_BRANCH RUN_ID WORKFLOW_EVENT
-          TAG=$(bash scripts/compute-dev-tag.sh)
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          export VERSION HEAD_BRANCH PR_NUMBER SHORT_SHA RUN_ID WORKFLOW_EVENT
+          mapfile -t _dev_kv < <(bash scripts/compute-dev-tag.sh)
+          echo "${_dev_kv[0]}" >> "$GITHUB_OUTPUT" # version=
+          echo "${_dev_kv[1]}" >> "$GITHUB_OUTPUT" # tag=
+          echo "base_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "base_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Create pre-release
         id: prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
+          DEV_VERSION: ${{ steps.tag.outputs.version }}
           BRANCH_RAW: ${{ github.head_ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-          # Must pin the tag to the PR head SHA. Without --target, `gh release create`
-          # defaults to the repo default branch (main), so HACS/installers get main's
-          # tree instead of the PR commit advertised in the release notes.
-          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
-          # Predicted next version (no leading v), for the admonition text.
-          NEXT_VERSION: ${{ steps.nextver.outputs.version }}
-          SKIPPED: ${{ steps.nextver.outputs.skipped }}
+          BASE_SHA: ${{ steps.tag.outputs.base_sha }}
+          BASE_VERSION: ${{ steps.tag.outputs.base_version }}
         run: |
           set -euo pipefail
-          if [ -z "${COMMIT_SHA}" ]; then
-            echo "COMMIT_SHA is empty; refusing to create an untargeted release."
+          if [ -z "${BASE_SHA}" ] || [ -z "${TAG}" ] || [ -z "${DEV_VERSION}" ]; then
+            echo "BASE_SHA/TAG/DEV_VERSION empty; refusing to create an untargeted release."
             echo "available=false" >> "$GITHUB_OUTPUT"
             exit 1
-          fi
-
-          if [ "${SKIPPED:-}" = "true" ] || [ -z "${NEXT_VERSION:-}" ]; then
-            PREVIEW_VERSION=$(jq -r .version custom_components/dimplex/manifest.json)
-          else
-            PREVIEW_VERSION="$NEXT_VERSION"
           fi
 
           # Ensure main is available for the commit list (checkout may only have PR head).
           git fetch origin main --depth=50 2>/dev/null || true
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            # Existing tag must already point at this PR head; otherwise delete and recreate.
             existing_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.sha' 2>/dev/null || true)
-            # Annotated tags resolve to a tag object; peel to the commit.
             object_type=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.type' 2>/dev/null || true)
             if [ "$object_type" = "tag" ] && [ -n "$existing_sha" ]; then
               existing_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${existing_sha}" --jq '.object.sha' 2>/dev/null || true)
             fi
-            if [ "$existing_sha" = "$COMMIT_SHA" ]; then
-              echo "Release ${TAG} already targets ${COMMIT_SHA}; keeping."
+            # Keep only if the synthetic commit's parent is this PR head (same base).
+            parent=$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${existing_sha}" --jq '.parents[0].sha' 2>/dev/null || true)
+            if [ -n "$existing_sha" ] && [ "$parent" = "$BASE_SHA" ]; then
+              echo "Release ${TAG} already built from ${BASE_SHA}; keeping ${existing_sha}."
               echo "available=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "Release ${TAG} points at ${existing_sha:-unknown}, expected ${COMMIT_SHA}; recreating."
+            echo "Release ${TAG} exists (sha=${existing_sha:-unknown}); recreating."
             gh release delete "$TAG" --yes --cleanup-tag || true
+            git push origin ":refs/tags/${TAG}" 2>/dev/null || true
           fi
+
+          git reset --hard "$BASE_SHA"
+          SYNTHETIC_SHA=$(bash scripts/create-dev-version-commit.sh "$DEV_VERSION")
+          export COMMIT_SHA="$SYNTHETIC_SHA"
+          export TAG
+
+          # Push the synthetic commit via the tag so gh can target it (not on main).
+          git tag -f "$TAG" "$SYNTHETIC_SHA"
+          git push origin "refs/tags/${TAG}"
 
           latest_stable=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || true)
           if [ -n "$latest_stable" ]; then
@@ -288,11 +298,12 @@ jobs:
             stable_line="No stable release has been published yet."
           fi
 
-          short_sha=$(printf '%s' "$COMMIT_SHA" | cut -c1-7)
+          short_sha=$(printf '%s' "$BASE_SHA" | cut -c1-7)
           {
             echo "> [!WARNING]"
             echo "> **This is an automated pre-merge development build, not an official release.**"
-            echo "> It is built from PR [#${PR_NUMBER}](${PR_URL}) (\`${BRANCH_RAW}\`) at commit [\`${short_sha}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${COMMIT_SHA}) and may be unstable."
+            echo "> It is built from PR [#${PR_NUMBER}](${PR_URL}) (\`${BRANCH_RAW}\`) at commit [\`${short_sha}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${BASE_SHA}) and may be unstable."
+            echo "> Integration version in this tree: \`${DEV_VERSION}\` (semver pre-release; sorts above last stable, below final v${BASE_VERSION})."
             echo "> It is **not** a \`main\` release-candidate; do not treat it as production-ready."
             echo "> ${stable_line}"
             echo ""
@@ -301,15 +312,15 @@ jobs:
             echo "- **Title:** ${PR_TITLE}"
             echo "- **PR:** [#${PR_NUMBER}](${PR_URL})"
             echo "- **Branch:** \`${BRANCH_RAW}\`"
-            echo "- **Commit:** [\`${COMMIT_SHA}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${COMMIT_SHA})"
-            echo "- **Preview of:** upcoming **v${PREVIEW_VERSION}** (after merge to \`main\`)"
+            echo "- **Base commit:** [\`${BASE_SHA}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${BASE_SHA})"
+            echo "- **Release tree:** [\`${SYNTHETIC_SHA}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${SYNTHETIC_SHA}) (version files only)"
+            echo "- **Preview of:** upcoming **v${BASE_VERSION}** (after merge to \`main\`)"
             echo ""
             echo "## Commits on this branch"
             echo ""
-            # Commits unique to the PR head vs the base branch (main).
             if git rev-parse --verify origin/main >/dev/null 2>&1; then
               git log --no-merges --pretty=format:'* %s ([%h](https://github.com/'"${GITHUB_REPOSITORY}"'/commit/%H))' \
-                "origin/main..${COMMIT_SHA}"
+                "origin/main..${BASE_SHA}"
               echo ""
             else
               echo "_Could not resolve \`origin/main\` for a commit list._"
@@ -319,11 +330,11 @@ jobs:
           gh release create "$TAG" \
             --prerelease \
             --title "$TAG" \
-            --target "$COMMIT_SHA" \
+            --target "$SYNTHETIC_SHA" \
             --notes-file pr-dev-notes.md
 
           bash scripts/verify-dev-release-target.sh
-          echo "Created ${TAG} -> ${COMMIT_SHA}"
+          echo "Created ${TAG} -> ${SYNTHETIC_SHA} (base ${BASE_SHA}, version ${DEV_VERSION})"
           echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: Label PR as dev-release-cut
@@ -341,6 +352,9 @@ jobs:
   # Main release-candidate dev builds — a push to main that changed the component,
   # once CI is green. Never for the "chore(main): release X.Y.Z" commit (matched via
   # ": release ") which release-please lands when its PR merges.
+  #
+  # Tags are vX.Y.Z-rc.N on a synthetic version commit; branch `dev` is force-updated
+  # to that commit for tip-of-dev dogfooding. main is never mutated.
   dev-release-main:
     needs: [changes, lint, test, hacs_validate]
     if: >-
@@ -375,7 +389,7 @@ jobs:
           git-push: false
           output-file: false
 
-      - name: Compute dev tag
+      - name: Compute base version and RC number
         id: tag
         env:
           GH_TOKEN: ${{ github.token }}
@@ -387,53 +401,50 @@ jobs:
           else
             VERSION="$NEXT_VERSION"
           fi
-          # If this version is already fully released, remove any leftover RC
-          # pre-releases for it and skip creating a new RC build.
+          # If this version is already fully released, remove leftover RC pre-releases
+          # (new vX.Y.Z-rc.N and legacy dev-vX.Y.Z-rc.N) and skip creating a new RC.
           if gh release view "v${VERSION}" >/dev/null 2>&1; then
             echo "Full release v${VERSION} exists; deleting matching RC pre-releases."
             gh release list --limit 1000 --json tagName --jq '.[].tagName' \
-            | { grep -E "^dev-v${VERSION}-rc\.?[0-9]+$" || true; } \
+            | { grep -E "^(dev-)?v${VERSION}-rc\\.[0-9]+$" || true; } \
             | while read -r tag; do
                 echo "Deleting stale RC pre-release: ${tag}"
-                gh release delete "$tag" --yes --cleanup-tag
+                gh release delete "$tag" --yes --cleanup-tag || true
               done
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Next RC for this version: max(releases, git tags) + 1. Tags matter because
-          # deleting an *immutable* GitHub release still reserves the tag name, so a
-          # release-list-only counter would re-pick a burned rc.N and fail create with
-          # "tag_name was used by an immutable release". Resets to 1 when the next
-          # version bumps (no dev-v<new>-rc* exist yet).
+          # Next RC: max(releases, git tags) + 1. Tags matter because deleting an
+          # *immutable* GitHub release still reserves the tag name.
           RC_NUMBER=$(bash scripts/next-main-rc-number.sh "${VERSION}")
           HEAD_BRANCH=main
           WORKFLOW_EVENT=push
           export VERSION RC_NUMBER HEAD_BRANCH WORKFLOW_EVENT
-          TAG=$(bash scripts/compute-dev-tag.sh)
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          mapfile -t _dev_kv < <(bash scripts/compute-dev-tag.sh)
+          echo "${_dev_kv[0]}" >> "$GITHUB_OUTPUT" # version=
+          echo "${_dev_kv[1]}" >> "$GITHUB_OUTPUT" # tag=
+          echo "base_version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "base_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
           echo "rc_number=${RC_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "skip=false" >> "$GITHUB_OUTPUT"
-          echo "Next main RC candidate: ${TAG}"
+          echo "Next main RC candidate: ${_dev_kv[1]#tag=}"
 
       - name: Prune superseded main RC pre-releases
         if: ${{ steps.tag.outputs.skip != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.tag.outputs.version }}
+          VERSION: ${{ steps.tag.outputs.base_version }}
         run: |
-          # On main there should only be RC builds for the *current* next-version. When a
-          # new feat/fix bumps the computed version (e.g. 3.2.1 -> 3.3.0), the earlier
-          # dev-v<old>-rc* builds are superseded and will never ship — delete them now
-          # rather than waiting for a real release or the 30-day sweep.
+          # Keep RC builds only for the *current* next-version (new + legacy tag shapes).
           gh release list --limit 1000 --json tagName --jq '.[].tagName' \
-          | { grep -E '^dev-v[0-9]+\.[0-9]+\.[0-9]+-rc\.?[0-9]+$' || true; } \
+          | { grep -E '^(dev-)?v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$' || true; } \
           | while read -r tag; do
-              tag_version="${tag#dev-v}"
-              tag_version="${tag_version%-rc*}"
+              bare="${tag#dev-}"
+              bare="${bare#v}"
+              tag_version="${bare%-rc*}"
               if [ "$tag_version" != "$VERSION" ]; then
                 echo "Deleting superseded RC pre-release: ${tag} (version ${tag_version} != ${VERSION})"
-                gh release delete "$tag" --yes --cleanup-tag
+                gh release delete "$tag" --yes --cleanup-tag || true
               fi
             done
 
@@ -442,86 +453,113 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
-          VERSION: ${{ steps.tag.outputs.version }}
-          COMMIT_SHA: ${{ github.sha }}
-          # Release-please-style changelog for the changes since the last stable release.
+          DEV_VERSION: ${{ steps.tag.outputs.version }}
+          BASE_VERSION: ${{ steps.tag.outputs.base_version }}
+          BASE_SHA: ${{ steps.tag.outputs.base_sha }}
+          RC_NUMBER: ${{ steps.tag.outputs.rc_number }}
           CHANGELOG: ${{ steps.nextver.outputs.clean_changelog }}
         run: |
-          # Latest published stable (non-prerelease, non-draft) release, to steer users away
-          # from RC builds. Empty if none has shipped yet.
+          set -euo pipefail
           latest_stable=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null || true)
           if [ -n "$latest_stable" ]; then
             stable_line="For everyday use, install the latest **stable** release instead: [\`${latest_stable}\`](https://github.com/${GITHUB_REPOSITORY}/releases/tag/${latest_stable})."
           else
             stable_line="No stable release has been published yet."
           fi
-          {
-            echo "> [!WARNING]"
-            echo "> **This is an automated release-candidate build, not an official release.**"
-            echo "> It previews the upcoming **v${VERSION}** release from \`main\` (commit \`${COMMIT_SHA}\`) and may be unstable."
-            echo "> ${stable_line}"
-            echo ""
-            echo "## What's changed for v${VERSION}"
-            echo ""
-            if [ -n "${CHANGELOG}" ]; then
-              printf '%s\n' "${CHANGELOG}"
-            else
-              echo "_No user-facing changes detected since the last release._"
-            fi
-          } > rc-notes.md
-          # Pin the RC tag to this push's commit. Without --target, gh defaults to
-          # the repository default branch tip, which can race with later pushes.
-          #
-          # Rollover: if create fails because the tag is already taken (existing
-          # release, or an orphaned immutable-release tag), bump rc.N and retry.
+
           max_attempts=25
           attempt=0
           while [ "${attempt}" -lt "${max_attempts}" ]; do
             attempt=$((attempt + 1))
+            # Recompute tag/version from RC_NUMBER each attempt.
+            VERSION="$BASE_VERSION"
+            HEAD_BRANCH=main
+            WORKFLOW_EVENT=push
+            export VERSION RC_NUMBER HEAD_BRANCH WORKFLOW_EVENT
+            mapfile -t _dev_kv < <(bash scripts/compute-dev-tag.sh)
+            DEV_VERSION="${_dev_kv[0]#version=}"
+            TAG="${_dev_kv[1]#tag=}"
+            export TAG DEV_VERSION
+
             if gh release view "$TAG" >/dev/null 2>&1; then
               existing_target=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.sha' 2>/dev/null || true)
               object_type=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq '.object.type' 2>/dev/null || true)
               if [ "$object_type" = "tag" ] && [ -n "$existing_target" ]; then
                 existing_target=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${existing_target}" --jq '.object.sha' 2>/dev/null || true)
               fi
-              if [ "$existing_target" = "$COMMIT_SHA" ]; then
-                echo "Release ${TAG} already targets ${COMMIT_SHA}; keeping."
+              parent=$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${existing_target}" --jq '.parents[0].sha' 2>/dev/null || true)
+              if [ -n "$existing_target" ] && [ "$parent" = "$BASE_SHA" ]; then
+                echo "Release ${TAG} already built from ${BASE_SHA}; keeping."
+                # Still refresh the moving dev branch tip.
+                git push origin "${existing_target}:refs/heads/dev" --force
                 exit 0
               fi
-              echo "Release/tag ${TAG} exists but targets ${existing_target:-unknown}, not ${COMMIT_SHA}; rolling over."
-            else
-              set +e
-              create_out=$(gh release create "$TAG" \
-                --prerelease \
-                --title "$TAG" \
-                --target "$COMMIT_SHA" \
-                --notes-file rc-notes.md 2>&1)
-              create_status=$?
-              set -e
-              if [ "${create_status}" -eq 0 ]; then
-                export TAG
-                bash scripts/verify-dev-release-target.sh
-                echo "Created ${TAG} -> ${COMMIT_SHA}"
-                exit 0
-              fi
-              echo "gh release create failed for ${TAG} (attempt ${attempt}):"
-              printf '%s\n' "${create_out}"
-              if ! printf '%s\n' "${create_out}" | grep -qiE \
-                'already exists|immutable|Validation Failed|Reference already exists|tag_name was used|Unprocessable Entity|HTTP 422'; then
-                exit "${create_status}"
-              fi
-              echo "Tag collision / immutable reservation for ${TAG}; rolling over."
+              echo "Release/tag ${TAG} exists (target ${existing_target:-unknown}); rolling over."
+              RC_NUMBER=$((RC_NUMBER + 1))
+              continue
             fi
-            # Bump rc.N and try again.
-            current_n="${TAG##*-rc.}"
-            if ! [[ "${current_n}" =~ ^[0-9]+$ ]]; then
-              echo "Cannot parse RC number from TAG=${TAG}" >&2
-              exit 1
+
+            git reset --hard "$BASE_SHA"
+            SYNTHETIC_SHA=$(bash scripts/create-dev-version-commit.sh "$DEV_VERSION")
+            export COMMIT_SHA="$SYNTHETIC_SHA"
+
+            {
+              echo "> [!WARNING]"
+              echo "> **This is an automated release-candidate build, not an official release.**"
+              echo "> It previews the upcoming **v${BASE_VERSION}** release from \`main\` (base commit \`${BASE_SHA}\`) and may be unstable."
+              echo "> Integration version in this tree: \`${DEV_VERSION}\` (semver pre-release)."
+              echo "> ${stable_line}"
+              echo ""
+              echo "## What's changed for v${BASE_VERSION}"
+              echo ""
+              if [ -n "${CHANGELOG}" ]; then
+                printf '%s\n' "${CHANGELOG}"
+              else
+                echo "_No user-facing changes detected since the last release._"
+              fi
+            } > rc-notes.md
+
+            git tag -f "$TAG" "$SYNTHETIC_SHA"
+            set +e
+            push_out=$(git push origin "refs/tags/${TAG}" 2>&1)
+            push_status=$?
+            set -e
+            if [ "${push_status}" -ne 0 ]; then
+              echo "git push tag failed for ${TAG} (attempt ${attempt}):"
+              printf '%s\n' "${push_out}"
+              if printf '%s\n' "${push_out}" | grep -qiE 'already exists|rejected|cannot lock'; then
+                RC_NUMBER=$((RC_NUMBER + 1))
+                echo "Tag push collision; next RC_NUMBER=${RC_NUMBER}"
+                continue
+              fi
+              exit "${push_status}"
             fi
-            next_n=$((current_n + 1))
-            TAG="dev-v${VERSION}-rc.${next_n}"
-            export TAG
-            echo "Next candidate: ${TAG}"
+
+            set +e
+            create_out=$(gh release create "$TAG" \
+              --prerelease \
+              --title "$TAG" \
+              --target "$SYNTHETIC_SHA" \
+              --notes-file rc-notes.md 2>&1)
+            create_status=$?
+            set -e
+            if [ "${create_status}" -eq 0 ]; then
+              export TAG COMMIT_SHA
+              bash scripts/verify-dev-release-target.sh
+              # Moving tip for dogfood installs (version files only; same code as main).
+              git push origin "${SYNTHETIC_SHA}:refs/heads/dev" --force
+              echo "Created ${TAG} -> ${SYNTHETIC_SHA} (base ${BASE_SHA}, version ${DEV_VERSION}); updated branch dev"
+              exit 0
+            fi
+            echo "gh release create failed for ${TAG} (attempt ${attempt}):"
+            printf '%s\n' "${create_out}"
+            if ! printf '%s\n' "${create_out}" | grep -qiE \
+              'already exists|immutable|Validation Failed|Reference already exists|tag_name was used|Unprocessable Entity|HTTP 422'; then
+              exit "${create_status}"
+            fi
+            echo "Tag collision / immutable reservation for ${TAG}; rolling over."
+            git push origin ":refs/tags/${TAG}" 2>/dev/null || true
+            RC_NUMBER=$((RC_NUMBER + 1))
           done
           echo "Exhausted ${max_attempts} RC tag attempts without creating a release." >&2
           exit 1
