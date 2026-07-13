@@ -111,6 +111,17 @@ async def _resolve_appliance(hass: HomeAssistant, call: ServiceCall) -> tuple[st
     return config_entry_id, hub_id, appliance_id, runtime.api
 
 
+async def _refresh_status(hass: HomeAssistant, config_entry_id: str) -> None:
+    """Ask the status coordinator to refresh so state reflects the change quickly.
+
+    Control services mutate appliance state on the cloud; without an explicit
+    refresh the new state would not appear until the next scheduled poll.
+    """
+    runtime = hass.data.get(DOMAIN, {}).get(config_entry_id)
+    if runtime is not None:
+        await runtime.status.async_request_refresh()
+
+
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Register dimplex domain services (idempotent)."""
     if hass.data.get(f"{DOMAIN}_services"):
@@ -121,7 +132,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
             return
-        _, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = resolved
         await api.async_set_boost(
             hub_id,
             appliance_id,
@@ -129,56 +140,62 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             duration_minutes=int(call.data.get(ATTR_DURATION, _DEFAULT_BOOST_MINUTES)),
             enable=True,
         )
+        await _refresh_status(hass, entry_id)
 
     async def handle_clear_boost(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
             return
-        _, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = resolved
         await api.async_set_boost(
             hub_id,
             appliance_id,
             temperature=float(call.data.get(ATTR_TEMPERATURE, _DEFAULT_BOOST_TEMP)),
             enable=False,
         )
+        await _refresh_status(hass, entry_id)
 
     async def handle_set_away(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
             return
-        _, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = resolved
         await api.async_set_away(
             hub_id,
             appliance_id,
             temperature=float(call.data.get(ATTR_TEMPERATURE, _DEFAULT_AWAY_TEMP)),
             enable=True,
         )
+        await _refresh_status(hass, entry_id)
 
     async def handle_clear_away(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
             return
-        _, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = resolved
         await api.async_set_away(
             hub_id,
             appliance_id,
             temperature=float(call.data.get(ATTR_TEMPERATURE, _DEFAULT_AWAY_TEMP)),
             enable=False,
         )
+        await _refresh_status(hass, entry_id)
 
     async def handle_eco(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
             return
-        _, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = resolved
         await api.async_set_eco_start(hub_id, appliance_id, bool(call.data.get(ATTR_ENABLE, True)))
+        await _refresh_status(hass, entry_id)
 
     async def handle_owd(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
             return
-        _, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = resolved
         await api.async_set_open_window_detection(hub_id, appliance_id, bool(call.data.get(ATTR_ENABLE, True)))
+        await _refresh_status(hass, entry_id)
 
     hass.services.async_register(
         DOMAIN,
