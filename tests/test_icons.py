@@ -34,6 +34,7 @@ def test_ecostart_switch_icon(eco_start, expected_icon):
     switch = DimplexEcoStartSwitch(coordinator, config_entry, row, api=SimpleNamespace())
     assert switch.is_on is eco_start
     assert switch.icon == expected_icon
+    assert switch.unique_id.endswith("_ecostart")
 
 
 @pytest.mark.parametrize(

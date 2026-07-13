@@ -50,14 +50,17 @@ async def test_switch_services(hass):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    switch_entities = [state.entity_id for state in hass.states.async_all() if state.entity_id.startswith("switch.")]
-    assert len(switch_entities) == 1
-    entity_id = switch_entities[0]
+    switch_entities = sorted(
+        state.entity_id for state in hass.states.async_all() if state.entity_id.startswith("switch.")
+    )
+    assert len(switch_entities) == 2  # EcoStart + Open window detection
+    entity_id = next(e for e in switch_entities if "ecostart" in e)
 
     # Functions/objects can be patched directly in test code as well and can be used to test
     # additional things, like whether a function was called or what arguments it was called with
     with (
         patch("custom_components.dimplex.DimplexApiClient.async_set_eco_start") as eco_start_func,
+        patch("custom_components.dimplex.DimplexApiClient.async_set_open_window_detection") as owd_func,
         patch(
             "custom_components.dimplex.DimplexApiClient.async_get_status_data",
             return_value=_mock_coordinator_payload(),
@@ -86,3 +89,13 @@ async def test_switch_services(hass):
         )
         assert eco_start_func.called
         assert eco_start_func.call_args == call("hub-1", "appliance-1", True)
+
+        owd_entity = next(e for e in switch_entities if "open_window" in e)
+        await hass.services.async_call(
+            SWITCH_DOMAIN,
+            SERVICE_TURN_ON,
+            service_data={ATTR_ENTITY_ID: owd_entity},
+            blocking=True,
+        )
+        assert owd_func.called
+        assert owd_func.call_args == call("hub-1", "appliance-1", True)

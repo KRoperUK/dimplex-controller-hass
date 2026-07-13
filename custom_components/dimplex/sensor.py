@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfEnergy, UnitOfTemperature
+from homeassistant.const import UnitOfEnergy, UnitOfPower, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -39,6 +39,8 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
                 DimplexErrorCodeSensor(status, entry, appliance_row),
                 DimplexWarningCodeSensor(status, entry, appliance_row),
                 DimplexLastTelemDateSensor(status, entry, appliance_row),
+                DimplexRatedPowerSensor(status, entry, appliance_row),
+                DimplexChargeCapacitySensor(status, entry, appliance_row),
                 DimplexEnergyLifetimeSensor(energy, status, entry, appliance_row, register="t1"),
                 DimplexEnergyDailySensor(energy, status, entry, appliance_row, register="t1"),
                 DimplexEnergyLifetimeSensor(energy, status, entry, appliance_row, register="t2"),
@@ -182,6 +184,65 @@ class DimplexLastTelemDateSensor(DimplexEntity, SensorEntity):
         if status is not None and getattr(status, "LastTelemDate", None) is not None:
             return status.LastTelemDate
         return getattr(self._appliance, "LastTelemDate", None)
+
+
+class _DimplexProvisioningSensor(DimplexEntity, SensorEntity):
+    """Static electrical characteristics from AUTOMATIC_PROVISIONING."""
+
+    _attr_entity_registry_enabled_default = False
+    _provision_attr: str
+    _entity_suffix: str
+
+    @property
+    def unique_id(self) -> str:
+        return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_{self._entity_suffix}"
+
+    @property
+    def available(self) -> bool:
+        """Provisioning is static metadata; does not require live overview."""
+        if not CoordinatorEntity.available.__get__(self, type(self)):
+            return False
+        return self.native_value is not None
+
+    @property
+    def _provisioning(self):
+        appliance = self._appliance
+        prop = getattr(type(appliance), "automatic_provisioning", None)
+        if isinstance(prop, property):
+            return appliance.automatic_provisioning
+        # SimpleNamespace mocks / incomplete records
+        return getattr(appliance, "automatic_provisioning", None)
+
+    @property
+    def native_value(self):
+        prov = self._provisioning
+        if prov is None:
+            return None
+        value = getattr(prov, self._provision_attr, None)
+        return float(value) if value is not None else None
+
+
+class DimplexRatedPowerSensor(_DimplexProvisioningSensor):
+    """Nameplate / rated power from product model extensions (kW)."""
+
+    _attr_name = "Rated power"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+    _attr_icon = "mdi:flash"
+    _provision_attr = "rated_power"
+    _entity_suffix = "rated_power"
+
+
+class DimplexChargeCapacitySensor(_DimplexProvisioningSensor):
+    """Storage charge capacity from product model extensions (kWh)."""
+
+    _attr_name = "Charge capacity"
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_icon = "mdi:battery-high"
+    _provision_attr = "charge_capacity"
+    _entity_suffix = "charge_capacity"
 
 
 class _DimplexEnergySensorBase(CoordinatorEntity, SensorEntity):

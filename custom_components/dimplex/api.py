@@ -227,6 +227,17 @@ class DimplexApiClient:
         except DimplexApiError as exception:
             raise CannotConnect from exception
 
+    async def async_set_open_window_detection(self, hub_id: str, appliance_id: str, enable: bool) -> None:
+        """Enable or disable open-window detection for an appliance."""
+        try:
+            await self._client.set_open_window_detection(hub_id, [appliance_id], enable)
+        except DimplexAuthError as exception:
+            raise InvalidAuth from exception
+        except DimplexConnectionError as exception:
+            raise CannotConnect from exception
+        except DimplexApiError as exception:
+            raise CannotConnect from exception
+
     async def async_set_target_temperature(self, hub_id: str, appliance_id: str, temperature: float) -> None:
         """Set the appliance target temperature."""
         try:

@@ -517,20 +517,23 @@ async def test_async_get_energy_report_api_error_returns_empty(hass):
 
 
 async def test_control_helpers_delegate_to_library(hass):
-    """Boost/away/target helpers wrap library methods."""
+    """Boost/away/target/OWD helpers wrap library methods."""
     api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
     with (
         patch.object(api._client, "set_boost", new=AsyncMock()) as set_boost,
         patch.object(api._client, "set_away", new=AsyncMock()) as set_away,
         patch.object(api._client, "set_target_temperature", new=AsyncMock()) as set_temp,
+        patch.object(api._client, "set_open_window_detection", new=AsyncMock()) as set_owd,
     ):
         await api.async_set_boost("h", "a", temperature=24.0, duration_minutes=45, enable=True)
         await api.async_set_away("h", "a", temperature=16.0, enable=True)
         await api.async_set_target_temperature("h", "a", 21.0)
+        await api.async_set_open_window_detection("h", "a", True)
 
     set_boost.assert_awaited_once()
     set_away.assert_awaited_once()
     set_temp.assert_awaited_once_with("h", "a", 21.0)
+    set_owd.assert_awaited_once_with("h", ["a"], True)
 
 
 async def test_async_get_energy_for_hubs(hass):
