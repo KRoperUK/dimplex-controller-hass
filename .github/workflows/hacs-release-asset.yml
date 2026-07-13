@@ -1,0 +1,55 @@
+name: HACS release asset
+
+# release-please (and any other process) publishes GitHub Releases without a
+# HACS zip asset. Attach dimplex.zip so HACS zip_release installs work.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to (re)attach dimplex.zip to
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          TAG="${INPUT_TAG:-$RELEASE_TAG}"
+          if [ -z "$TAG" ]; then
+            echo "No release tag" >&2
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 1
+
+      - name: Build and upload dimplex.zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          bash scripts/package-hacs-zip.sh dimplex.zip
+          # Immutable releases cannot be edited; upload fails clearly if so.
+          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq dimplex.zip; then
+            echo "dimplex.zip already present on ${TAG}; replacing"
+            gh release delete-asset "$TAG" dimplex.zip --yes || true
+          fi
+          gh release upload "$TAG" dimplex.zip --clobber
+          echo "Attached dimplex.zip to ${TAG}"

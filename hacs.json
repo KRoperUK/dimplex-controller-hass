@@ -1,5 +1,7 @@
 {
   "name": "Dimplex Hub",
+  "filename": "dimplex.zip",
+  "zip_release": true,
   "hacs": "1.6.0",
-  "homeassistant": "0.118.0"
+  "homeassistant": "2023.1.0"
 }
