@@ -65,7 +65,8 @@
           "sensor": "Sensor aktivert",
           "switch": "Bryter aktivert",
           "status_interval": "Statusintervall (sekunder)",
-          "energy_interval": "Energiintervall (sekunder)"
+          "energy_interval": "Energiintervall (sekunder)",
+          "boost_duration": "Boost-varighet (minutter)"
         }
       }
     }
@@ -116,6 +117,12 @@
       },
       "energy_t2_today": {
         "name": "Energi T2 i dag"
+      },
+      "schedule": {
+        "name": "Tidsplan"
+      },
+      "zone": {
+        "name": "Sone"
       }
     },
     "binary_sensor": {
@@ -139,6 +146,20 @@
       "open_window_detection": {
         "name": "Deteksjon av åpent vindu"
       }
+    }
+  },
+  "issues": {
+    "reauth_required": {
+      "title": "Dimplex Hub trenger ny godkjenning",
+      "description": "Sky-økten er utløpt eller avvist. Åpne integrasjonen og fullfør ny godkjenning (e-post/passord eller autentiseringskode)."
+    },
+    "empty_energy_season": {
+      "title": "Ingen energitelemetri denne sesongen",
+      "description": "Energispørringer vellykket, men returnerer ingen historikkpunkter. Dette er vanlig om sommeren når varmerne er inaktive. Sensorene forblir utilgjengelige til skyen rapporterer daglige kWh igjen."
+    },
+    "empty_overview": {
+      "title": "Alle apparater er utilgjengelige",
+      "description": "Huben ble funnet, men oversikten over apparater er tom. Sjekk strøm, nettverk og den offisielle Dimplex-appen."
     }
   }
 }
