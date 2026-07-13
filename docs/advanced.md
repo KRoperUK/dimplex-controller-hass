@@ -90,7 +90,7 @@ action:
 
 ### PyPI dependency
 
-Requires [`dimplex-controller>=0.7.0`](https://pypi.org/project/dimplex-controller/). Bump `custom_components/dimplex/manifest.json` when adopting a new library floor.
+Requires [`dimplex-controller>=0.8.0`](https://pypi.org/project/dimplex-controller/). Bump `custom_components/dimplex/manifest.json` when adopting a new library floor.
 
 ### Local development
 

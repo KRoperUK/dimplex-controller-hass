@@ -145,6 +145,33 @@ Each appliance is exposed as a `climate` entity with:
 
 Schedule editing beyond setpoint rewrites is still limited by the cloud API.
 
+## Upgrading to 3.0.0
+
+This is a **major** release relative to 2.0.0. After updating via HACS, **restart Home Assistant**.
+
+### Requirements
+
+- Home Assistant (current supported version for this integration)
+- [`dimplex-controller>=0.8.0`](https://pypi.org/project/dimplex-controller/) (installed automatically from the integration requirements)
+
+### Breaking / behavioural changes
+
+- **Climate entities** are created per appliance. Prefer climate for setpoints and boost/away/eco presets.
+- **Energy** is no longer a single mislabelled “30-day” total:
+  - **Energy lifetime** — cumulative cloud daily history
+  - **Energy today** — local calendar day from midnight
+    Prefer **Energy today** for the Energy Dashboard when you want daily usage without a large historical pop-in on first add.
+- **Entity unique IDs / names** may change (for example EcoStart now has a stable `_ecostart` suffix; open-window detection is a switch as well as a binary sensor). You may see renamed entities or need to clean orphans once.
+- **Polling** is split: status on a short interval, energy on a longer interval (configurable in options).
+- **Diagnostics** (error/warning/last telem, rated power, charge capacity, energy T2 today) exist but may be **disabled by default** — enable in the entity registry if you need them.
+
+### After upgrade checklist
+
+1. Confirm Dimplex Hub config entry is **loaded** (no import / requirement errors in logs).
+2. Review new `climate.*` entities and energy sensors.
+3. Re-point automations that used old entity IDs.
+4. For Energy Dashboard, use **Energy today** (or statistics) rather than dumping multi-year **lifetime** into the dashboard unless you intend that.
+
 ## Known limitations
 
 - Full weekly schedule UI is not exposed yet (setpoint writes update timer periods).
