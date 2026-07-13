@@ -103,10 +103,10 @@
         "name": "Ladekapasitet"
       },
       "energy_lifetime": {
-        "name": "Energi T1 totalt"
+        "name": "Energi totalt"
       },
       "energy_today": {
-        "name": "Energi T1 i dag"
+        "name": "Energi i dag"
       },
       "energy_t2_lifetime": {
         "name": "Energi T2 totalt"

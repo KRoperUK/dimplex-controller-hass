@@ -38,10 +38,10 @@ One climate entity per appliance.
 | Boost temperature   | °C        | temperature  | Boost mode target.                                                          |
 | Away temperature    | °C        | temperature  | Away mode target.                                                           |
 | Setback temperature | °C        | temperature  | Setback target.                                                             |
-| Energy T1 lifetime  | kWh       | energy       | Sum of daily cloud points for register **T1** only (primary / likely peak). |
-| Energy T1 today     | kWh       | energy       | T1 kWh for the current local calendar day.                                  |
+| Energy lifetime     | kWh       | energy       | Sum of daily cloud points for register **T1** only (primary / likely peak). |
+| Energy today        | kWh       | energy       | T1 kWh for the current local calendar day.                                  |
 | Energy T2 lifetime  | kWh       | energy       | Register **T2** only (likely off-peak; disabled by default).                |
-| Energy T2 today     | kWh       | energy       | T2 today only (disabled by default).                                        |
+| Energy T2 today     | kWh       | energy       | T2 kWh for the current local calendar day (disabled by default).            |
 | Rated power         | kW        | power        | Static nameplate power from product provisioning (_disabled by default_).   |
 | Charge capacity     | kWh       | energy       | Static storage capacity from provisioning (_disabled by default_).          |
 | Error code          | —         | —            | Appliance error code (_disabled by default_).                               |
@@ -59,7 +59,12 @@ One climate entity per appliance.
 
 Energy data is **daily kWh history** from the cloud, not live watts. Sensors are **unavailable** (not `0`) when there are no points.
 
-**T1 and T2 are never combined.** They are separate meter registers (commonly peak vs off-peak on dual-rate tariffs). “Lifetime” / “today” sensors total **one register only**. Do not build a helper that sums T1+T2 and call it total energy — use both series separately in the Energy Dashboard if you track dual rates.
+**T1 and T2 are never combined.** They are separate meter registers (commonly peak vs off-peak on dual-rate tariffs).
+
+- **Energy today** / **Energy lifetime** → T1 only
+- **Energy T2 today** / **Energy T2 lifetime** → T2 only
+
+Do not build a helper that sums both and call it total energy — use **Energy today** and **Energy T2 today** as separate series in the Energy Dashboard if you track dual rates.
 
 ## Binary sensors
 

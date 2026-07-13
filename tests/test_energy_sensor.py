@@ -85,12 +85,19 @@ async def test_energy_lifetime_sensor_with_data(hass):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    state = _state(hass, "energy_t1_lifetime")
-    if state is None:
-        state = _state(hass, "living_room_heater_energy")
+    state = _state(hass, "living_room_heater_energy")
+    # Prefer primary lifetime entity; avoid matching energy_t2_* when present.
+    if state is None or "t2" in state.entity_id:
+        state = next(
+            (s for s in hass.states.async_all() if s.entity_id.endswith("_energy") or "energy_lifetime" in s.entity_id),
+            None,
+        )
+        if state is not None and "t2" in state.entity_id:
+            state = None
     if state is None:
         state = _state(hass, "energy_lifetime")
     assert state is not None
+    assert "t2" not in state.entity_id
     assert state.state == "0.35"
     assert state.attributes.get("unit_of_measurement") == UnitOfEnergy.KILO_WATT_HOUR
     assert state.attributes.get("device_class") == SensorDeviceClass.ENERGY
@@ -127,12 +134,15 @@ async def test_energy_daily_sensor(hass):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    state = _state(hass, "energy_t1_today")
-    if state is None:
-        state = _state(hass, "energy_today")
-    if state is None:
-        state = _state(hass, "energy_daily")
+    # Entity name is "Energy today" (T1); T2 is "Energy T2 today".
+    candidates = [
+        s
+        for s in hass.states.async_all()
+        if "energy" in s.entity_id and "today" in s.entity_id and "t2" not in s.entity_id
+    ]
+    state = candidates[0] if candidates else _state(hass, "energy_today")
     assert state is not None
+    assert "t2" not in state.entity_id
     assert state.state == "1.25"
     assert state.attributes.get("mode") == "daily"
     assert state.attributes.get("register") == "t1"

@@ -82,8 +82,8 @@
       "last_telem": { "name": "Last telemetry" },
       "rated_power": { "name": "Rated power" },
       "charge_capacity": { "name": "Charge capacity" },
-      "energy_lifetime": { "name": "Energy T1 lifetime" },
-      "energy_today": { "name": "Energy T1 today" },
+      "energy_lifetime": { "name": "Energy lifetime" },
+      "energy_today": { "name": "Energy today" },
       "energy_t2_lifetime": { "name": "Energy T2 lifetime" },
       "energy_t2_today": { "name": "Energy T2 today" }
     },

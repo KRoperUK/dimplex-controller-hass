@@ -4,17 +4,17 @@
 
 Metered appliances expose `SensorDeviceClass.ENERGY` sensors in **kWh**, split by cloud register:
 
-- **Energy T1 lifetime / today** — primary register (enabled by default).
-- **Energy T2 lifetime / today** — secondary register (enable in the entity registry if your heaters report T2).
+- **Energy today** / **Energy lifetime** — primary register **T1** (enabled by default).
+- **Energy T2 today** / **Energy T2 lifetime** — secondary register **T2** (enable in the entity registry if your heaters report T2).
 
 T1 and T2 are **kept separate** (likely peak / off-peak). The integration never sums them into one “total energy” figure.
 
 ### Adding to the Energy Dashboard
 
 1. Go to **Settings → Dashboards → Energy**.
-2. **Add consumption** → pick **Energy T1 today** (and **Energy T2 today** if you use dual-rate and have enabled those entities).
+2. **Add consumption** → pick **Energy today** (and **Energy T2 today** if you use dual-rate and have enabled those entities).
 3. Prefer **today** sensors for daily dashboard graphs; use **lifetime** for long-running totals with `last_reset` at the first telemetry day.
-4. For dual-rate tariffs, add T1 and T2 as **two** consumption sources (or map them to different tariff stats) — do not merge into one helper sensor.
+4. For dual-rate tariffs, add **Energy today** and **Energy T2 today** as **two** consumption sources (or map them to different tariff stats) — do not merge into one helper sensor.
 
 ### Behaviour notes
 
