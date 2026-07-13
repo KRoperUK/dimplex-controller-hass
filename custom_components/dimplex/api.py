@@ -23,7 +23,7 @@ from .const import ENERGY_REPORT_DAYS, ENERGY_REPORT_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
-# Primary register keys — never include T2 (peak/off-peak must stay separate).
+# Primary register keys — never include T2 (off-peak T1 vs peak T2 stay separate).
 # Prefer library export when present (dimplex-controller ≥ fixed release).
 try:
     from dimplex_controller import VALUE_KEY_T1 as _VALUE_KEY_T1
@@ -325,8 +325,9 @@ class DimplexApiClient:
         Returns a dict with separate ``t1`` and ``t2`` maps (never combined).
         Each maps appliance id to normalised ``(timestamp, value)`` tuples.
 
-        T1 and T2 are independent registers (likely peak / off-peak). Do not
-        sum them into a single total — expose each series as its own sensor.
+        T1 and T2 are independent dual-rate registers (T1 off-peak / cheaper,
+        T2 peak / more expensive). Do not sum them into a single total —
+        expose each series as its own sensor.
 
         Empty lists are normal for hubs without metered appliances or when
         heaters have not been running *and* IncludePreviousPeriod returns
