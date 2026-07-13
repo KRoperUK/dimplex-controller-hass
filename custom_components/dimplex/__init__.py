@@ -5,7 +5,12 @@ For more details about this integration, please refer to
 https://github.com/kroperuk/dimplex-controller-hass
 """
 
+from __future__ import annotations
+
 import logging
+from dataclasses import dataclass
+from datetime import timedelta
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -18,11 +23,14 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import CannotConnect, DimplexApiClient, InvalidAuth
 from .const import (
     CONF_ACCESS_TOKEN,
+    CONF_ENERGY_INTERVAL,
     CONF_EXPIRES_AT,
     CONF_PASSWORD,
     CONF_REFRESH_TOKEN,
+    CONF_STATUS_INTERVAL,
     CONF_USERNAME,
-    COORDINATOR_UPDATE_INTERVAL,
+    DEFAULT_ENERGY_INTERVAL,
+    DEFAULT_STATUS_INTERVAL,
     DOMAIN,
     PLATFORMS,
     STARTUP_MESSAGE,
@@ -32,13 +40,42 @@ _LOGGER: logging.Logger = logging.getLogger(__package__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
+# entry_ids for which the next update_listener fire is a token write, not options.
+_SKIP_RELOAD_ENTRY_IDS: set[str] = set()
+
+type DimplexConfigEntry = ConfigEntry[DimplexRuntimeData]
+
+
+@dataclass
+class DimplexRuntimeData:
+    """Runtime objects for one config entry."""
+
+    api: DimplexApiClient
+    status: DataUpdateCoordinator[dict[str, Any]]
+    energy: DataUpdateCoordinator[dict[str, Any]]
+    platforms: list
+
 
 async def async_setup(hass: HomeAssistant, config: ConfigType):
     """Set up this integration using YAML is not supported."""
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+def _interval_from_options(options: dict, key: str, default: timedelta) -> timedelta:
+    """Read a seconds value from options, falling back to ``default``."""
+    raw = options.get(key)
+    if raw is None:
+        return default
+    try:
+        seconds = int(raw)
+    except TypeError, ValueError:
+        return default
+    if seconds < 15:
+        return default
+    return timedelta(seconds=seconds)
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry):
     """Set up this integration using UI."""
     if hass.data.get(DOMAIN) is None:
         hass.data.setdefault(DOMAIN, {})
@@ -62,51 +99,66 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     except CannotConnect as exception:
         raise ConfigEntryNotReady from exception
 
-    coordinator = DimplexDataUpdateCoordinator(hass, entry, client)
-    await coordinator.async_refresh()
+    status_interval = _interval_from_options(entry.options, CONF_STATUS_INTERVAL, DEFAULT_STATUS_INTERVAL)
+    energy_interval = _interval_from_options(entry.options, CONF_ENERGY_INTERVAL, DEFAULT_ENERGY_INTERVAL)
 
-    if not coordinator.last_update_success:
+    status_coordinator = DimplexStatusCoordinator(hass, entry, client, status_interval)
+    energy_coordinator = DimplexEnergyCoordinator(hass, entry, client, status_coordinator, energy_interval)
+
+    await status_coordinator.async_config_entry_first_refresh()
+
+    if not status_coordinator.last_update_success:
         raise ConfigEntryNotReady
 
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    # Energy is best-effort at setup — failures leave sensors unavailable.
+    await energy_coordinator.async_refresh()
 
-    coordinator.platforms = [platform for platform in PLATFORMS if entry.options.get(platform, True)]
-    await hass.config_entries.async_forward_entry_setups(entry, coordinator.platforms)
+    platforms = [platform for platform in PLATFORMS if entry.options.get(platform, True)]
+    runtime = DimplexRuntimeData(
+        api=client,
+        status=status_coordinator,
+        energy=energy_coordinator,
+        platforms=platforms,
+    )
+    entry.runtime_data = runtime
+    hass.data[DOMAIN][entry.entry_id] = runtime
 
-    # Persist tokens after platform setup. _persist_tokens calls
-    # async_update_entry only when tokens actually changed; registering an
-    # update_listener that triggers a full reload on every token write would
-    # cause an infinite reload loop, so we intentionally do not register one.
+    await hass.config_entries.async_forward_entry_setups(entry, platforms)
+
+    # Persist tokens after platform setup. Token writes must not trigger a full
+    # reload (would loop); options changes do via the listener below.
     _persist_tokens(hass, entry, client)
+
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     return True
 
 
-class DimplexDataUpdateCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching data from the API."""
+class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Poll hubs, zones, and live appliance overview."""
 
     def __init__(
         self,
         hass: HomeAssistant,
         entry: ConfigEntry,
         client: DimplexApiClient,
+        update_interval: timedelta,
     ) -> None:
         """Initialize."""
         self.api = client
         self._entry = entry
-        self.platforms = []
-
         super().__init__(
             hass,
             _LOGGER,
-            name=DOMAIN,
-            update_interval=COORDINATOR_UPDATE_INTERVAL,
+            config_entry=entry,
+            name=f"{DOMAIN}_status",
+            update_interval=update_interval,
         )
 
-    async def _async_update_data(self):
-        """Update data via library."""
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Update status data via library."""
         try:
-            data = await self.api.async_get_data()
+            data = await self.api.async_get_status_data()
         except InvalidAuth as exception:
             _LOGGER.warning("Authentication expired — triggering reauth")
             self._entry.async_start_reauth(self.hass)
@@ -116,8 +168,53 @@ class DimplexDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as exception:
             raise UpdateFailed() from exception
 
-        # Persist tokens after every successful fetch so restarts
-        # pick up the latest refresh token.
+        _persist_tokens(self.hass, self._entry, self.api)
+        return data
+
+
+class DimplexEnergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+    """Poll TSI energy reports on a slower cadence."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        client: DimplexApiClient,
+        status_coordinator: DimplexStatusCoordinator,
+        update_interval: timedelta,
+    ) -> None:
+        """Initialize."""
+        self.api = client
+        self._entry = entry
+        self._status = status_coordinator
+        super().__init__(
+            hass,
+            _LOGGER,
+            config_entry=entry,
+            name=f"{DOMAIN}_energy",
+            update_interval=update_interval,
+        )
+
+    async def _async_update_data(self) -> dict[str, Any]:
+        """Update energy data via library."""
+        status = self._status.data or {}
+        hubs = status.get("hubs") or []
+        hub_ids = [hub.HubId for hub in hubs]
+        if not hub_ids:
+            # Fall back to appliance rows if hubs list missing.
+            hub_ids = list({row["hub"].HubId for row in status.get("appliances", [])})
+
+        try:
+            data = await self.api.async_get_energy_for_hubs(hub_ids)
+        except InvalidAuth as exception:
+            _LOGGER.warning("Authentication expired during energy poll — triggering reauth")
+            self._entry.async_start_reauth(self.hass)
+            raise UpdateFailed("Authentication expired") from exception
+        except CannotConnect as exception:
+            raise UpdateFailed("Cannot connect") from exception
+        except Exception as exception:
+            raise UpdateFailed() from exception
+
         _persist_tokens(self.hass, self._entry, self.api)
         return data
 
@@ -142,13 +239,24 @@ def _persist_tokens(
     ):
         _LOGGER.debug("Persisting refreshed tokens")
         data = {**entry.data, **current}
+        # Token writes fire the options update listener; skip the reload so we
+        # do not loop (reload → fetch → new tokens → update → reload …).
+        _SKIP_RELOAD_ENTRY_IDS.add(entry.entry_id)
         hass.config_entries.async_update_entry(entry, data=data)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> bool:
     """Handle removal of an entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    unloaded = await hass.config_entries.async_unload_platforms(entry, coordinator.platforms)
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    unloaded = await hass.config_entries.async_unload_platforms(entry, runtime.platforms)
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id)
     return unloaded
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload config entry when options change (not on token-only writes)."""
+    if entry.entry_id in _SKIP_RELOAD_ENTRY_IDS:
+        _SKIP_RELOAD_ENTRY_IDS.discard(entry.entry_id)
+        return
+    await hass.config_entries.async_reload(entry.entry_id)

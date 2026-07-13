@@ -120,18 +120,35 @@ After installation, you can adjust which platforms are enabled:
 
 ## Energy monitoring
 
-Each metered Appliance exposes a `SensorDeviceClass.ENERGY` sensor with `kWh` as the unit of measurement. The value represents the total energy used in a rolling 30-day window. `last_reset` is set to the start of that window so the Home Assistant Energy Dashboard can plot it correctly.
+Each metered Appliance exposes two energy sensors (primary register):
+
+| Sensor              | Meaning                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------ |
+| **Energy today**    | kWh for the current local calendar day (from midnight).                              |
+| **Energy lifetime** | Cumulative sum of all daily kWh points returned by the cloud (from first telemetry). |
+
+A secondary register (**Energy T2**) is available as diagnostic entities when the appliance reports `T2`.
 
 **Important behaviour:**
 
-- Energy data is hardware-dependent — only metered appliances (for example, QRAD radiators) report telemetry.
-- When the Hub returns no data, the sensor is **unavailable** rather than `0`, so the Energy Dashboard never sees fabricated zero readings.
-- During warmer months, when heaters are not running, you should expect to see the energy sensor as **unavailable** — this is correct behaviour, not a bug.
+- Energy data is hardware-dependent — metered appliances (QRAD, Quantum storage heaters, etc.) report daily kWh telemetry, not live watts.
+- When the hub returns no points for a register, the sensor is **unavailable** rather than `0`.
+- Status polls every ~30s; energy polls on a slower cadence (default 30 minutes) to avoid hammering the cloud.
+
+## Climate control
+
+Each appliance is exposed as a `climate` entity with:
+
+- current room temperature and target temperature
+- presets: `comfort`, `boost`, `away`, `eco` (EcoStart)
+- `climate.set_temperature` / `climate.set_preset_mode`
+
+Schedule editing beyond setpoint rewrites is still limited by the cloud API.
 
 ## Known limitations
 
-- Target temperature controls are not exposed yet.
-- Schedules and timer editing are not exposed yet.
+- Full weekly schedule UI is not exposed yet (setpoint writes update timer periods).
+- Away mode bitmasks are best-effort across appliance families.
 
 ## Troubleshooting
 

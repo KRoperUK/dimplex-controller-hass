@@ -380,15 +380,8 @@ async def test_initialize_no_credentials(hass):
 # ---------------------------------------------------------------------------
 
 
-def test_get_auth_url_prefers_get_auth_url():
-    """get_auth_url is used when the auth manager exposes it."""
-    api = DimplexApiClient(session=MagicMock())
-    api._client.auth = SimpleNamespace(get_auth_url=lambda: "https://auth/url")
-    assert api.get_auth_url() == "https://auth/url"
-
-
-def test_get_auth_url_falls_back_to_login_url():
-    """get_login_url is used when get_auth_url is unavailable."""
+def test_get_auth_url_uses_login_url():
+    """get_auth_url delegates to the library auth manager login URL."""
     api = DimplexApiClient(session=MagicMock())
     api._client.auth = SimpleNamespace(get_login_url=lambda: "https://login/url")
     assert api.get_auth_url() == "https://login/url"

@@ -39,8 +39,12 @@ async def test_switch_services(hass):
     with (
         patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
         patch(
-            "custom_components.dimplex.DimplexApiClient.async_get_data",
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
             return_value=_mock_coordinator_payload(),
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value={"energy": {}},
         ),
     ):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -55,8 +59,12 @@ async def test_switch_services(hass):
     with (
         patch("custom_components.dimplex.DimplexApiClient.async_set_eco_start") as eco_start_func,
         patch(
-            "custom_components.dimplex.DimplexApiClient.async_get_data",
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
             return_value=_mock_coordinator_payload(),
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value={"energy": {}},
         ),
     ):
         await hass.services.async_call(

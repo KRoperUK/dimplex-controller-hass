@@ -1,3 +1,7 @@
+"""Adapter around dimplex_controller for Home Assistant."""
+
+from __future__ import annotations
+
 import base64
 import json
 import logging
@@ -11,6 +15,7 @@ from dimplex_controller import (
     DimplexAuthError,
     DimplexConnectionError,
     DimplexControl,
+    TokenBundle,
     parse_telemetry_points,
 )
 
@@ -45,19 +50,17 @@ class DimplexApiClient:
         self._password = password
         self._client = DimplexControl(
             session=session,
-            refresh_token=refresh_token,
-            access_token=access_token,
-            expires_at=expires_at,
+            token_bundle=TokenBundle(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                expires_at=float(expires_at or 0),
+            ),
         )
 
     @property
     def token_data(self) -> dict[str, Any]:
         """Return current auth token payload for persistence."""
-        return {
-            "access_token": self._client.auth._access_token,
-            "refresh_token": self._client.auth._refresh_token,
-            "expires_at": self._client.auth._expires_at,
-        }
+        return self._client.export_tokens().as_dict()
 
     @staticmethod
     def _extract_expiry(access_token: str) -> float:
@@ -76,7 +79,8 @@ class DimplexApiClient:
 
     async def async_initialize(self) -> None:
         """Ensure the underlying library is authenticated."""
-        if self._client.auth._refresh_token:
+        tokens = self._client.export_tokens()
+        if tokens.refresh_token:
             try:
                 await self._client.auth.get_access_token()
                 return
@@ -85,12 +89,20 @@ class DimplexApiClient:
             except DimplexConnectionError as exception:
                 raise CannotConnect from exception
 
-        if self._client.auth._access_token:
-            if not self._client.auth._expires_at:
-                self._client.auth._expires_at = self._extract_expiry(self._client.auth._access_token)
+        if tokens.access_token:
+            expires_at = tokens.expires_at
+            if not expires_at:
+                expires_at = self._extract_expiry(tokens.access_token)
+                self._client.apply_tokens(
+                    TokenBundle(
+                        access_token=tokens.access_token,
+                        refresh_token=tokens.refresh_token,
+                        expires_at=expires_at,
+                    )
+                )
 
-            if self._client.auth._expires_at:
-                if self._client.auth._expires_at <= datetime.now(UTC).timestamp():
+            if expires_at:
+                if expires_at <= datetime.now(UTC).timestamp():
                     raise InvalidAuth
                 return
 
@@ -135,18 +147,13 @@ class DimplexApiClient:
 
     def get_auth_url(self) -> str:
         """Return the browser auth URL for manual token generation."""
-        auth_manager = self._client.auth
-        if hasattr(auth_manager, "get_auth_url"):
-            return auth_manager.get_auth_url()
+        return self._client.auth.get_login_url()
 
-        return auth_manager.get_login_url()
-
-    async def async_get_data(self) -> dict[str, Any]:
-        """Fetch hubs, zones, and appliance overview data."""
+    async def async_get_status_data(self) -> dict[str, Any]:
+        """Fetch hubs, zones, and appliance overview (no energy)."""
         try:
             hubs = await self._client.get_hubs()
             appliance_rows: list[dict[str, Any]] = []
-            energy_by_hub: dict[str, dict[str, list[tuple[datetime | None, float]]]] = {}
 
             for hub in hubs:
                 zones = await self._client.get_hub_zones(hub.HubId)
@@ -186,14 +193,7 @@ class DimplexApiClient:
                             }
                         )
 
-                # Energy telemetry is hub-scoped, not appliance-scoped, so it
-                # is fetched once per hub. Empty arrays are normal on hubs
-                # without metered appliances or when the heaters are not
-                # running, so we surface them as-is rather than treating them
-                # as failures.
-                energy_by_hub[hub.HubId] = await self.async_get_energy_report(hub.HubId)
-
-            return {"appliances": appliance_rows, "energy": energy_by_hub}
+            return {"appliances": appliance_rows, "hubs": hubs}
         except DimplexAuthError as exception:
             raise InvalidAuth from exception
         except DimplexConnectionError as exception:
@@ -201,10 +201,84 @@ class DimplexApiClient:
         except DimplexApiError as exception:
             raise CannotConnect from exception
 
+    async def async_get_data(self) -> dict[str, Any]:
+        """Fetch status and energy (combined; used by tests / legacy callers)."""
+        status = await self.async_get_status_data()
+        energy_by_hub: dict[str, dict[str, dict[str, list]]] = {}
+        for hub in status.get("hubs", []):
+            energy_by_hub[hub.HubId] = await self.async_get_energy_report(hub.HubId)
+        return {"appliances": status["appliances"], "energy": energy_by_hub}
+
+    async def async_get_energy_for_hubs(self, hub_ids: list[str]) -> dict[str, Any]:
+        """Fetch energy reports for the given hub ids."""
+        energy_by_hub: dict[str, dict[str, dict[str, list]]] = {}
+        for hub_id in hub_ids:
+            energy_by_hub[hub_id] = await self.async_get_energy_report(hub_id)
+        return {"energy": energy_by_hub}
+
     async def async_set_eco_start(self, hub_id: str, appliance_id: str, enable: bool) -> None:
         """Enable or disable EcoStart for an appliance."""
         try:
             await self._client.set_eco_start(hub_id, [appliance_id], enable)
+        except DimplexAuthError as exception:
+            raise InvalidAuth from exception
+        except DimplexConnectionError as exception:
+            raise CannotConnect from exception
+        except DimplexApiError as exception:
+            raise CannotConnect from exception
+
+    async def async_set_target_temperature(self, hub_id: str, appliance_id: str, temperature: float) -> None:
+        """Set the appliance target temperature."""
+        try:
+            await self._client.set_target_temperature(hub_id, appliance_id, temperature)
+        except DimplexAuthError as exception:
+            raise InvalidAuth from exception
+        except DimplexConnectionError as exception:
+            raise CannotConnect from exception
+        except DimplexApiError as exception:
+            raise CannotConnect from exception
+
+    async def async_set_boost(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        *,
+        temperature: float,
+        duration_minutes: int = 60,
+        enable: bool = True,
+    ) -> None:
+        """Enable or disable Boost."""
+        try:
+            await self._client.set_boost(
+                hub_id,
+                [appliance_id],
+                temperature=temperature,
+                duration_minutes=duration_minutes,
+                enable=enable,
+            )
+        except DimplexAuthError as exception:
+            raise InvalidAuth from exception
+        except DimplexConnectionError as exception:
+            raise CannotConnect from exception
+        except DimplexApiError as exception:
+            raise CannotConnect from exception
+
+    async def async_set_away(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        *,
+        temperature: float,
+        enable: bool = True,
+    ) -> None:
+        """Enable or disable Away mode."""
+        try:
+            await self._client.set_away(
+                hub_id,
+                [appliance_id],
+                temperature=temperature,
+                enable=enable,
+            )
         except DimplexAuthError as exception:
             raise InvalidAuth from exception
         except DimplexConnectionError as exception:
@@ -221,11 +295,9 @@ class DimplexApiClient:
         """Fetch the per-appliance energy telemetry report for a hub.
 
         Returns a dict with ``t1`` and ``t2`` keys. Each maps appliance id to
-        the raw telemetry list normalised by :func:`parse_telemetry_points`
-        into ``(timestamp, value)`` tuples. ``t1`` is the primary energy
-        register; ``t2`` is a secondary register observed for some Quantum
-        appliances. Empty lists are normal for hubs without metered appliances
-        or when heaters have not been running.
+        normalised ``(timestamp, value)`` tuples. Empty lists are normal for
+        hubs without metered appliances or when heaters have not been running
+        *and* IncludePreviousPeriod returns nothing.
         """
         try:
             report = await self._client.get_tsi_energy_report(

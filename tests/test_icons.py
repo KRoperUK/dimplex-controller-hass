@@ -31,7 +31,7 @@ def _appliance_row(eco_start: bool, comfort: bool):
 def test_ecostart_switch_icon(eco_start, expected_icon):
     """The EcoStart switch icon reflects its on/off state."""
     coordinator, config_entry, row = _appliance_row(eco_start=eco_start, comfort=False)
-    switch = DimplexEcoStartSwitch(coordinator, config_entry, row)
+    switch = DimplexEcoStartSwitch(coordinator, config_entry, row, api=SimpleNamespace())
     assert switch.is_on is eco_start
     assert switch.icon == expected_icon
 

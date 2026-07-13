@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 from homeassistant.components.switch import SwitchEntity
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .entity import DimplexEntity
 
 
-async def async_setup_entry(hass, entry, async_add_devices):
-    """Setup sensor platform."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_devices(
+async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
+    """Set up switch platform."""
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    async_add_entities(
         [
-            DimplexEcoStartSwitch(coordinator, entry, appliance_row)
-            for appliance_row in coordinator.data.get("appliances", [])
+            DimplexEcoStartSwitch(runtime.status, entry, appliance_row, runtime.api)
+            for appliance_row in (runtime.status.data or {}).get("appliances", [])
         ]
     )
 
@@ -22,9 +24,15 @@ async def async_setup_entry(hass, entry, async_add_devices):
 class DimplexEcoStartSwitch(DimplexEntity, SwitchEntity):
     """EcoStart toggle switch."""
 
+    _attr_name = "EcoStart"
+
+    def __init__(self, coordinator, config_entry, appliance_row, api) -> None:
+        super().__init__(coordinator, config_entry, appliance_row)
+        self._api = api
+
     async def async_turn_on(self, **kwargs):  # pylint: disable=unused-argument
         """Turn on the switch."""
-        await self.coordinator.api.async_set_eco_start(
+        await self._api.async_set_eco_start(
             self._hub.HubId,
             self._appliance.ApplianceId,
             True,
@@ -33,17 +41,12 @@ class DimplexEcoStartSwitch(DimplexEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs):  # pylint: disable=unused-argument
         """Turn off the switch."""
-        await self.coordinator.api.async_set_eco_start(
+        await self._api.async_set_eco_start(
             self._hub.HubId,
             self._appliance.ApplianceId,
             False,
         )
         await self.coordinator.async_request_refresh()
-
-    @property
-    def name(self):
-        """Return the name of the switch."""
-        return f"{self._appliance.FriendlyName} EcoStart"
 
     @property
     def icon(self):

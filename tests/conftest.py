@@ -26,31 +26,35 @@ def skip_notifications_fixture():
         yield
 
 
-# This fixture, when used, will result in calls to async_get_data to return None. To have the call
-# return a value, we would add the `return_value=<VALUE_TO_RETURN>` parameter to the patch call.
 @pytest.fixture(name="bypass_get_data")
 def bypass_get_data_fixture():
     """Skip calls to get data from API."""
     with (
         patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
         patch(
-            "custom_components.dimplex.DimplexApiClient.async_get_data",
-            return_value={"appliances": []},
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
+            return_value={"appliances": [], "hubs": []},
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value={"energy": {}},
         ),
     ):
         yield
 
 
-# In this fixture, we are forcing calls to async_get_data to raise an Exception. This is useful
-# for exception handling.
 @pytest.fixture(name="error_on_get_data")
 def error_get_data_fixture():
     """Simulate error when retrieving data from API."""
     with (
         patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
         patch(
-            "custom_components.dimplex.DimplexApiClient.async_get_data",
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
             side_effect=Exception,
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value={"energy": {}},
         ),
     ):
         yield

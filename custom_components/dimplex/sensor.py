@@ -2,52 +2,63 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
+from typing import Any
+from zoneinfo import ZoneInfo
 
+from dimplex_controller import summarise_energy
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
 from homeassistant.const import UnitOfEnergy, UnitOfTemperature
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, ENERGY_REPORT_DAYS, ENERGY_REPORT_INTERVAL
+from .const import DOMAIN
 from .entity import DimplexEntity
 
 
-async def async_setup_entry(hass, entry, async_add_devices):
-    """Setup sensor platform."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
+    """Set up sensor platform."""
+    runtime = hass.data[DOMAIN][entry.entry_id]
+    status = runtime.status
+    energy = runtime.energy
     devices: list[SensorEntity] = []
-    for appliance_row in coordinator.data.get("appliances", []):
+    for appliance_row in (status.data or {}).get("appliances", []):
         devices.extend(
             [
-                DimplexRoomTemperatureSensor(coordinator, entry, appliance_row),
-                DimplexTargetTemperatureSensor(coordinator, entry, appliance_row),
-                DimplexBoostTemperatureSensor(coordinator, entry, appliance_row),
-                DimplexAwayTemperatureSensor(coordinator, entry, appliance_row),
-                DimplexSetbackTemperatureSensor(coordinator, entry, appliance_row),
-                DimplexErrorCodeSensor(coordinator, entry, appliance_row),
-                DimplexWarningCodeSensor(coordinator, entry, appliance_row),
-                DimplexLastTelemDateSensor(coordinator, entry, appliance_row),
-                DimplexEnergySensor(coordinator, entry, appliance_row),
-                DimplexEnergySensorT2(coordinator, entry, appliance_row),
+                DimplexRoomTemperatureSensor(status, entry, appliance_row),
+                DimplexTargetTemperatureSensor(status, entry, appliance_row),
+                DimplexBoostTemperatureSensor(status, entry, appliance_row),
+                DimplexAwayTemperatureSensor(status, entry, appliance_row),
+                DimplexSetbackTemperatureSensor(status, entry, appliance_row),
+                DimplexErrorCodeSensor(status, entry, appliance_row),
+                DimplexWarningCodeSensor(status, entry, appliance_row),
+                DimplexLastTelemDateSensor(status, entry, appliance_row),
+                DimplexEnergyLifetimeSensor(energy, status, entry, appliance_row, register="t1"),
+                DimplexEnergyDailySensor(energy, status, entry, appliance_row, register="t1"),
+                DimplexEnergyLifetimeSensor(energy, status, entry, appliance_row, register="t2"),
+                DimplexEnergyDailySensor(energy, status, entry, appliance_row, register="t2"),
             ]
         )
-    async_add_devices(devices)
+    async_add_entities(devices)
 
 
 class DimplexRoomTemperatureSensor(DimplexEntity, SensorEntity):
     """Room temperature sensor for an appliance."""
 
+    _attr_name = "Room temperature"
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
     @property
     def unique_id(self) -> str:
         return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_room_temperature"
-
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return f"{self._appliance.FriendlyName} Room Temperature"
 
     @property
     def native_value(self):
@@ -55,31 +66,18 @@ class DimplexRoomTemperatureSensor(DimplexEntity, SensorEntity):
         status = self._status
         return status.RoomTemperature if status else None
 
-    @property
-    def native_unit_of_measurement(self):
-        """Return the unit of measurement."""
-        return UnitOfTemperature.CELSIUS
-
-    @property
-    def device_class(self):
-        """Return the device class of the sensor."""
-        return SensorDeviceClass.TEMPERATURE
-
 
 class _DimplexTemperatureSensor(DimplexEntity, SensorEntity):
     """Base class for temperature sensors backed by ApplianceStatus fields."""
 
     _status_attr: str
-    _suffix: str
     _entity_suffix: str
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
 
     @property
     def unique_id(self) -> str:
         return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_{self._entity_suffix}"
-
-    @property
-    def name(self):
-        return f"{self._appliance.FriendlyName} {self._suffix}"
 
     @property
     def native_value(self):
@@ -88,66 +86,49 @@ class _DimplexTemperatureSensor(DimplexEntity, SensorEntity):
             return None
         return getattr(status, self._status_attr, None)
 
-    @property
-    def native_unit_of_measurement(self):
-        return UnitOfTemperature.CELSIUS
-
-    @property
-    def device_class(self):
-        return SensorDeviceClass.TEMPERATURE
-
 
 class DimplexTargetTemperatureSensor(_DimplexTemperatureSensor):
     """Active set-point temperature sensor."""
 
     _status_attr = "ActiveSetPointTemperature"
-    _suffix = "Target Temperature"
     _entity_suffix = "target_temperature"
+    _attr_name = "Target temperature"
 
 
 class DimplexBoostTemperatureSensor(_DimplexTemperatureSensor):
     """Boost mode target temperature sensor."""
 
     _status_attr = "BoostTemperature"
-    _suffix = "Boost Temperature"
     _entity_suffix = "boost_temperature"
+    _attr_name = "Boost temperature"
 
 
 class DimplexAwayTemperatureSensor(_DimplexTemperatureSensor):
     """Away mode target temperature sensor."""
 
     _status_attr = "AwayTemperature"
-    _suffix = "Away Temperature"
     _entity_suffix = "away_temperature"
+    _attr_name = "Away temperature"
 
 
 class DimplexSetbackTemperatureSensor(_DimplexTemperatureSensor):
     """Setback temperature sensor."""
 
     _status_attr = "SetbackTemperature"
-    _suffix = "Setback Temperature"
     _entity_suffix = "setback_temperature"
+    _attr_name = "Setback temperature"
 
 
 class _DimplexDiagnosticSensor(DimplexEntity, SensorEntity):
     """Base class for diagnostic string/code sensors."""
 
     _status_attr: str
-    _suffix: str
-    _icon: str
     _entity_suffix: str
+    _attr_entity_registry_enabled_default = False
 
     @property
     def unique_id(self) -> str:
         return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_{self._entity_suffix}"
-
-    @property
-    def name(self):
-        return f"{self._appliance.FriendlyName} {self._suffix}"
-
-    @property
-    def icon(self):
-        return self._icon
 
     @property
     def native_value(self):
@@ -157,28 +138,23 @@ class _DimplexDiagnosticSensor(DimplexEntity, SensorEntity):
         value = getattr(status, self._status_attr, None)
         return value if value not in (None, "") else None
 
-    @property
-    def entity_registry_enabled_default(self) -> bool:
-        """Diagnostic sensors are disabled by default to avoid clutter."""
-        return False
-
 
 class DimplexErrorCodeSensor(_DimplexDiagnosticSensor):
     """Appliance error code diagnostic sensor."""
 
     _status_attr = "ErrorCode"
-    _suffix = "Error Code"
     _entity_suffix = "error_code"
-    _icon = "mdi:alert-circle"
+    _attr_name = "Error code"
+    _attr_icon = "mdi:alert-circle"
 
 
 class DimplexWarningCodeSensor(_DimplexDiagnosticSensor):
     """Appliance warning code diagnostic sensor."""
 
     _status_attr = "WarningCode"
-    _suffix = "Warning Code"
     _entity_suffix = "warning_code"
-    _icon = "mdi:alert"
+    _attr_name = "Warning code"
+    _attr_icon = "mdi:alert"
 
 
 class DimplexLastTelemDateSensor(DimplexEntity, SensorEntity):
@@ -186,114 +162,168 @@ class DimplexLastTelemDateSensor(DimplexEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:clock-outline"
+    _attr_name = "Last telemetry"
+    _attr_entity_registry_enabled_default = False
 
     @property
     def unique_id(self) -> str:
         return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_last_telem"
 
     @property
-    def name(self):
-        return f"{self._appliance.FriendlyName} Last Telemetry"
+    def available(self) -> bool:
+        """Available when we have a last-telem value even if overview is empty."""
+        if not CoordinatorEntity.available.__get__(self, type(self)):
+            return False
+        return self.native_value is not None
 
     @property
     def native_value(self):
         status = self._status
-        # ApplianceStatus does not currently include LastTelemDate, so fall
-        # back to the static appliance record from the zone listing.
         if status is not None and getattr(status, "LastTelemDate", None) is not None:
             return status.LastTelemDate
-        return self._appliance.LastTelemDate
-
-    @property
-    def entity_registry_enabled_default(self) -> bool:
-        return False
+        return getattr(self._appliance, "LastTelemDate", None)
 
 
-class DimplexEnergySensor(DimplexEntity, SensorEntity):
-    """Cumulative kWh energy used by an appliance (primary register).
+class _DimplexEnergySensorBase(CoordinatorEntity, SensorEntity):
+    """Energy sensor backed by the energy coordinator."""
 
-    The cloud returns daily kWh values (keyed as ``ST`` on QRAD models,
-    and ``T1`` on some other appliances) with Unix-epoch timestamps
-    (keyed as ``TS``) covering all available history. This sensor sums
-    every value and exposes the earliest timestamp as ``last_reset``, so
-    the Home Assistant Energy Dashboard computes
-    ``current_total - previous_reset_value`` correctly for the full
-    reported period.
-
-    The sensor is unavailable when the hub returns no data for this
-    appliance, preventing fabricated zero readings on the dashboard.
-    """
-
+    _attr_has_entity_name = True
     _attr_icon = "mdi:lightning-bolt"
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_state_class = SensorStateClass.TOTAL
     _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
 
-    @property
-    def unique_id(self) -> str:
-        return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_energy"
+    _mode: str  # "daily" | "lifetime"
+    _register: str  # "t1" | "t2"
+    _entity_suffix: str
+
+    def __init__(
+        self,
+        energy_coordinator,
+        status_coordinator,
+        config_entry,
+        appliance_row: dict[str, Any],
+        *,
+        register: str,
+    ) -> None:
+        super().__init__(energy_coordinator)
+        self._status_coordinator = status_coordinator
+        self.config_entry = config_entry
+        self._appliance = appliance_row["appliance"]
+        self._hub = appliance_row["hub"]
+        self._zone = appliance_row["zone"]
+        self._register = register
 
     @property
-    def name(self):
-        return f"{self._appliance.FriendlyName} Energy"
+    def unique_id(self) -> str:
+        return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_{self._entity_suffix}"
+
+    @property
+    def device_info(self):
+        appliance_type = getattr(self._appliance, "ApplianceType", None)
+        model = self._appliance.ApplianceModel
+        if appliance_type and model and appliance_type not in str(model):
+            model = f"{appliance_type} {model}"
+        info = {
+            "identifiers": {(DOMAIN, self._appliance.ApplianceId)},
+            "name": self._appliance.FriendlyName,
+            "manufacturer": "Dimplex",
+            "model": model,
+            "serial_number": self._appliance.ApplianceId,
+            "suggested_area": self._zone.ZoneName,
+            "via_device": (DOMAIN, self._hub.HubId),
+        }
+        firmware = getattr(self._appliance, "FirmwareVersion", None)
+        if firmware:
+            info["sw_version"] = str(firmware)
+        return info
 
     @property
     def _energy_points(self) -> list[tuple[datetime | None, float]]:
-        energy = self.coordinator.data.get("energy") or {}
+        energy = (self.coordinator.data or {}).get("energy") or {}
         hub_points = energy.get(self._hub.HubId) or {}
-        return hub_points.get("t1", {}).get(self._appliance.ApplianceId, [])
+        return hub_points.get(self._register, {}).get(self._appliance.ApplianceId, [])
 
-    @property
-    def available(self) -> bool:
-        return bool(self._energy_points)
+    def _local_tz(self):
+        try:
+            return dt_util.get_default_time_zone()
+        except Exception:
+            return ZoneInfo("UTC")
 
-    @property
-    def native_value(self) -> float | None:
+    def _summary(self):
         points = self._energy_points
         if not points:
             return None
-        return round(sum(value for _, value in points), 3)
+        return summarise_energy(
+            points,
+            mode=self._mode,  # type: ignore[arg-type]
+            now=dt_util.now(),
+            tz=self._local_tz(),
+        )
 
     @property
-    def last_reset(self) -> datetime:
-        points = self._energy_points
-        if not points:
-            return datetime.now(UTC)
-        timestamps = [ts for ts, _ in points if ts is not None]
-        if not timestamps:
-            return datetime.now(UTC)
-        return min(timestamps)
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        summary = self._summary()
+        return summary is not None and summary.point_count > 0
 
     @property
-    def extra_state_attributes(self) -> dict:
-        points = self._energy_points
-        earliest = min((ts for ts, _ in points if ts is not None), default=None)
+    def native_value(self) -> float | None:
+        summary = self._summary()
+        if summary is None or summary.point_count == 0:
+            return None
+        return summary.total_kwh
+
+    @property
+    def last_reset(self) -> datetime | None:
+        summary = self._summary()
+        if summary is None:
+            return None
+        return summary.start
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        summary = self._summary()
+        if summary is None:
+            return {}
         return {
-            "window_start": earliest.isoformat() if earliest else None,
-            "window_days": ENERGY_REPORT_DAYS,
-            "interval": ENERGY_REPORT_INTERVAL,
-            "telemetry_points": len(points),
+            "mode": summary.mode,
+            "register": self._register,
+            "window_start": summary.start.isoformat() if summary.start else None,
+            "window_end": summary.end.isoformat() if summary.end else None,
+            "telemetry_points": summary.point_count,
         }
 
 
-class DimplexEnergySensorT2(DimplexEnergySensor):
-    """Cumulative kWh for the secondary energy register (``T2``).
+class DimplexEnergyLifetimeSensor(_DimplexEnergySensorBase):
+    """Cumulative lifetime kWh (sum of all known daily points)."""
 
-    Some Quantum heaters report a secondary energy channel alongside ``T1``.
-    This sensor exposes that register independently; it is only available
-    when the cloud returns ``T2`` values for the appliance.
-    """
+    _mode = "lifetime"
 
-    @property
-    def unique_id(self) -> str:
-        return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_energy_t2"
+    def __init__(self, energy_coordinator, status_coordinator, config_entry, appliance_row, *, register: str) -> None:
+        super().__init__(energy_coordinator, status_coordinator, config_entry, appliance_row, register=register)
+        if register == "t1":
+            # Keep legacy unique_id for primary lifetime so existing entities migrate cleanly.
+            self._entity_suffix = "energy"
+            self._attr_name = "Energy lifetime"
+        else:
+            self._entity_suffix = "energy_t2"
+            self._attr_name = "Energy T2 lifetime"
+            self._attr_entity_registry_enabled_default = False
 
-    @property
-    def name(self):
-        return f"{self._appliance.FriendlyName} Energy T2"
 
-    @property
-    def _energy_points(self) -> list[tuple[datetime | None, float]]:
-        energy = self.coordinator.data.get("energy") or {}
-        hub_points = energy.get(self._hub.HubId) or {}
-        return hub_points.get("t2", {}).get(self._appliance.ApplianceId, [])
+class DimplexEnergyDailySensor(_DimplexEnergySensorBase):
+    """kWh for the current local calendar day (from midnight)."""
+
+    _mode = "daily"
+
+    def __init__(self, energy_coordinator, status_coordinator, config_entry, appliance_row, *, register: str) -> None:
+        super().__init__(energy_coordinator, status_coordinator, config_entry, appliance_row, register=register)
+        if register == "t1":
+            self._entity_suffix = "energy_daily"
+            self._attr_name = "Energy today"
+        else:
+            self._entity_suffix = "energy_t2_daily"
+            self._attr_name = "Energy T2 today"
+            self._attr_entity_registry_enabled_default = False
