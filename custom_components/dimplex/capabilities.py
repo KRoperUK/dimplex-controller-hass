@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-_lib_capabilities_for = None
+_lib_capabilities_for: Callable[..., Any] | None = None
 try:
-    from dimplex_controller import capabilities_for as _lib_capabilities_for  # type: ignore[attr-defined]
+    import dimplex_controller as _dc
+
+    _lib_capabilities_for = getattr(_dc, "capabilities_for", None)
 except Exception:  # pragma: no cover - older library floor without capabilities
     _lib_capabilities_for = None
 
