@@ -25,7 +25,18 @@ def _row(*, t1=None, t2=None):
         FriendlyName="Living Room Heater",
         ApplianceModel="Model X",
     )
-    status = SimpleNamespace(EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5)
+    status = SimpleNamespace(
+        EcoStartEnabled=False,
+        ComfortStatus=True,
+        RoomTemperature=21.5,
+        ActiveSetPointTemperature=20.0,
+        NormalTemperature=20.0,
+        BoostTemperature=None,
+        AwayTemperature=None,
+        BoostDuration=None,
+        AwayDateTime=None,
+        ApplianceModes=0,
+    )
     status_payload = {
         "appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}],
         "hubs": [hub],
@@ -74,8 +85,9 @@ async def test_energy_lifetime_sensor_with_data(hass):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    state = _state(hass, "living_room_heater_energy")
-    # has_entity_name may produce different entity ids; also try energy_lifetime
+    state = _state(hass, "energy_t1_lifetime")
+    if state is None:
+        state = _state(hass, "living_room_heater_energy")
     if state is None:
         state = _state(hass, "energy_lifetime")
     assert state is not None
@@ -115,12 +127,15 @@ async def test_energy_daily_sensor(hass):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    state = _state(hass, "energy_today")
+    state = _state(hass, "energy_t1_today")
+    if state is None:
+        state = _state(hass, "energy_today")
     if state is None:
         state = _state(hass, "energy_daily")
     assert state is not None
     assert state.state == "1.25"
     assert state.attributes.get("mode") == "daily"
+    assert state.attributes.get("register") == "t1"
 
 
 async def test_energy_sensor_t2_with_data(hass):
@@ -189,7 +204,18 @@ async def test_energy_sensor_unavailable_when_hub_key_missing(hass):
         FriendlyName="Living Room Heater",
         ApplianceModel="Model X",
     )
-    status = SimpleNamespace(EcoStartEnabled=False, ComfortStatus=True, RoomTemperature=21.5)
+    status = SimpleNamespace(
+        EcoStartEnabled=False,
+        ComfortStatus=True,
+        RoomTemperature=21.5,
+        ActiveSetPointTemperature=20.0,
+        NormalTemperature=20.0,
+        BoostTemperature=None,
+        AwayTemperature=None,
+        BoostDuration=None,
+        AwayDateTime=None,
+        ApplianceModes=0,
+    )
     status_payload = {
         "appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}],
         "hubs": [hub],

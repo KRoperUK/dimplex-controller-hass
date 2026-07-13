@@ -2,16 +2,19 @@
 
 ## Energy Dashboard
 
-Metered appliances expose `SensorDeviceClass.ENERGY` sensors in **kWh**:
+Metered appliances expose `SensorDeviceClass.ENERGY` sensors in **kWh**, split by cloud register:
 
-- **Energy lifetime** — cumulative sum of daily cloud points (best for long-term totals).
-- **Energy today** — local calendar-day total (midnight → now).
+- **Energy T1 lifetime / today** — primary register (enabled by default).
+- **Energy T2 lifetime / today** — secondary register (enable in the entity registry if your heaters report T2).
+
+T1 and T2 are **kept separate** (likely peak / off-peak). The integration never sums them into one “total energy” figure.
 
 ### Adding to the Energy Dashboard
 
 1. Go to **Settings → Dashboards → Energy**.
-2. **Add consumption** → pick your Dimplex energy sensor(s).
-3. Prefer **Energy today** for daily dashboard graphs if the sensor has points; use **lifetime** for long-running totals with `last_reset` at the first telemetry day.
+2. **Add consumption** → pick **Energy T1 today** (and **Energy T2 today** if you use dual-rate and have enabled those entities).
+3. Prefer **today** sensors for daily dashboard graphs; use **lifetime** for long-running totals with `last_reset` at the first telemetry day.
+4. For dual-rate tariffs, add T1 and T2 as **two** consumption sources (or map them to different tariff stats) — do not merge into one helper sensor.
 
 ### Behaviour notes
 

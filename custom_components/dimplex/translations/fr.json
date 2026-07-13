@@ -103,10 +103,10 @@
         "name": "Capacité de charge"
       },
       "energy_lifetime": {
-        "name": "Énergie totale"
+        "name": "Énergie T1 totale"
       },
       "energy_today": {
-        "name": "Énergie aujourd'hui"
+        "name": "Énergie T1 aujourd'hui"
       },
       "energy_t2_lifetime": {
         "name": "Énergie T2 totale"
