@@ -36,6 +36,7 @@ from .const import (
     CONF_USERNAME,
     DEFAULT_ENERGY_BACKOFF_INTERVAL,
     DEFAULT_ENERGY_INTERVAL,
+    DEFAULT_SCHEDULE_INTERVAL,
     DEFAULT_STATUS_INTERVAL,
     DOMAIN,
     ENERGY_EMPTY_BACKOFF_THRESHOLD,
@@ -240,6 +241,11 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Initialize."""
         self.api = client
         self._entry = entry
+        # Timer schedules are cached and refreshed on a slow cadence so the
+        # frequent status poll does not make one extra API call per appliance
+        # every cycle. ``None`` timestamp forces a fetch on the first poll.
+        self._schedules_cache: dict[str, Any] = {}
+        self._schedules_fetched_at: float | None = None
         super().__init__(
             hass,
             _LOGGER,
@@ -247,6 +253,43 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             name=f"{DOMAIN}_status",
             update_interval=update_interval,
         )
+
+    def _schedules_due(self) -> bool:
+        """True when the cached schedules should be refreshed."""
+        if self._schedules_fetched_at is None:
+            return True
+        elapsed = self.hass.loop.time() - self._schedules_fetched_at
+        return elapsed >= DEFAULT_SCHEDULE_INTERVAL.total_seconds()
+
+    async def _async_fetch_schedules(self, appliances: list[dict[str, Any]]) -> dict[str, Any]:
+        """Fetch timer schedules for all appliances concurrently (best-effort)."""
+        targets: list[tuple[str, str]] = []
+        for row in appliances:
+            appliance = row.get("appliance")
+            hub = row.get("hub")
+            if appliance is None or hub is None:
+                continue
+            appliance_id = getattr(appliance, "ApplianceId", None)
+            hub_id = getattr(hub, "HubId", None)
+            if appliance_id and hub_id:
+                targets.append((hub_id, appliance_id))
+
+        async def _one(hub_id: str, appliance_id: str) -> Any:
+            return await self.api.async_get_schedule(hub_id, appliance_id)
+
+        results = await asyncio.gather(
+            *(_one(hub_id, appliance_id) for hub_id, appliance_id in targets),
+            return_exceptions=True,
+        )
+
+        schedules: dict[str, Any] = {}
+        for (_, appliance_id), result in zip(targets, results, strict=False):
+            if isinstance(result, Exception):
+                _LOGGER.debug("Schedule unavailable for %s: %s", appliance_id, result)
+                schedules[appliance_id] = None
+            else:
+                schedules[appliance_id] = result
+        return schedules
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update status data via library."""
@@ -258,28 +301,18 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except CannotConnect as exception:
             raise UpdateFailed("Cannot connect") from exception
         except Exception as exception:
-            raise UpdateFailed() from exception
+            raise UpdateFailed(f"Unexpected error fetching status: {exception}") from exception
 
-        # Best-effort timer schedules (read-only). Failures leave schedule=None.
-        schedules: dict[str, Any] = {}
-        for row in data.get("appliances") or []:
-            appliance = row.get("appliance")
-            hub = row.get("hub")
-            if appliance is None or hub is None:
-                continue
-            appliance_id = getattr(appliance, "ApplianceId", None)
-            hub_id = getattr(hub, "HubId", None)
-            if not appliance_id or not hub_id:
-                continue
-            try:
-                schedules[appliance_id] = await self.api.async_get_schedule(hub_id, appliance_id)
-            except Exception as exception:  # noqa: BLE001 — schedule is optional
-                _LOGGER.debug("Schedule unavailable for %s: %s", appliance_id, exception)
-                schedules[appliance_id] = None
-        data["schedules"] = schedules
+        # Timer schedules (read-only) are refreshed on a slow cadence and cached
+        # in between so the hot status poll stays a single API call. A missing
+        # schedule leaves the entry as ``None`` (schedule sensor unavailable).
+        appliances = data.get("appliances") or []
+        if self._schedules_due():
+            self._schedules_cache = await self._async_fetch_schedules(appliances)
+            self._schedules_fetched_at = self.hass.loop.time()
+        data["schedules"] = self._schedules_cache
 
         _persist_tokens(self.hass, self._entry, self.api)
-        appliances = data.get("appliances") or []
         has_status = any(row.get("status") is not None for row in appliances)
         async_update_empty_overview_issue(
             self.hass,
@@ -382,7 +415,7 @@ class DimplexEnergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except CannotConnect as exception:
             raise UpdateFailed("Cannot connect") from exception
         except Exception as exception:
-            raise UpdateFailed() from exception
+            raise UpdateFailed(f"Unexpected error fetching energy: {exception}") from exception
 
         _persist_tokens(self.hass, self._entry, self.api)
         self._adapt_interval(data)
