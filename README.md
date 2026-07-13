@@ -152,7 +152,7 @@ This is a **major** release relative to 2.0.0. After updating via HACS, **restar
 ### Requirements
 
 - Home Assistant (current supported version for this integration)
-- [`dimplex-controller>=0.8.0`](https://pypi.org/project/dimplex-controller/) (installed automatically from the integration requirements)
+- [`dimplex-controller>=0.10.0`](https://pypi.org/project/dimplex-controller/) (installed automatically from the integration requirements)
 
 ### Breaking / behavioural changes
 
