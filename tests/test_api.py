@@ -544,3 +544,22 @@ async def test_async_get_energy_for_hubs(hass):
         data = await api.async_get_energy_for_hubs(["hub-1"])
     assert "hub-1" in data["energy"]
     assert data["energy"]["hub-1"]["t1"]["a-1"]
+
+
+def test_energy_registers_parse_separately():
+    """Dual-register points must not mix T2 kWh into the T1 series."""
+    from dimplex_controller import VALUE_KEY_T2, parse_telemetry_points
+
+    from custom_components.dimplex.api import _VALUE_KEY_T1
+
+    points = [
+        {"TS": 1767225600, "T1": 7.46, "T2": 0.36},
+        {"TS": 1767312000, "T1": 8.02, "T2": 0.18},
+        {"TS": 1767398400, "T2": 0.50},  # T2-only day must not appear in T1
+    ]
+    t1 = parse_telemetry_points(points, value_keys=_VALUE_KEY_T1)
+    t2 = parse_telemetry_points(points, value_keys=VALUE_KEY_T2)
+    assert [v for _, v in t1] == [7.46, 8.02]
+    assert [v for _, v in t2] == [0.36, 0.18, 0.50]
+    assert sum(v for _, v in t1) == 15.48
+    assert sum(v for _, v in t2) == 1.04
