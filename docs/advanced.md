@@ -35,6 +35,27 @@ Metered appliances expose `SensorDeviceClass.ENERGY` sensors in **kWh**:
 
 Changing options reloads the integration.
 
+## Domain services
+
+Prefer these for scripts when climate presets are too coarse:
+
+| Service                                     | Purpose                                          |
+| ------------------------------------------- | ------------------------------------------------ |
+| `dimplex.set_boost` / `dimplex.clear_boost` | Boost on/off (`temperature`, `duration` minutes) |
+| `dimplex.set_away` / `dimplex.clear_away`   | Away on/off                                      |
+| `dimplex.set_eco_start`                     | EcoStart (`enable`)                              |
+| `dimplex.set_open_window_detection`         | Open-window detection (`enable`)                 |
+
+Target with `device_id` (appliance device) or any `entity_id` on that appliance.
+
+## Repairs
+
+The integration may raise **Settings → System → Repairs** issues when:
+
+- Reauthentication is required (actionable — opens reauth)
+- Energy polls succeed but stay empty (seasonal / idle heaters)
+- Appliance overview is empty while hubs exist
+
 ## Automations
 
 ### Boost when temperature drops
