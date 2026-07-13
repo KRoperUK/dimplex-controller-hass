@@ -58,3 +58,22 @@ def error_get_data_fixture():
         ),
     ):
         yield
+
+
+@pytest.fixture(name="invalid_auth_on_init")
+def invalid_auth_on_init_fixture():
+    """Simulate InvalidAuth during client initialization."""
+    from custom_components.dimplex.api import InvalidAuth
+
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize", side_effect=InvalidAuth),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
+            return_value={"appliances": [], "hubs": []},
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value={"energy": {}},
+        ),
+    ):
+        yield
