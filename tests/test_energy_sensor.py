@@ -101,10 +101,11 @@ async def test_energy_lifetime_sensor_with_data(hass):
     assert state.state == "0.35"
     assert state.attributes.get("unit_of_measurement") == UnitOfEnergy.KILO_WATT_HOUR
     assert state.attributes.get("device_class") == SensorDeviceClass.ENERGY
-    assert state.attributes.get("state_class") == SensorStateClass.TOTAL
+    assert state.attributes.get("state_class") == SensorStateClass.TOTAL_INCREASING
     assert state.attributes.get("mode") == "lifetime"
     assert state.attributes.get("telemetry_points") == 2
-    assert state.attributes.get("last_reset") is not None or state.attributes.get("window_start") is not None
+    # TOTAL_INCREASING does not report last_reset; window_start is in extra attrs.
+    assert state.attributes.get("last_reset") is None
 
 
 async def test_energy_daily_sensor(hass):

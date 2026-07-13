@@ -204,7 +204,7 @@ ENERGY_SENSORS: tuple[DimplexEnergySensorEntityDescription, ...] = (
         translation_key="energy_lifetime",
         icon="mdi:lightning-bolt",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         mode="lifetime",
         register="t1",
@@ -224,7 +224,7 @@ ENERGY_SENSORS: tuple[DimplexEnergySensorEntityDescription, ...] = (
         translation_key="energy_t2_lifetime",
         icon="mdi:lightning-bolt",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         entity_registry_enabled_default=False,
         mode="lifetime",
@@ -506,7 +506,9 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
 
     @property
     def last_reset(self) -> datetime | None:
-        """Return window start for TOTAL state class."""
+        """Return window start for TOTAL state class (not used for TOTAL_INCREASING)."""
+        if self.entity_description.state_class == SensorStateClass.TOTAL_INCREASING:
+            return None
         summary = self._summary()
         if summary is None:
             return None
