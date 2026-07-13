@@ -5,16 +5,19 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.climate import (
-    ClimateEntity,
+from homeassistant.components.climate import ClimateEntity
+from homeassistant.components.climate.const import (
     ClimateEntityFeature,
     HVACAction,
     HVACMode,
 )
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .api import DimplexApiClient
 from .const import DOMAIN
 from .entity import DimplexEntity
 
@@ -32,7 +35,7 @@ _BOOST_FLAG = 16
 _AWAY_FLAG = 32
 
 
-def _is_boost_active(status) -> bool:
+def _is_boost_active(status: Any) -> bool:
     """Return True when boost appears active (model property or raw fields)."""
     if status is None:
         return False
@@ -46,7 +49,7 @@ def _is_boost_active(status) -> bool:
     return bool(modes & _BOOST_FLAG)
 
 
-def _is_away_active(status) -> bool:
+def _is_away_active(status: Any) -> bool:
     """Return True when away appears active (model property or raw fields)."""
     if status is None:
         return False
@@ -60,7 +63,11 @@ def _is_away_active(status) -> bool:
     return bool(modes & _AWAY_FLAG)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
     """Set up climate platform."""
     runtime = hass.data[DOMAIN][entry.entry_id]
     entities = [
@@ -87,7 +94,13 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
     _attr_max_temp = 30.0
     _attr_target_temperature_step = 0.5
 
-    def __init__(self, coordinator, config_entry, appliance_row: dict[str, Any], api) -> None:
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+        api: DimplexApiClient,
+    ) -> None:
         super().__init__(coordinator, config_entry, appliance_row)
         self._api = api
 

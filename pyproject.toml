@@ -19,9 +19,7 @@ ignore = ["E501"]
 known-first-party = ["custom_components", "tests"]
 
 [tool.mypy]
-# Strict mypy is the eventual goal (see sungrow-hass). CI does not yet run mypy
-# because the integration is untyped; a follow-up PR will land the typing pass
-# and then enable the "Type check with mypy" step in .github/workflows/ci.yml.
+# Strict typing for the integration package; CI runs `mypy` on this path.
 python_version = "3.14"
 strict = true
 ignore_missing_imports = true

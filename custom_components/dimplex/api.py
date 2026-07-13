@@ -204,14 +204,14 @@ class DimplexApiClient:
     async def async_get_data(self) -> dict[str, Any]:
         """Fetch status and energy (combined; used by tests / legacy callers)."""
         status = await self.async_get_status_data()
-        energy_by_hub: dict[str, dict[str, dict[str, list]]] = {}
+        energy_by_hub: dict[str, dict[str, dict[str, list[tuple[datetime | None, float]]]]] = {}
         for hub in status.get("hubs", []):
             energy_by_hub[hub.HubId] = await self.async_get_energy_report(hub.HubId)
         return {"appliances": status["appliances"], "energy": energy_by_hub}
 
     async def async_get_energy_for_hubs(self, hub_ids: list[str]) -> dict[str, Any]:
         """Fetch energy reports for the given hub ids."""
-        energy_by_hub: dict[str, dict[str, dict[str, list]]] = {}
+        energy_by_hub: dict[str, dict[str, dict[str, list[tuple[datetime | None, float]]]]] = {}
         for hub_id in hub_ids:
             energy_by_hub[hub_id] = await self.async_get_energy_report(hub_id)
         return {"energy": energy_by_hub}
