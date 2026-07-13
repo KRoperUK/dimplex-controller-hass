@@ -56,6 +56,7 @@
       "last_telem": { "name": "Siste telemetri" },
       "rated_power": { "name": "Nominell effekt" },
       "charge_capacity": { "name": "Ladekapasitet" },
+      "estimated_power": { "name": "Estimert effekt" },
       "energy_lifetime": { "name": "Energi totalt" },
       "energy_today": { "name": "Energi i dag" },
       "energy_t2_lifetime": { "name": "Energi T2 totalt" },

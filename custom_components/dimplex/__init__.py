@@ -31,9 +31,11 @@ from .const import (
     CONF_REFRESH_TOKEN,
     CONF_STATUS_INTERVAL,
     CONF_USERNAME,
+    DEFAULT_ENERGY_BACKOFF_INTERVAL,
     DEFAULT_ENERGY_INTERVAL,
     DEFAULT_STATUS_INTERVAL,
     DOMAIN,
+    ENERGY_EMPTY_BACKOFF_THRESHOLD,
     PLATFORMS,
     STARTUP_MESSAGE,
 )
@@ -191,6 +193,8 @@ class DimplexEnergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.api = client
         self._entry = entry
         self._status = status_coordinator
+        self._base_interval = update_interval
+        self._empty_polls = 0
         super().__init__(
             hass,
             _LOGGER,
@@ -198,6 +202,56 @@ class DimplexEnergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             name=f"{DOMAIN}_energy",
             update_interval=update_interval,
         )
+
+    @staticmethod
+    def _energy_is_empty(data: dict[str, Any]) -> bool:
+        """True when every appliance series has zero points."""
+        energy = data.get("energy") or {}
+        if not energy:
+            return True
+        for registers in energy.values():
+            for by_app in (registers or {}).values():
+                for points in (by_app or {}).values():
+                    if points:
+                        return False
+        return True
+
+    def _any_heating_active(self) -> bool:
+        """Restore normal polling when status suggests active heating."""
+        for row in (self._status.data or {}).get("appliances", []):
+            status = row.get("status")
+            if status is None:
+                continue
+            if getattr(status, "ComfortStatus", None):
+                return True
+            modes = getattr(status, "ApplianceModes", None) or 0
+            if modes & 16:
+                return True
+            duration = getattr(status, "BoostDuration", None)
+            if duration is not None and duration > 0:
+                return True
+        return False
+
+    def _adapt_interval(self, data: dict[str, Any]) -> None:
+        """Back off when history is empty; restore when points or heating return."""
+        if self._energy_is_empty(data) and not self._any_heating_active():
+            self._empty_polls += 1
+        else:
+            self._empty_polls = 0
+
+        if self._empty_polls >= ENERGY_EMPTY_BACKOFF_THRESHOLD:
+            target = max(self._base_interval, DEFAULT_ENERGY_BACKOFF_INTERVAL)
+        else:
+            target = self._base_interval
+
+        if self.update_interval != target:
+            _LOGGER.debug(
+                "Energy poll interval %s → %s (empty_polls=%s)",
+                self.update_interval,
+                target,
+                self._empty_polls,
+            )
+            self.update_interval = target
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update energy data via library."""
@@ -220,6 +274,7 @@ class DimplexEnergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed() from exception
 
         _persist_tokens(self.hass, self._entry, self.api)
+        self._adapt_interval(data)
         return data
 
 
