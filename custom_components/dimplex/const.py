@@ -26,6 +26,8 @@ CONF_EXPIRES_AT = "expires_at"
 
 CONF_STATUS_INTERVAL = "status_interval"
 CONF_ENERGY_INTERVAL = "energy_interval"
+CONF_BOOST_DURATION = "boost_duration"
+DEFAULT_BOOST_DURATION = 60
 
 # Status (temps, modes) — cloud polling, relatively light.
 DEFAULT_STATUS_INTERVAL = timedelta(seconds=30)

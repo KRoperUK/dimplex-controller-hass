@@ -174,6 +174,24 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as exception:
             raise UpdateFailed() from exception
 
+        # Best-effort timer schedules (read-only). Failures leave schedule=None.
+        schedules: dict[str, Any] = {}
+        for row in data.get("appliances") or []:
+            appliance = row.get("appliance")
+            hub = row.get("hub")
+            if appliance is None or hub is None:
+                continue
+            appliance_id = getattr(appliance, "ApplianceId", None)
+            hub_id = getattr(hub, "HubId", None)
+            if not appliance_id or not hub_id:
+                continue
+            try:
+                schedules[appliance_id] = await self.api.async_get_schedule(hub_id, appliance_id)
+            except Exception as exception:  # noqa: BLE001 — schedule is optional
+                _LOGGER.debug("Schedule unavailable for %s: %s", appliance_id, exception)
+                schedules[appliance_id] = None
+        data["schedules"] = schedules
+
         _persist_tokens(self.hass, self._entry, self.api)
         return data
 
