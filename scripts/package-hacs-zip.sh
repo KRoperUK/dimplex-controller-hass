@@ -10,7 +10,13 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="${ROOT}/custom_components/dimplex"
-OUT="${1:-${ROOT}/dimplex.zip}"
+OUT_ARG="${1:-dimplex.zip}"
+
+# Resolve to an absolute path *before* we cd into SRC for zipping.
+case "${OUT_ARG}" in
+  /*) OUT="${OUT_ARG}" ;;
+  *) OUT="$(pwd)/${OUT_ARG}" ;;
+esac
 
 if [ ! -d "$SRC" ]; then
   echo "error: missing integration directory: ${SRC}" >&2
@@ -21,7 +27,9 @@ if [ ! -f "${SRC}/manifest.json" ]; then
   exit 2
 fi
 
+mkdir -p "$(dirname "$OUT")"
 rm -f "$OUT"
+
 # -X strips extra file attrs; -q quiet. Paths inside the zip are relative to SRC.
 (
   cd "$SRC"
@@ -32,5 +40,10 @@ rm -f "$OUT"
     -x '*/.DS_Store' \
     -x '.DS_Store'
 )
+
+if [ ! -f "$OUT" ]; then
+  echo "error: zip was not created at ${OUT}" >&2
+  exit 1
+fi
 
 echo "Wrote ${OUT} ($(wc -c <"$OUT" | tr -d ' ') bytes)"
