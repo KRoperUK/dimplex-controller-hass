@@ -7,9 +7,9 @@ This integration connects Home Assistant to the Dimplex cloud API and exposes co
 ## What you can do
 
 - **Monitor temperatures** — See current room temperature and target setpoints for every Zone.
-- **Track energy** — Log energy consumption for metered appliances in the Home Assistant Energy Dashboard.
-- **Control heating** — Toggle EcoStart on and off from your dashboard or automations.
-- **Stay in sync** — Tokens refresh automatically; re-authentication is handled gracefully.
+- **Track energy** — Log energy consumption for metered appliances in the Home Assistant Energy Dashboard (T1/T2 tariffs kept separate).
+- **Control heating** — Adjust target temperature and presets via climate entities, toggle EcoStart and open-window detection, and trigger Boost/Away from the dashboard, automations, or the `dimplex.*` [services](advanced.md#domain-services).
+- **Stay in sync** — Tokens refresh automatically; re-authentication uses Home Assistant's built-in reauth flow.
 
 ## Documentation pages
 
