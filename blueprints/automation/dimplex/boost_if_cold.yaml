@@ -1,0 +1,55 @@
+blueprint:
+  name: Dimplex boost if room is cold
+  description: Enable climate boost when room temperature falls below a threshold during the day.
+  domain: automation
+  input:
+    temperature_sensor:
+      name: Room temperature sensor
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    climate_entity:
+      name: Dimplex climate entity
+      selector:
+        entity:
+          domain: climate
+          integration: dimplex
+    threshold:
+      name: Temperature threshold (°C)
+      default: 17
+      selector:
+        number:
+          min: 5
+          max: 25
+          step: 0.5
+          unit_of_measurement: "°C"
+    after:
+      name: Active after
+      default: "06:00:00"
+      selector:
+        time:
+    before:
+      name: Active before
+      default: "22:00:00"
+      selector:
+        time:
+
+trigger:
+  - platform: numeric_state
+    entity_id: !input temperature_sensor
+    below: !input threshold
+
+condition:
+  - condition: time
+    after: !input after
+    before: !input before
+
+action:
+  - service: climate.set_preset_mode
+    target:
+      entity_id: !input climate_entity
+    data:
+      preset_mode: boost
+
+mode: single
