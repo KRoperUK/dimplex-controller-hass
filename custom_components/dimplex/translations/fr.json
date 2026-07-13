@@ -102,6 +102,9 @@
       "charge_capacity": {
         "name": "Capacité de charge"
       },
+      "estimated_power": {
+        "name": "Puissance estimée"
+      },
       "energy_lifetime": {
         "name": "Énergie totale"
       },

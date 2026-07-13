@@ -18,7 +18,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .api import DimplexApiClient
-from .const import DOMAIN
+from .capabilities import capabilities_for_row
+from .const import CONF_BOOST_DURATION, DEFAULT_BOOST_DURATION, DOMAIN
 from .entity import DimplexEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ PRESET_AWAY = "away"
 PRESET_ECO = "eco"
 
 DEFAULT_BOOST_TEMP = 25.0
-DEFAULT_BOOST_MINUTES = 60
+DEFAULT_BOOST_MINUTES = DEFAULT_BOOST_DURATION
 DEFAULT_AWAY_TEMP = 16.0
 _BOOST_FLAG = 16
 _AWAY_FLAG = 32
@@ -70,15 +71,25 @@ async def async_setup_entry(
 ) -> None:
     """Set up climate platform."""
     runtime = hass.data[DOMAIN][entry.entry_id]
-    entities = [
-        DimplexClimate(runtime.status, entry, row, runtime.api)
-        for row in (runtime.status.data or {}).get("appliances", [])
-    ]
+    entities = []
+    for row in (runtime.status.data or {}).get("appliances", []):
+        caps = capabilities_for_row(row["appliance"], row.get("status"))
+        if not caps.climate:
+            _LOGGER.debug(
+                "Skipping climate for non-room appliance %s",
+                getattr(row["appliance"], "FriendlyName", None),
+            )
+            continue
+        entities.append(DimplexClimate(runtime.status, entry, row, runtime.api))
     async_add_entities(entities)
 
 
 class DimplexClimate(DimplexEntity, ClimateEntity):
-    """Thermostat-style control for a Dimplex appliance."""
+    """Thermostat-style control for a Dimplex appliance.
+
+    HVAC OFF clears boost/away only — the cloud has no confirmed true power-off
+    mapping for all models. Use timer/frost modes (future) for deeper off.
+    """
 
     _attr_name = None  # device name is the climate entity name
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
@@ -89,7 +100,6 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         | ClimateEntityFeature.TURN_OFF
     )
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
-    _attr_preset_modes = [PRESET_COMFORT, PRESET_BOOST, PRESET_AWAY, PRESET_ECO]
     _attr_min_temp = 5.0
     _attr_max_temp = 30.0
     _attr_target_temperature_step = 0.5
@@ -105,8 +115,25 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         self._api = api
 
     @property
+    def _caps(self) -> Any:
+        return capabilities_for_row(self._appliance, self._status)
+
+    @property
     def unique_id(self) -> str:
         return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_climate"
+
+    @property
+    def preset_modes(self) -> list[str] | None:
+        return list(self._caps.climate_presets())
+
+    @property
+    def _boost_minutes(self) -> int:
+        raw = self.config_entry.options.get(CONF_BOOST_DURATION, DEFAULT_BOOST_MINUTES)
+        try:
+            minutes = int(raw)
+        except TypeError, ValueError:
+            return DEFAULT_BOOST_MINUTES
+        return max(1, min(minutes, 24 * 60))
 
     @property
     def current_temperature(self) -> float | None:
@@ -198,7 +225,17 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        """Apply a climate preset."""
+        """Apply a climate preset (gated by appliance capabilities)."""
+        allowed = self.preset_modes or []
+        if preset_mode not in allowed and preset_mode != PRESET_COMFORT:
+            _LOGGER.warning(
+                "Preset %s not supported for %s (allowed: %s)",
+                preset_mode,
+                self._appliance.FriendlyName,
+                allowed,
+            )
+            return
+
         status = self._status
         comfort_temp = 21.0
         if status and status.ActiveSetPointTemperature is not None:
@@ -208,20 +245,27 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
 
         hub_id = self._hub.HubId
         appliance_id = self._appliance.ApplianceId
+        caps = self._caps
 
         if preset_mode == PRESET_BOOST:
+            if not caps.boost:
+                return
             boost_temp = float(status.BoostTemperature) if status and status.BoostTemperature else DEFAULT_BOOST_TEMP
             await self._api.async_set_boost(
                 hub_id,
                 appliance_id,
                 temperature=boost_temp,
-                duration_minutes=DEFAULT_BOOST_MINUTES,
+                duration_minutes=self._boost_minutes,
                 enable=True,
             )
         elif preset_mode == PRESET_AWAY:
+            if not caps.away:
+                return
             away_temp = float(status.AwayTemperature) if status and status.AwayTemperature else DEFAULT_AWAY_TEMP
             await self._api.async_set_away(hub_id, appliance_id, temperature=away_temp, enable=True)
         elif preset_mode == PRESET_ECO:
+            if not caps.eco_start:
+                return
             await self._api.async_set_eco_start(hub_id, appliance_id, True)
         elif preset_mode == PRESET_COMFORT:
             if _is_boost_active(status):

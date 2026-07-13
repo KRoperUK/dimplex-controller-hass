@@ -31,22 +31,23 @@ One climate entity per appliance.
 
 ## Sensors
 
-| Name                | Unit      | Device class | Description                                                                   |
-| ------------------- | --------- | ------------ | ----------------------------------------------------------------------------- |
-| Room temperature    | °C        | temperature  | Current room temperature.                                                     |
-| Target temperature  | °C        | temperature  | Active setpoint.                                                              |
-| Boost temperature   | °C        | temperature  | Boost mode target.                                                            |
-| Away temperature    | °C        | temperature  | Away mode target.                                                             |
-| Setback temperature | °C        | temperature  | Setback target.                                                               |
-| Energy lifetime     | kWh       | energy       | Sum of daily cloud points for register **T1** only (off-peak / cheaper rate). |
-| Energy today        | kWh       | energy       | T1 (off-peak) kWh for the current local calendar day.                         |
-| Energy T2 lifetime  | kWh       | energy       | Register **T2** only (peak / more expensive; disabled by default).            |
-| Energy T2 today     | kWh       | energy       | T2 (peak) kWh for the current local calendar day (disabled by default).       |
-| Rated power         | kW        | power        | Static nameplate power from product provisioning (_disabled by default_).     |
-| Charge capacity     | kWh       | energy       | Static storage capacity from provisioning (_disabled by default_).            |
-| Error code          | —         | —            | Appliance error code (_disabled by default_).                                 |
-| Warning code        | —         | —            | Appliance warning code (_disabled by default_).                               |
-| Last telemetry      | timestamp | timestamp    | Last cloud telemetry time (_disabled by default_).                            |
+| Name                | Unit      | Device class | Description                                                                                                              |
+| ------------------- | --------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Room temperature    | °C        | temperature  | Current room temperature.                                                                                                |
+| Target temperature  | °C        | temperature  | Active setpoint.                                                                                                         |
+| Boost temperature   | °C        | temperature  | Boost mode target.                                                                                                       |
+| Away temperature    | °C        | temperature  | Away mode target.                                                                                                        |
+| Setback temperature | °C        | temperature  | Setback target.                                                                                                          |
+| Energy lifetime     | kWh       | energy       | Sum of daily cloud points for register **T1** only (off-peak / cheaper rate).                                            |
+| Energy today        | kWh       | energy       | T1 (off-peak) kWh for the current local calendar day.                                                                    |
+| Energy T2 lifetime  | kWh       | energy       | Register **T2** only (peak / more expensive; disabled by default).                                                       |
+| Energy T2 today     | kWh       | energy       | T2 (peak) kWh for the current local calendar day (disabled by default).                                                  |
+| Rated power         | kW        | power        | Static nameplate power from product provisioning (_disabled by default_).                                                |
+| Estimated power     | kW        | power        | Heuristic `rated_power` when comfort/boost looks active, else `0` (_diagnostic, disabled by default; not a live meter_). |
+| Charge capacity     | kWh       | energy       | Static storage capacity from provisioning (_disabled by default_).                                                       |
+| Error code          | —         | —            | Appliance error code (_disabled by default_).                                                                            |
+| Warning code        | —         | —            | Appliance warning code (_disabled by default_).                                                                          |
+| Last telemetry      | timestamp | timestamp    | Last cloud telemetry time (_disabled by default_).                                                                       |
 
 ### Energy attributes
 
@@ -67,6 +68,8 @@ Energy data is **daily kWh history** from the cloud, not live watts. Sensors are
 | **T2**   | **Energy T2 today** / **Energy T2 lifetime** | Peak (more expensive) |
 
 Confirm against your tariff and the official app if unsure. Do not sum T1+T2 into one helper — add **Energy today** and **Energy T2 today** as separate series (or map each to the matching tariff) in the Energy Dashboard.
+
+When energy history is empty for several successful polls (common in summer), the integration **backs off** the energy poll interval (default up to 3 hours) and restores the configured interval when points return or heating activity is detected.
 
 ## Binary sensors
 
