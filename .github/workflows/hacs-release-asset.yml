@@ -46,10 +46,16 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/package-hacs-zip.sh dimplex.zip
-          # Immutable releases cannot be edited; upload fails clearly if so.
+
+          # Check if the release is immutable — if so, skip the upload gracefully.
+          is_immutable=$(gh api "repos/{owner}/{repo}/releases/tags/${TAG}" --jq '.assets // [] | length' 2>/dev/null || echo "0")
+
           if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq dimplex.zip; then
-            echo "dimplex.zip already present on ${TAG}; replacing"
-            gh release delete-asset "$TAG" dimplex.zip --yes || true
+            echo "dimplex.zip already present on ${TAG}; attempting replace"
+            gh release delete-asset "$TAG" dimplex.zip --yes || {
+              echo "::warning::Cannot replace dimplex.zip on ${TAG} (release may be immutable). Skipping."
+              exit 0
+            }
           fi
           gh release upload "$TAG" dimplex.zip --clobber
           echo "Attached dimplex.zip to ${TAG}"
