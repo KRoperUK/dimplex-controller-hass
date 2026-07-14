@@ -1,2 +1,2 @@
 homeassistant
-dimplex-controller>=0.11.0
+dimplex-controller>=0.12.0
