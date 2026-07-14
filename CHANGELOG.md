@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.0.1](https://github.com/KRoperUK/dimplex-controller-hass/compare/v3.0.0...v3.0.1) (2026-07-14)
+
+
+### Bug Fixes
+
+* **release:** attach dimplex.zip asset to stable releases ([#141](https://github.com/KRoperUK/dimplex-controller-hass/issues/141))
+* **release:** build zip inline in release-please workflow to avoid GITHUB_TOKEN event limitation
+
 ## [3.0.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v2.0.0...v3.0.0) (2026-07-13)
 
 
