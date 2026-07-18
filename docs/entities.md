@@ -8,9 +8,9 @@ Entity names use Home Assistant’s `has_entity_name` pattern: the **device** is
 
 One climate entity per appliance.
 
-| Name            | Entity ID pattern     | Description                                                                    |
-| --------------- | --------------------- | ------------------------------------------------------------------------------ |
-| _(device name)_ | `climate.<appliance>` | Thermostat: current room temperature, target setpoint, HVAC heat/off, presets. |
+| Name            | Entity ID pattern     | Description                                                                                                                                                                          |
+| --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| _(device name)_ | `climate.<appliance>` | Thermostat: current room temperature, target setpoint, HVAC heat/off, presets. HVAC **off** follows timer frost protection / off (app “off”); **heat** is user-timer / manual modes. |
 
 ### Presets
 
@@ -25,7 +25,7 @@ One climate entity per appliance.
 
 - `climate.set_temperature` — writes the target via the cloud timer schedule.
 - `climate.set_preset_mode` — boost / away / eco / comfort.
-- `climate.turn_on` / `climate.turn_off` — heat mode; off clears boost/away.
+- `climate.turn_on` / `climate.turn_off` — heat restores user-timer mode; off sets frost protection and clears boost/away.
 
 > Climate (and most status entities) are **unavailable** when the cloud returns an empty appliance overview (common when heaters have not telemetered recently).
 

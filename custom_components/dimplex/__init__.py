@@ -263,6 +263,14 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         elapsed = self.hass.loop.time() - self._schedules_fetched_at
         return elapsed >= DEFAULT_SCHEDULE_INTERVAL.total_seconds()
 
+    def invalidate_schedules(self) -> None:
+        """Force the next status poll to re-fetch timer schedules.
+
+        Call after writes that change ``TimerMode`` so climate/schedule entities
+        do not keep a stale mode for the full schedule poll interval.
+        """
+        self._schedules_fetched_at = None
+
     async def _async_fetch_schedules(self, appliances: list[dict[str, Any]]) -> dict[str, Any]:
         """Fetch timer schedules for all appliances concurrently (best-effort)."""
         targets: list[tuple[str, str]] = []
