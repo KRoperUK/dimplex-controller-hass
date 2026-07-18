@@ -1,5 +1,11 @@
 # Changelog
 
+## [4.0.1](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.0.0...v4.0.1) (2026-07-17)
+
+### Miscellaneous
+
+* Re-publish **4.0.0** as **4.0.1** with the HACS `dimplex.zip` release asset attached (GitHub immutable releases blocked adding assets to `v4.0.0` after publish). Same code as 4.0.0.
+
 ## [4.0.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v3.0.1...v4.0.0) (2026-07-14)
 
 

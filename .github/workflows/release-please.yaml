@@ -11,37 +11,78 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
 jobs:
   release-please:
     runs-on: ubuntu-latest
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+    timeout-minutes: 15
     steps:
       - name: Run Release Please
         id: release
-        uses: googleapis/release-please-action@v5
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
+          token: ${{ github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  attach-zip:
-    needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # Attach dimplex.zip in the *same* job that creates the GitHub Release so HACS
+      # zip_release installs work immediately. A separate job raced immutable-release
+      # settings and forced a manual v4.0.1 re-publish after v4.0.0 shipped without
+      # an asset — deleting that release then broke release-please's last-release lookup.
+      - name: Checkout code for zip packaging
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ steps.release.outputs.tag_name }}
           fetch-depth: 1
 
-      - name: Build and upload dimplex.zip
+      - name: Upload HACS zip asset
+        if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.release-please.outputs.tag_name }}
+          TAG: ${{ steps.release.outputs.tag_name }}
         run: |
           set -euo pipefail
           bash scripts/package-hacs-zip.sh dimplex.zip
           gh release upload "$TAG" dimplex.zip --clobber
           echo "Attached dimplex.zip to ${TAG}"
+
+      - name: Verify HACS zip asset is attached
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          assets=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          echo "Assets on ${TAG}:"
+          printf '%s\n' "$assets"
+          if ! printf '%s\n' "$assets" | grep -Fxq "dimplex.zip"; then
+            echo "::error::Release ${TAG} is missing the dimplex.zip asset — HACS installs would fail."
+            exit 1
+          fi
+          echo "Verified dimplex.zip is attached to ${TAG}."
+
+      # A published stable release supersedes every dev build. Prune them so only the
+      # real release remains (rc / pr / legacy dev-* schemes).
+      - name: Prune all dev pre-releases on a real release
+        if: ${{ steps.release.outputs.release_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          echo "Release created; deleting all dev pre-releases (rc / pr / legacy dev-*)."
+          gh release list --limit 1000 --json tagName,isPrerelease \
+            --jq '.[] | select(.isPrerelease) | .tagName' \
+          | while read -r tag; do
+              case "$tag" in
+                dev-*) ;;
+                v[0-9]*.[0-9]*.[0-9]*-rc.*|v[0-9]*.[0-9]*.[0-9]*-pr.*) ;;
+                *) continue ;;
+              esac
+              echo "Deleting ${tag}"
+              gh release delete "$tag" --yes --cleanup-tag
+            done
