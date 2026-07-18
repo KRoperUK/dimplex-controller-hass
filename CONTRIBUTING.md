@@ -26,6 +26,28 @@ Pull requests are the best way to propose changes to the codebase.
    (`fix:`, `feat:`, `chore:` …) — this drives the automated changelog/release.
 6. Issue that pull request!
 
+### Required checks before merge to `main`
+
+The `main` branch requires:
+
+- a **pull request** (squash merge only; no force-push / branch delete)
+- a green **`ci`** status check
+- **signed commits** (repo-wide rule on all branches)
+- resolved review conversation threads
+
+When your PR changes the integration (`custom_components/`, `tests/`, `scripts/`,
+or related CI config), CI runs **translations**, **lint**, **mypy**, **pre-commit**,
+**pytest**, **HACS/hassfest**, and shell script syntax checks. The aggregate `ci`
+job fails unless all of those succeed (and conventional commit titles pass on PRs).
+
+Docs-only PRs still get a green `ci` without the full matrix.
+
+Re-apply branch protection / rulesets with:
+
+```bash
+scripts/setup-branch-protection.sh
+```
+
 ## Any contributions you make will be under the MIT Software License
 
 In short, when you submit code changes, your submissions are understood to be under the same [MIT License](http://choosealicense.com/licenses/mit/) that covers the project. Feel free to contact the maintainers if that's a concern.

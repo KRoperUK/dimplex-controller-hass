@@ -15,9 +15,10 @@ concurrency:
 
 jobs:
   # Detect whether the change touches the integration itself. Non-impacting changes
-  # (docs, README, other workflows, etc.) skip the heavy jobs below — which, because a
-  # job skipped via `if` reports "success", still satisfies the required checks so the
-  # PR stays mergeable, but wastes no compute and mints no dev build.
+  # (docs, README, other workflows, etc.) skip the heavy jobs below to save compute
+  # and avoid minting a dev build. Mergeability is controlled by the aggregate `ci`
+  # job (always runs), not by the path-filtered jobs themselves — skipped required
+  # checks would otherwise block docs-only and release-please PRs.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -221,6 +222,102 @@ jobs:
       - name: Hassfest validation
         uses: home-assistant/actions/hassfest@f4ca6f671bd429efb108c0f2fa0ae8af0215986c # master
 
+  # Syntax-check the release / dev-build shell helpers. These scripts drive tag
+  # computation, dev-version commits and HACS packaging, so a syntax error there can
+  # break a release or leave a half-published pre-release. `bash -n` parses each script
+  # without executing it — no external tooling, no network.
+  scripts:
+    needs: changes
+    if: needs.changes.outputs.component == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Syntax-check shell scripts
+        run: |
+          shopt -s nullglob
+          status=0
+          for f in scripts/*.sh; do
+            if bash -n "$f"; then
+              echo "ok: $f"
+            else
+              echo "::error file=$f::bash -n found a syntax error"
+              status=1
+            fi
+          done
+          if [ "$status" -ne 0 ]; then
+            echo "One or more shell scripts failed syntax checking." >&2
+          fi
+          exit "$status"
+
+  # Stable required status check for the `main` branch ruleset / protection.
+  # - Component changes: fails unless translations, lint, mypy, pre-commit, test,
+  #   hacs_validate, and scripts all succeed
+  # - Docs/workflow-only changes: still succeeds (heavy jobs are skipped)
+  # - Pull requests: also requires conventional_commits (always runs on PRs)
+  #
+  # Requiring individual path-filtered jobs on the branch (lint/test/hacs_validate)
+  # blocked docs-only and release-please PRs when those jobs were skipped. A single
+  # always-on `ci` gate stays green for non-component work while still blocking
+  # bad component changes.
+  ci:
+    name: ci
+    needs: [changes, conventional_commits, translations, lint, mypy, pre-commit, test, hacs_validate, scripts]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Enforce required jobs
+        run: |
+          set -euo pipefail
+          component="${{ needs.changes.outputs.component }}"
+          event_name="${{ github.event_name }}"
+          echo "event: ${event_name}"
+          echo "component changes: ${component}"
+          echo "conventional_commits: ${{ needs.conventional_commits.result }}"
+          echo "translations: ${{ needs.translations.result }}"
+          echo "lint: ${{ needs.lint.result }}"
+          echo "mypy: ${{ needs.mypy.result }}"
+          echo "pre-commit: ${{ needs.pre-commit.result }}"
+          echo "test: ${{ needs.test.result }}"
+          echo "hacs_validate: ${{ needs.hacs_validate.result }}"
+          echo "scripts: ${{ needs.scripts.result }}"
+
+          failed=0
+
+          if [ "${event_name}" = "pull_request" ]; then
+            if [ "${{ needs.conventional_commits.result }}" != "success" ]; then
+              echo "::error::conventional_commits did not succeed (${{ needs.conventional_commits.result }})"
+              failed=1
+            fi
+          fi
+
+          if [ "${component}" != "true" ]; then
+            if [ "${failed}" -eq 0 ]; then
+              echo "No component paths changed — CI gate OK."
+            fi
+            exit "${failed}"
+          fi
+
+          for pair in \
+            "translations:${{ needs.translations.result }}" \
+            "lint:${{ needs.lint.result }}" \
+            "mypy:${{ needs.mypy.result }}" \
+            "pre-commit:${{ needs.pre-commit.result }}" \
+            "test:${{ needs.test.result }}" \
+            "hacs_validate:${{ needs.hacs_validate.result }}" \
+            "scripts:${{ needs.scripts.result }}"
+          do
+            name="${pair%%:*}"
+            result="${pair#*:}"
+            if [ "${result}" != "success" ]; then
+              echo "::error::${name} did not succeed (${result})"
+              failed=1
+            fi
+          done
+          exit "${failed}"
+
   # Branch dev builds — a same-repo PR that changed the component, once CI is green.
   # Fork PRs get a read-only token (release would fail) and this job holds
   # contents: write, so keep it to same-repo. Never for the release-please PR branch.
@@ -229,9 +326,10 @@ jobs:
   # rewrites only manifest/const version files so HACS installs a version that sorts
   # above the last stable and below the eventual X.Y.Z. main is never mutated.
   dev-release:
-    needs: [changes, lint, mypy, test, hacs_validate]
+    needs: [changes, ci]
     if: >-
       needs.changes.outputs.component == 'true' &&
+      needs.ci.result == 'success' &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       !startsWith(github.head_ref, 'release-please--')
@@ -410,9 +508,10 @@ jobs:
   # commits and conflict with "Commits must have verified signatures" rules.
   # Install RCs via the prerelease tag / HACS instead. main is never mutated.
   dev-release-main:
-    needs: [changes, lint, mypy, test, hacs_validate]
+    needs: [changes, ci]
     if: >-
       needs.changes.outputs.component == 'true' &&
+      needs.ci.result == 'success' &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
       !contains(github.event.head_commit.message, ': release ')
