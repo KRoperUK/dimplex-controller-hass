@@ -9,3 +9,6 @@ venv
 .commandcode/
 .env
 dimplex.zip
+
+# Docs site build output
+/site/
