@@ -19,13 +19,12 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
-      - id: check-ha-manifest-key-order
-        name: check Home Assistant manifest key order
-        entry: >
-          bash -c 'for file in "$@"; do
-          jq -e '\''type == "object" and ((keys_unsorted) as $keys | ($keys[:2] == ["domain","name"]) and ($keys == (["domain","name"] + (($keys - ["domain","name"]) | sort))))'\'' "$file" > /dev/null
-          || { echo "$file: manifest keys must be domain, name, then alphabetical order"; exit 1; };
-          done' --
+      # Canonicalise HA manifests (domain/name first, then alpha; indent=2).
+      # Must match release-please's JSON rewriter so release PRs stay green.
+      # Prettier deliberately skips these files — see .prettierignore.
+      - id: format-ha-manifest
+        name: format Home Assistant manifest.json
+        entry: python3 scripts/format_manifest.py
         language: system
         files: ^custom_components/[^/]+/manifest\.json$
         pass_filenames: true

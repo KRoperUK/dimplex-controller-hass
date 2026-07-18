@@ -1,1 +1,5 @@
 CHANGELOG.md
+
+# release-please rewrites HA manifests with indent=2 multi-line arrays; prettier
+# would compact short arrays back to one line and fight every release PR.
+custom_components/**/manifest.json
