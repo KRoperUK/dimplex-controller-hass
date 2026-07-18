@@ -20,13 +20,15 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.dimplex.climate import (
     _is_away_active,
     _is_boost_active,
+    _is_timer_off_like,
+    _timer_mode_from_schedule,
 )
 from custom_components.dimplex.const import DOMAIN
 
 from .const import MOCK_ENTRY_DATA
 
 
-def _payload(*, boost=False, away=False, eco=False, room=21.5, target=20):
+def _payload(*, boost=False, away=False, eco=False, room=21.5, target=20, timer_mode=1):
     hub = SimpleNamespace(HubId="hub-1")
     zone = SimpleNamespace(ZoneName="Living Room")
     appliance = SimpleNamespace(
@@ -51,9 +53,11 @@ def _payload(*, boost=False, away=False, eco=False, room=21.5, target=20):
         OpenWindowEnabled=False,
         SetbackEnabled=False,
     )
+    schedule = SimpleNamespace(TimerMode=timer_mode, TimerPeriods=[], ApplianceId="appliance-1")
     return {
         "appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}],
         "hubs": [hub],
+        "schedules": {"appliance-1": schedule},
     }
 
 
@@ -66,6 +70,8 @@ def _climate_entity(hass):
 
 @contextmanager
 def _api_data(payload):
+    schedules = payload.get("schedules") or {}
+    schedule = schedules.get("appliance-1") or SimpleNamespace(TimerMode=1, TimerPeriods=[], ApplianceId="appliance-1")
     with (
         patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
         patch(
@@ -75,6 +81,11 @@ def _api_data(payload):
         patch(
             "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
             return_value={"energy": {}},
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_schedule",
+            new_callable=AsyncMock,
+            return_value=schedule,
         ),
     ):
         yield
@@ -98,6 +109,16 @@ def test_boost_and_away_helpers():
     off = SimpleNamespace(BoostDuration=0, ApplianceModes=0, AwayDateTime="")
     assert _is_boost_active(off) is False
     assert _is_away_active(off) is False
+
+
+def test_timer_mode_helpers():
+    """Frost protection and off timer modes map to HVAC off-like."""
+    assert _timer_mode_from_schedule(None) is None
+    assert _timer_mode_from_schedule(SimpleNamespace(TimerMode=2)) == 2
+    assert _is_timer_off_like(2) is True  # frost
+    assert _is_timer_off_like(3) is True  # off
+    assert _is_timer_off_like(0) is False
+    assert _is_timer_off_like(1) is False
 
 
 @pytest.mark.asyncio
@@ -229,7 +250,7 @@ async def test_climate_comfort_clears_modes(hass):
 
 @pytest.mark.asyncio
 async def test_climate_turn_off_clears_boost_and_away(hass):
-    """Turning climate off clears active boost/away."""
+    """Turning climate off clears boost/away and sets frost timer mode."""
     config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
     payload = _payload(boost=True, away=True)
@@ -248,6 +269,10 @@ async def test_climate_turn_off_clears_boost_and_away(hass):
             "custom_components.dimplex.DimplexApiClient.async_set_away",
             new_callable=AsyncMock,
         ) as set_away,
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_timer_mode",
+            new_callable=AsyncMock,
+        ) as set_timer,
         _api_data(payload),
     ):
         await hass.services.async_call(
@@ -258,3 +283,41 @@ async def test_climate_turn_off_clears_boost_and_away(hass):
         )
         assert set_boost.await_count == 1
         assert set_away.await_count == 1
+        set_timer.assert_awaited_once_with("hub-1", "appliance-1", 2)
+
+
+@pytest.mark.asyncio
+async def test_climate_frost_timer_reports_hvac_off(hass):
+    """Frost protection timer mode surfaces as HVAC off (issue #149)."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    # Away flag still present must not keep HVAC in heat when timer is frost.
+    payload = _payload(away=True, timer_mode=2)
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == "off"
+    assert state.attributes.get("hvac_action") == "off"
+    assert state.attributes.get("preset_mode") is None
+
+
+@pytest.mark.asyncio
+async def test_climate_manual_timer_reports_heat(hass):
+    """Manual/user timer modes report HVAC heat when status is present."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload(timer_mode=1)
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == "heat"

@@ -292,6 +292,17 @@ class DimplexApiClient:
         except DimplexApiError as exception:
             raise CannotConnect from exception
 
+    async def async_set_timer_mode(self, hub_id: str, appliance_id: str, mode: int) -> None:
+        """Set the appliance timer / operation mode (manual, frost, off, …)."""
+        try:
+            await self._client.set_mode(hub_id, appliance_id, mode)
+        except DimplexAuthError as exception:
+            raise InvalidAuth from exception
+        except DimplexConnectionError as exception:
+            raise CannotConnect from exception
+        except DimplexApiError as exception:
+            raise CannotConnect from exception
+
     async def async_set_boost(
         self,
         hub_id: str,

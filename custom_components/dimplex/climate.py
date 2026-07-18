@@ -35,6 +35,13 @@ DEFAULT_AWAY_TEMP = 16.0
 _BOOST_FLAG = 16
 _AWAY_FLAG = 32
 
+# dimplex_controller.models.TimerMode — keep local ints so older library wheels still work.
+_TIMER_USER = 0
+_TIMER_MANUAL = 1
+_TIMER_FROST = 2
+_TIMER_OFF = 3
+_TIMER_OFF_LIKE = frozenset({_TIMER_FROST, _TIMER_OFF})
+
 
 def _is_boost_active(status: Any) -> bool:
     """Return True when boost appears active (model property or raw fields)."""
@@ -64,6 +71,24 @@ def _is_away_active(status: Any) -> bool:
     return bool(modes & _AWAY_FLAG)
 
 
+def _timer_mode_from_schedule(schedule: Any) -> int | None:
+    """Return the integer TimerMode from a schedule payload, if present."""
+    if schedule is None:
+        return None
+    mode = getattr(schedule, "TimerMode", None)
+    if mode is None:
+        return None
+    try:
+        return int(mode)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_timer_off_like(timer_mode: int | None) -> bool:
+    """True for frost protection / off timer modes (app 'off' for most heaters)."""
+    return timer_mode in _TIMER_OFF_LIKE
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -87,8 +112,8 @@ async def async_setup_entry(
 class DimplexClimate(DimplexEntity, ClimateEntity):
     """Thermostat-style control for a Dimplex appliance.
 
-    HVAC OFF clears boost/away only — the cloud has no confirmed true power-off
-    mapping for all models. Use timer/frost modes (future) for deeper off.
+    HVAC OFF maps to timer frost protection (app "off" on most storage heaters /
+    radiators). HEAT restores user-timer mode. Boost/away remain climate presets.
     """
 
     _attr_name = None  # device name is the climate entity name
@@ -119,6 +144,11 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         return capabilities_for_row(self._appliance, self._status)
 
     @property
+    def _timer_mode(self) -> int | None:
+        schedules = (self.coordinator.data or {}).get("schedules") or {}
+        return _timer_mode_from_schedule(schedules.get(self._appliance.ApplianceId))
+
+    @property
     def unique_id(self) -> str:
         return f"{self.config_entry.entry_id}_{self._appliance.ApplianceId}_climate"
 
@@ -134,6 +164,11 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         except (TypeError, ValueError):
             return DEFAULT_BOOST_MINUTES
         return max(1, min(minutes, 24 * 60))
+
+    def _invalidate_schedules(self) -> None:
+        invalidate = getattr(self.coordinator, "invalidate_schedules", None)
+        if callable(invalidate):
+            invalidate()
 
     @property
     def current_temperature(self) -> float | None:
@@ -160,6 +195,8 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         status = self._status
         if status is None:
             return HVACMode.OFF
+        if _is_timer_off_like(self._timer_mode):
+            return HVACMode.OFF
         # Without a clear "off" bit in overview, treat missing temps as off.
         if status.RoomTemperature is None and status.ActiveSetPointTemperature is None:
             return HVACMode.OFF
@@ -168,7 +205,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
     @property
     def hvac_action(self) -> HVACAction | None:
         status = self._status
-        if status is None:
+        if status is None or _is_timer_off_like(self._timer_mode):
             return HVACAction.OFF
         if status.ComfortStatus:
             return HVACAction.HEATING
@@ -178,6 +215,9 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
     def preset_mode(self) -> str | None:
         status = self._status
         if status is None:
+            return None
+        # Frost/off is expressed as HVACMode.OFF — do not also surface away/boost.
+        if _is_timer_off_like(self._timer_mode):
             return None
         if _is_boost_active(status):
             return PRESET_BOOST
@@ -202,26 +242,37 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set HVAC mode.
 
-        Full off/on mapping depends on timer modes; for now OFF clears boost/away
-        and HEAT is a no-op refresh (setpoint via set_temperature).
+        OFF → timer frost protection (app "off") and clear boost/away.
+        HEAT → user timer mode (schedule resumes) when currently frost/off.
         """
+        hub_id = self._hub.HubId
+        appliance_id = self._appliance.ApplianceId
+        status = self._status
+        temp = float(status.ActiveSetPointTemperature or status.NormalTemperature or 16.0) if status else 16.0
+
         if hvac_mode == HVACMode.OFF:
-            status = self._status
-            temp = float(status.ActiveSetPointTemperature or status.NormalTemperature or 16.0) if status else 16.0
             if _is_boost_active(status):
                 await self._api.async_set_boost(
-                    self._hub.HubId,
-                    self._appliance.ApplianceId,
+                    hub_id,
+                    appliance_id,
                     temperature=temp,
                     enable=False,
                 )
             if _is_away_active(status):
                 await self._api.async_set_away(
-                    self._hub.HubId,
-                    self._appliance.ApplianceId,
+                    hub_id,
+                    appliance_id,
                     temperature=temp,
                     enable=False,
                 )
+            await self._api.async_set_timer_mode(hub_id, appliance_id, _TIMER_FROST)
+            self._invalidate_schedules()
+        elif hvac_mode == HVACMode.HEAT:
+            if _is_timer_off_like(self._timer_mode):
+                # Resume schedule; MANUAL is available via timer APIs if needed later.
+                await self._api.async_set_timer_mode(hub_id, appliance_id, _TIMER_USER)
+                self._invalidate_schedules()
+
         await self.coordinator.async_request_refresh()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
