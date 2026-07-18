@@ -1,5 +1,14 @@
 # Changelog
 
+## [4.0.2](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.0.1...v4.0.2) (2026-07-18)
+
+
+### Bug Fixes
+
+* **ci:** stop prettier vs release-please thrash on manifest.json ([#157](https://github.com/KRoperUK/dimplex-controller-hass/issues/157)) ([35ef389](https://github.com/KRoperUK/dimplex-controller-hass/commit/35ef389d8bde07824876b60e9db7bc98d7502d83))
+* **climate:** map frost protection / off timer modes to HVAC off ([#158](https://github.com/KRoperUK/dimplex-controller-hass/issues/158)) ([ca9626a](https://github.com/KRoperUK/dimplex-controller-hass/commit/ca9626a8c53471a0e35b154af9f86a2a7f087c78))
+* **release:** resync release-please to v4.0.1 and attach HACS zip reliably ([#154](https://github.com/KRoperUK/dimplex-controller-hass/issues/154)) ([83ebfbe](https://github.com/KRoperUK/dimplex-controller-hass/commit/83ebfbeee9ea13045d5fc094b2a499296716f817))
+
 ## [4.0.1](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.0.0...v4.0.1) (2026-07-17)
 
 ### Miscellaneous
