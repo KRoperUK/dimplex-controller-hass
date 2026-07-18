@@ -54,7 +54,9 @@ Coverage threshold (`fail_under`) lives in `pyproject.toml`; keep it green.
 ## Workflow / repo rules
 
 - **`main` is protected**: open a feature branch and a PR; do not push to `main`.
-  Required checks: `Pre-commit`, `Run tests`, `HACS`, `Hassfest`. Re-apply rules
-  with `scripts/setup-branch-protection.sh`.
+  Required status check: aggregate **`ci`** (always runs). On component changes it
+  requires translations, lint, mypy, pre-commit, pytest, hacs_validate, and shell
+  script syntax; on PRs it also requires conventional_commits. Docs-only PRs still
+  get a green `ci`. Re-apply rules with `scripts/setup-branch-protection.sh`.
 - Releases are automated by `release-please` (a release PR is opened and tags on
   merge). Dependabot PRs (minor/patch) auto-merge once CI passes.
