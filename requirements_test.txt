@@ -1,5 +1,5 @@
 -r requirements_dev.txt
 pytest-homeassistant-custom-component>=0.13.346
-ruff==0.14.14
+ruff==0.15.22
 mypy==2.3.0
 pre-commit
