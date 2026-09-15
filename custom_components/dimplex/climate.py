@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 from typing import Any
 
@@ -14,12 +15,13 @@ from homeassistant.components.climate.const import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .api import DimplexApiClient
+from .api import CannotConnect, DimplexApiClient, InvalidAuth
 from .capabilities import capabilities_for_row
-from .const import CONF_BOOST_DURATION, DEFAULT_BOOST_DURATION, DOMAIN
+from .const import CONF_BOOST_DURATION, DEFAULT_BOOST_DURATION, DOMAIN, sane_temperature
 from .entity import DimplexEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -87,6 +89,34 @@ def _timer_mode_from_schedule(schedule: Any) -> int | None:
 def _is_timer_off_like(timer_mode: int | None) -> bool:
     """True for frost protection / off timer modes (app 'off' for most heaters)."""
     return timer_mode in _TIMER_OFF_LIKE
+
+
+def _translate_control_errors(func: Any) -> Any:
+    """Surface Dimplex control failures as a clear HomeAssistantError.
+
+    The API adapter raises :class:`InvalidAuth` / :class:`CannotConnect` (the
+    latter also wraps any non-200 cloud response, e.g. a 403). Without this,
+    Home Assistant reports the raw exception as a generic 500 / "unknown error"
+    to the user (dimplex-controller-hass#149). Some appliances — notably certain
+    Quantum storage heaters — reject remote timer-mode / setpoint writes, so a
+    control call can legitimately fail; make that legible instead of opaque.
+    """
+
+    @functools.wraps(func)
+    async def _wrapper(self: DimplexClimate, *args: Any, **kwargs: Any) -> Any:
+        name = getattr(self._appliance, "FriendlyName", None) or "Dimplex appliance"
+        try:
+            return await func(self, *args, **kwargs)
+        except InvalidAuth as err:
+            raise HomeAssistantError(f"Dimplex authentication failed while controlling {name}.") from err
+        except CannotConnect as err:
+            raise HomeAssistantError(
+                f"The Dimplex cloud rejected the request for {name}. The heater may not "
+                "support this control remotely (some Quantum storage heaters reject "
+                "off/setpoint changes), or the service is temporarily unavailable."
+            ) from err
+
+    return _wrapper
 
 
 async def async_setup_entry(
@@ -180,15 +210,18 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         status = self._status
         if status is None:
             return None
-        if _is_boost_active(status) and status.BoostTemperature is not None:
-            return float(status.BoostTemperature)
-        if _is_away_active(status) and status.AwayTemperature is not None:
-            return float(status.AwayTemperature)
-        if status.ActiveSetPointTemperature is not None:
-            return float(status.ActiveSetPointTemperature)
-        if status.NormalTemperature is not None:
-            return float(status.NormalTemperature)
-        return None
+        if _is_boost_active(status):
+            boost = sane_temperature(status.BoostTemperature)
+            if boost is not None:
+                return boost
+        if _is_away_active(status):
+            away = sane_temperature(status.AwayTemperature)
+            if away is not None:
+                return away
+        active = sane_temperature(status.ActiveSetPointTemperature)
+        if active is not None:
+            return active
+        return sane_temperature(status.NormalTemperature)
 
     @property
     def hvac_mode(self) -> HVACMode:
@@ -227,6 +260,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
             return PRESET_ECO
         return PRESET_COMFORT
 
+    @_translate_control_errors
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
         temperature = kwargs.get(ATTR_TEMPERATURE)
@@ -239,6 +273,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         )
         await self.coordinator.async_request_refresh()
 
+    @_translate_control_errors
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set HVAC mode.
 
@@ -248,7 +283,11 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         hub_id = self._hub.HubId
         appliance_id = self._appliance.ApplianceId
         status = self._status
-        temp = float(status.ActiveSetPointTemperature or status.NormalTemperature or 16.0) if status else 16.0
+        temp = sane_temperature(status.ActiveSetPointTemperature) if status else None
+        if temp is None and status is not None:
+            temp = sane_temperature(status.NormalTemperature)
+        if temp is None:
+            temp = 16.0
 
         if hvac_mode == HVACMode.OFF:
             if _is_boost_active(status):
@@ -275,6 +314,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
 
         await self.coordinator.async_request_refresh()
 
+    @_translate_control_errors
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Apply a climate preset (gated by appliance capabilities)."""
         allowed = self.preset_modes or []

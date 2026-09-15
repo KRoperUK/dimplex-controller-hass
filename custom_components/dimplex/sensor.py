@@ -23,7 +23,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import DOMAIN, sane_temperature
 from .entity import DimplexEntity
 
 
@@ -44,6 +44,22 @@ def _status_attr(attr: str) -> Callable[[Any, Any], Any]:
             return None
         value = getattr(status, attr, None)
         return value if value not in (None, "") else None
+
+    return _fn
+
+
+def _status_temp(attr: str) -> Callable[[Any, Any], Any]:
+    """Like :func:`_status_attr` but drops the 0xFF (255) sentinel / bad temps.
+
+    The cloud reports 255 for a temperature field when it has no active value
+    (idle / EcoStart / between schedule periods); surface "unknown" instead of
+    an impossible reading.
+    """
+
+    def _fn(status: Any, _appliance: Any) -> Any:
+        if status is None:
+            return None
+        return sane_temperature(getattr(status, attr, None))
 
     return _fn
 
@@ -97,35 +113,35 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=_status_attr("RoomTemperature"),
+        value_fn=_status_temp("RoomTemperature"),
     ),
     DimplexSensorEntityDescription(
         key="target_temperature",
         translation_key="target_temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
-        value_fn=_status_attr("ActiveSetPointTemperature"),
+        value_fn=_status_temp("ActiveSetPointTemperature"),
     ),
     DimplexSensorEntityDescription(
         key="boost_temperature",
         translation_key="boost_temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
-        value_fn=_status_attr("BoostTemperature"),
+        value_fn=_status_temp("BoostTemperature"),
     ),
     DimplexSensorEntityDescription(
         key="away_temperature",
         translation_key="away_temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
-        value_fn=_status_attr("AwayTemperature"),
+        value_fn=_status_temp("AwayTemperature"),
     ),
     DimplexSensorEntityDescription(
         key="setback_temperature",
         translation_key="setback_temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
-        value_fn=_status_attr("SetbackTemperature"),
+        value_fn=_status_temp("SetbackTemperature"),
     ),
     DimplexSensorEntityDescription(
         key="error_code",

@@ -23,7 +23,7 @@ from custom_components.dimplex.climate import (
     _is_timer_off_like,
     _timer_mode_from_schedule,
 )
-from custom_components.dimplex.const import DOMAIN
+from custom_components.dimplex.const import DOMAIN, sane_temperature
 
 from .const import MOCK_ENTRY_DATA
 
@@ -321,3 +321,97 @@ async def test_climate_manual_timer_reports_heat(hass):
     state = hass.states.get(entity_id)
     assert state is not None
     assert state.state == "heat"
+
+
+def test_sane_temperature_drops_sentinel():
+    """0xFF (255) sentinel and junk map to None; real values pass through unchanged."""
+    assert sane_temperature(255) is None
+    assert sane_temperature(255.0) is None
+    assert sane_temperature(300) is None
+    assert sane_temperature("255") is None
+    assert sane_temperature(None) is None
+    assert sane_temperature("") is None
+    assert sane_temperature("nan-ish") is None
+    # Valid readings are returned unchanged (representation preserved).
+    assert sane_temperature(21.5) == 21.5
+    assert sane_temperature(7) == 7
+    assert sane_temperature(20) == 20
+
+
+@pytest.mark.asyncio
+async def test_climate_target_temperature_ignores_sentinel(hass):
+    """A 255 ActiveSetPointTemperature must not surface as a 255 °C target (issue: sentinel)."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    # Mirror the live QM100RF idle/EcoStart reading: active setpoint 255, no normal temp.
+    payload = _payload(eco=True, target=255)
+    payload["appliances"][0]["status"].NormalTemperature = None
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.attributes.get("temperature") is None
+
+    # The target-temperature sensor must also drop the sentinel.
+    sensor_state = None
+    for candidate in hass.states.async_all():
+        if candidate.entity_id.startswith("sensor.") and "target_temperature" in candidate.entity_id:
+            sensor_state = candidate
+            break
+    assert sensor_state is not None
+    assert sensor_state.state in ("unknown", "unavailable")
+
+
+@pytest.mark.asyncio
+async def test_climate_target_temperature_falls_back_past_sentinel(hass):
+    """When the active setpoint is the sentinel, fall back to a real normal temp."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload(timer_mode=1, target=20)
+    payload["appliances"][0]["status"].ActiveSetPointTemperature = 255
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.attributes.get("temperature") == 20
+
+
+@pytest.mark.asyncio
+async def test_climate_control_error_surfaces_homeassistant_error(hass):
+    """A rejected control call (e.g. Quantum 403) becomes a clean error, not a 500 (#149)."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex.api import CannotConnect
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload(timer_mode=1)  # heat, no boost/away -> turn off goes straight to set_timer_mode
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_timer_mode",
+            new_callable=AsyncMock,
+            side_effect=CannotConnect("403"),
+        ),
+        _api_data(payload),
+        pytest.raises(HomeAssistantError),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_TURN_OFF,
+            {ATTR_ENTITY_ID: entity_id},
+            blocking=True,
+        )
