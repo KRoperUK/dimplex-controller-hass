@@ -5,11 +5,35 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
 from .const import DOMAIN
+
+
+def resolve_via_device_id(
+    hass: HomeAssistant | None,
+    identifier: tuple[str, str],
+    config_entry_id: str | None,
+) -> str | None:
+    """Resolve a parent device identifier to its registry ``via_device_id``.
+
+    Home Assistant deprecated the ``via_device`` (identifier tuple) ``DeviceInfo``
+    key in favour of ``via_device_id`` (the parent's registry id). Parent hub /
+    zone devices are pre-registered in ``async_setup_entry`` before platforms are
+    forwarded, so the lookup succeeds by the time appliance/zone entities publish
+    their device info. Returns ``None`` when the parent cannot be resolved (e.g.
+    the entity has not been added to hass yet in unit tests); callers then simply
+    omit the link.
+    """
+    if hass is None or not config_entry_id:
+        return None
+    registry = dr.async_get(hass)
+    parent = registry.async_get_device_by_identifier(identifier, config_entry_id)
+    return parent.id if parent else None
 
 
 class DimplexEntity(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]):
@@ -75,8 +99,10 @@ class DimplexEntity(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]):
             "model": model,
             "serial_number": self._appliance.ApplianceId,
             "suggested_area": self._zone.ZoneName,
-            "via_device": via,
         }
+        via_device_id = resolve_via_device_id(self.hass, via, getattr(self.config_entry, "entry_id", None))
+        if via_device_id:
+            info["via_device_id"] = via_device_id
         firmware = getattr(self._appliance, "FirmwareVersion", None)
         if firmware:
             info["sw_version"] = str(firmware)

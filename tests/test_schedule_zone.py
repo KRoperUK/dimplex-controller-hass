@@ -40,5 +40,9 @@ def test_zone_device_identifiers():
     zone_sensor = DimplexZoneSensor(coord, entry, {"hub": hub, "zone": zone, "appliance": appliance})
     info = zone_sensor.device_info
     assert ("dimplex", "zone_z1") in info["identifiers"]
-    assert info["via_device"] == ("dimplex", "h1")
+    # The parent link is now a registry via_device_id resolved when the entity is
+    # attached to hass; offline (no registry) it is simply omitted. Linkage is
+    # verified end-to-end in tests/test_entities.py.
+    assert "via_device" not in info
+    assert info.get("via_device_id") is None
     assert zone_sensor.native_value == "Living"

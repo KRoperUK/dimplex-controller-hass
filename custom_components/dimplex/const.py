@@ -1,8 +1,35 @@
 """Constants for dimplex integration."""
 
 from datetime import timedelta
+from typing import Any
 
 from homeassistant.const import Platform
+
+# The Dimplex cloud reports 0xFF (255) for a temperature field when there is no
+# active value for it — e.g. ``ActiveSetPointTemperature`` while the heater is
+# idle, running EcoStart, or between schedule periods. Surfacing that verbatim
+# produced a nonsensical "255 °C" target temperature on the climate entity and
+# the target-temperature sensor. Treat 255 (and anything at/above it) as unset.
+SETPOINT_SENTINEL = 255.0
+
+
+def sane_temperature(value: Any) -> float | None:
+    """Return a real temperature, or ``None`` for sentinel/out-of-range readings.
+
+    ``None``/empty and the 0xFF (255) sentinel both map to ``None`` so callers
+    can fall back or report "unknown" rather than an impossible value. Valid
+    readings are returned as ``float``.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    if num >= SETPOINT_SENTINEL:
+        return None
+    return num
+
 
 NAME = "Dimplex Hub"
 DOMAIN = "dimplex"

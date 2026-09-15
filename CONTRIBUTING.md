@@ -17,12 +17,16 @@ Pull requests are the best way to propose changes to the codebase.
 2. If you've changed something, update the documentation.
 3. Make sure your code lints and is formatted. Either:
    - run `ruff check .` and `ruff format .` directly, or
-   - install the local hooks once with `pip install pre-commit && pre-commit install`,
-     which will then run ruff, ruff-format, and the HA manifest formatter
-     automatically on every `git commit`.
+   - install the local hooks once with `pip install pre-commit && pre-commit install`
+     (this installs both the `pre-commit` and `pre-push` hook types). On every
+     `git commit` it runs ruff, ruff-format, and the HA manifest formatter; on
+     every `git push` it additionally runs **mypy** and the full **pytest** suite
+     with coverage, mirroring the CI gate.
      (`custom_components/*/manifest.json` is formatted with `scripts/format_manifest.py`
      — indent 2, multi-line arrays — so release-please version bumps do not fight
      Prettier. Do not run Prettier on that file.)
+     The pre-push mypy/pytest hooks use your active environment, so activate the
+     test venv (`uv pip install -r requirements_test.txt`) before pushing.
 4. Add or update tests for your change and make sure `pytest` passes
    (`uv pip install -r requirements_test.txt && pytest`).
 5. Use a [Conventional Commit](https://www.conventionalcommits.org/) PR title

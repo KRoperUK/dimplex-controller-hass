@@ -94,7 +94,7 @@ async def test_sensor_and_binary_sensor_entities(hass):
 
     target_state = _find("sensor.", "target_temperature")
     assert target_state is not None
-    assert target_state.state == "20"
+    assert target_state.state == "20.0"
 
     open_window_state = _find("binary_sensor.", "open_window")
     assert open_window_state is not None
@@ -118,7 +118,7 @@ async def test_sensor_and_binary_sensor_entities(hass):
     from homeassistant.helpers import device_registry as dr
 
     device_registry = dr.async_get(hass)
-    appliance_device = device_registry.async_get_device(identifiers={(DOMAIN, "appliance-1")})
+    appliance_device = device_registry.async_get_device_by_identifier((DOMAIN, "appliance-1"), "test")
     assert appliance_device is not None
     assert appliance_device.serial_number == "appliance-1"
     assert appliance_device.sw_version == "6"
@@ -126,9 +126,14 @@ async def test_sensor_and_binary_sensor_entities(hass):
     assert appliance_device.model == "Quantum QM100RF"
     assert appliance_device.manufacturer == "Dimplex"
 
-    hub_device = device_registry.async_get_device(identifiers={(DOMAIN, "hub-1")})
+    hub_device = device_registry.async_get_device_by_identifier((DOMAIN, "hub-1"), "test")
     assert hub_device is not None
     assert hub_device.serial_number == "hub-1"
     assert hub_device.sw_version == "129.12.5"
     assert hub_device.hw_version == "GW3042<Dimplex>"
     assert hub_device.model == "GatewayOther"
+
+    # Parent linkage is expressed via registry via_device_id (not the deprecated
+    # via_device identifier tuple). This mock zone has no ZoneId, so the appliance
+    # links directly to the hub device.
+    assert appliance_device.via_device_id == hub_device.id
