@@ -1,3 +1,7 @@
+---
+description: Diagnose Dimplex Hub setup failures, unavailable entities, expiring tokens and HACS update oddities in Home Assistant.
+---
+
 # Troubleshooting
 
 This page helps you diagnose and resolve common issues with the Dimplex Hub integration.
@@ -83,7 +87,7 @@ This page helps you diagnose and resolve common issues with the Dimplex Hub inte
 
 ### Energy sensor shows `unavailable` in summer
 
-This is expected behaviour. See [Energy Dashboard behaviour notes](advanced.md#behaviour-notes).
+This is expected behaviour. See [Energy monitoring](../use/energy.md#behaviour-worth-knowing).
 
 Metered appliances only report energy data when they are actively consuming power. During warmer months, when heating is not running, the sensor is correctly reported as `unavailable` rather than `0`.
 
@@ -129,6 +133,20 @@ Metered appliances only report energy data when they are actively consuming powe
 4. PR pre-releases may be deleted when the PR closes; do not rely on them long-term.
 
 Prefer tagged pre-releases (`vX.Y.Z-rc.N`) from [GitHub Releases](https://github.com/kroperuk/dimplex-controller-hass/releases) or HACS when dogfooding.
+
+## Repairs
+
+Home Assistant surfaces some conditions under **Settings** → **System** → **Repairs** rather
+than in the log:
+
+| Repair                    | Meaning                             | Actionable                               |
+| ------------------------- | ----------------------------------- | ---------------------------------------- |
+| Reauthentication required | Tokens rejected                     | Yes — opens the reauth flow              |
+| Energy polls empty        | Polls succeed but return no points  | No — normal for idle or seasonal heaters |
+| Appliance overview empty  | Hubs exist but report no appliances | No — usually stale telemetry             |
+
+The two informational ones can be dismissed. If either persists through a heating season,
+that is worth reporting.
 
 ## Log analysis
 

@@ -6,6 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
 [![HACS Install](https://img.shields.io/badge/HACS-Install-41BDF5?logo=homeassistant&logoColor=white)](https://my.home-assistant.io/redirect/hacs_repository/?owner=KRoperUK&repository=dimplex-controller-hass&category=integration)
+[![Docs](https://img.shields.io/badge/docs-dimplex--hass.kroper.uk-d62945)](https://dimplex-hass.kroper.uk/)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen)](https://github.com/pre-commit/pre-commit)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Maintainer](https://img.shields.io/badge/maintainer-%40KRoperUK-blue)](https://github.com/KRoperUK)
@@ -19,242 +20,94 @@
 
 ---
 
-## What does this do?
+Connects Home Assistant to the Dimplex cloud, discovers your hub, zones and appliances, and
+exposes them as native entities — a thermostat per heater, the appliance's engaged modes
+broken out as sensors, and dual-rate energy history for the Energy Dashboard.
 
-`dimplex-controller-hass` connects Home Assistant to the Dimplex cloud API. It discovers your Dimplex Hub, Zones and Appliances, and exposes them as native Home Assistant entities so you can monitor temperatures, control heating and track energy usage — all from the Home Assistant dashboard.
+Built on the [`dimplex-controller`](https://github.com/KRoperUK/dimplex-controller-py) Python
+client and distributed via [HACS](https://hacs.xyz).
 
-It is distributed via [HACS](https://hacs.xyz) and built on top of the [`dimplex-controller-py`](https://github.com/KRoperUK/dimplex-controller-py) Python client.
+## 📖 Documentation
 
-## Contents
+**Full documentation: [dimplex-hass.kroper.uk](https://dimplex-hass.kroper.uk/)**
 
-- [Features](#features)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Entities](#entities)
-- [Energy monitoring](#energy-monitoring)
-- [Known limitations](#known-limitations)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [Credits](#credits)
+|                                                                            |                                                            |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [Install](https://dimplex-hass.kroper.uk/start/)                           | HACS or manual, and how to check it worked                 |
+| [Connect your account](https://dimplex-hass.kroper.uk/start/connect/)      | Email/password or a browser auth code                      |
+| [Temperature & schedules](https://dimplex-hass.kroper.uk/use/temperature/) | How control reaches the heater, and what the cloud refuses |
+| [Energy monitoring](https://dimplex-hass.kroper.uk/use/energy/)            | T1/T2 registers and the Energy Dashboard                   |
+| [Entities](https://dimplex-hass.kroper.uk/reference/entities/)             | Every entity, and which are disabled by default            |
+| [Actions](https://dimplex-hass.kroper.uk/reference/actions/)               | `dimplex.*` actions, fields and ranges                     |
+| [Options](https://dimplex-hass.kroper.uk/reference/options/)               | Platform toggles and poll intervals                        |
+| [Troubleshooting](https://dimplex-hass.kroper.uk/help/troubleshooting/)    | Setup failures, unavailable entities, HACS oddities        |
+| [Upgrading](https://dimplex-hass.kroper.uk/help/upgrading/)                | Version-by-version migration notes                         |
 
-## Features
+## ✨ Features
 
-- **Climate control** — A thermostat per appliance: target temperature, heat/off, and boost / away / eco presets.
-- **Temperature monitoring** — View current room temperature and active target temperature setpoints for each Zone.
-- **Mode visibility** — The appliance's engaged modes (boost, away, frost protection, advance) as diagnostic sensors, so you can see what the heater is actually doing.
-- **Energy telemetry** — Monitor and log energy consumption for metered appliances directly in the Home Assistant Energy Dashboard, with T1 and T2 tariffs kept separate.
-- **EcoStart and open-window detection** — Toggle both from Home Assistant.
-- **Automatic re-authentication** — The integration refreshes tokens automatically and prompts you to re-authenticate when necessary.
+- **Climate control** — a thermostat per appliance: target temperature, heat/off, and boost /
+  away / eco presets. Setting a target uses the cloud's dedicated setpoint endpoint, so your
+  timer schedule is left alone.
+- **Mode visibility** — the appliance holds a bitfield of modes and several can be engaged at
+  once. Boost, away, frost protection and advance are each exposed as a diagnostic sensor, so
+  a mismatch cannot hide behind a single preset.
+- **Dual-rate energy** — daily kWh history per register, in the Energy Dashboard. T1 and T2
+  are never summed.
+- **EcoStart and open-window detection** — both toggleable from Home Assistant.
+- **Stays connected** — tokens refresh automatically, polling backs off when heaters are
+  idle, and re-authentication uses Home Assistant's built-in reauth flow.
 
-## Installation
+## 🚀 Install
 
-### Via HACS (recommended)
+### HACS (recommended)
 
-1. Open **HACS** in Home Assistant.
-2. Search for **Dimplex Hub**.
-3. Click **Download**.
-4. Restart Home Assistant.
-5. Go to **Settings** > **Devices & Services** > **Add Integration** and search for **Dimplex Hub**.
+[![Add to HACS](https://img.shields.io/badge/HACS-Add%20repository-41BDF5?logo=homeassistant&logoColor=white)](https://my.home-assistant.io/redirect/hacs_repository/?owner=KRoperUK&repository=dimplex-controller-hass&category=integration)
 
-### Manual installation
-
-1. Open your Home Assistant configuration directory (the folder containing `configuration.yaml`).
-2. Create `custom_components` if it does not already exist.
-3. Copy the `custom_components/dimplex` folder from this repository into your Home Assistant `custom_components` directory.
-4. Restart Home Assistant.
-5. Go to **Settings** > **Devices & Services**.
-6. Click **+ Add Integration** and search for **Dimplex Hub**.
-
-## Configuration
-
-Configuration is handled entirely through the Home Assistant UI. No YAML editing is required.
-
-### Step 1: Choose an authentication method
-
-When you add the integration, you are asked to choose one of two login methods:
-
-| Method                             | When to use                                                                                   |
-| ---------------------------------- | --------------------------------------------------------------------------------------------- |
-| **Email / password (recommended)** | Use your Dimplex cloud account email and password.                                            |
-| **Manual auth code**               | Use this if password login fails or if you prefer not to enter credentials in Home Assistant. |
-
-### Step 2: Email / password
-
-1. Enter your Dimplex account email and password.
-2. Click **Submit**.
-
-The integration signs in to the Dimplex cloud in the background and stores the resulting tokens securely.
-
-### Step 3: Manual auth code
-
-If you choose the manual auth code method:
-
-1. The integration shows a login URL. Open it in a new browser tab.
-2. **Before** entering your credentials, open Developer Tools (`F12`) and go to the **Network** tab.
-3. Enable **Preserve log** (or your browser's equivalent).
-4. Log in with your Dimplex credentials.
-5. The final redirect will fail or show a "cannot open page" error — this is expected.
-6. In the Network tab, find the last request that includes `?code=...` in its URL.
-7. Copy either the full redirect URL or just the `code` value.
-8. Paste it into the integration's **Redirect URL or code** field.
-9. Click **Submit**.
-
-> **Tip:** If the code expires, repeat the steps and capture a fresh one. Auth codes are short-lived.
-
-### Options flow
-
-After installation, you can adjust platforms and polling:
-
-1. Go to **Settings** > **Devices & Services**.
-2. Find **Dimplex Hub** and click **Configure**.
-3. Toggle the `climate`, `sensor`, `binary_sensor` and `switch` platforms, and set the status
-   poll interval, energy poll interval and default boost duration.
-
-## Entities
-
-| Platform        | Description                                 | Example entity                          |
-| --------------- | ------------------------------------------- | --------------------------------------- |
-| `climate`       | Thermostat per Appliance.                   | `climate.k_radiator`                    |
-| `sensor`        | Room temperature per Zone.                  | `sensor.living_room_temperature`        |
-| `sensor`        | Cumulative energy used per Appliance (kWh). | `sensor.k_radiator_energy_lifetime`     |
-| `binary_sensor` | Comfort status per Appliance.               | `binary_sensor.k_radiator_comfort`      |
-| `binary_sensor` | Engaged appliance modes (diagnostic).       | `binary_sensor.k_radiator_boost_active` |
-| `switch`        | EcoStart toggle per Appliance.              | `switch.k_radiator_ecostart`            |
-
-> Around 20 entities per appliance in total, many disabled by default. See the
-> [entities reference](https://dimplex-hass.kroper.uk/entities/) for the full list.
-> Entity IDs are generated from your appliance names. You can rename them in Home Assistant as usual.
-
-## Energy monitoring
-
-Each metered Appliance exposes two energy sensors (primary register):
-
-| Sensor              | Meaning                                                                              |
-| ------------------- | ------------------------------------------------------------------------------------ |
-| **Energy today**    | kWh for the current local calendar day (from midnight).                              |
-| **Energy lifetime** | Cumulative sum of all daily kWh points returned by the cloud (from first telemetry). |
-
-A secondary register (**Energy T2**) is available as diagnostic entities when the appliance reports `T2`.
-
-**Important behaviour:**
-
-- Energy data is hardware-dependent — metered appliances (QRAD, Quantum storage heaters, etc.) report daily kWh telemetry, not live watts.
-- When the hub returns no points for a register, the sensor is **unavailable** rather than `0`.
-- Status polls every ~30s; energy polls on a slower cadence (default 30 minutes) to avoid hammering the cloud.
-
-## Climate control
-
-Each appliance is exposed as a `climate` entity with:
-
-- current room temperature and target temperature
-- HVAC heat/off, where **off** engages frost protection at 7 °C — the appliance has no off
-  mode, and this is what the official app does
-- presets: `comfort`, `boost`, `away`, `eco` (EcoStart)
-- `climate.set_temperature` / `climate.set_preset_mode`
-- `dimplex.set_advance` / `dimplex.clear_advance` — skip to the next schedule period early
-- `dimplex.set_away` accepts `days` or `until` for a definite return time
-
-Setting a target uses the cloud's dedicated setpoint endpoint, so it applies immediately and leaves your timer schedule untouched. Editing the schedule itself is still limited by the cloud API.
-
-The appliance holds a **bitfield** of modes — several can be engaged at once — and Home
-Assistant's single `preset_mode` can only show one of them. Four diagnostic binary sensors
-(Boost active, Away active, Frost protection, Advance active) expose the rest.
-
-## Upgrading to 3.0.0
-
-This is a **major** release relative to 2.0.0. After updating via HACS, **restart Home Assistant**.
-
-### Requirements
-
-- Home Assistant (current supported version for this integration)
-- [`dimplex-controller>=0.13.0`](https://pypi.org/project/dimplex-controller/) (installed automatically from the integration requirements)
-
-### Breaking / behavioural changes
-
-- **Climate entities** are created per appliance. Prefer climate for setpoints and boost/away/eco presets.
-- **Energy** is no longer a single mislabelled “30-day” total:
-  - **Energy lifetime** — cumulative cloud daily history
-  - **Energy today** — local calendar day from midnight
-    Prefer **Energy today** for the Energy Dashboard when you want daily usage without a large historical pop-in on first add.
-- **Entity unique IDs / names** may change (for example EcoStart now has a stable `_ecostart` suffix; open-window detection is a switch as well as a binary sensor). You may see renamed entities or need to clean orphans once.
-- **Polling** is split: status on a short interval, energy on a longer interval (configurable in options).
-- **Diagnostics** (error/warning/last telem, rated power, charge capacity, energy T2 today) exist but may be **disabled by default** — enable in the entity registry if you need them.
-
-### After upgrade checklist
-
-1. Confirm Dimplex Hub config entry is **loaded** (no import / requirement errors in logs).
-2. Review new `climate.*` entities and energy sensors.
-3. Re-point automations that used old entity IDs.
-4. For Energy Dashboard, use **Energy today** (or statistics) rather than dumping multi-year **lifetime** into the dashboard unless you intend that.
-
-## Known limitations
-
-- Editing the **weekly schedule** is not exposed. Setting a target does not disturb it — the
-  integration uses the cloud's dedicated setpoint endpoint, and only falls back to a schedule
-  rewrite on appliances that reject it (some Quantum storage heaters answer 403).
-- **Away** accepts only 7-18 °C where a normal setpoint accepts 7-30 °C. Higher values are
-  clamped, with a warning in the log.
-- **Hot water cylinder** control exists in the underlying library but has never been run
-  against hardware, so it is not surfaced as entities or actions.
-
-## Troubleshooting
-
-### The integration fails to set up
-
-**Symptom:** Setup fails with an authentication or connectivity error.
-
-**Steps to resolve:**
-
-1. Check **Settings** > **System** > **Logs** for detailed error messages.
-2. If you see `InvalidAuth`, re-authenticate via the config flow.
-3. If you see `CannotConnect`, verify your internet connection and that `api.gdhv.io` is reachable from your Home Assistant instance.
-
-### Tokens keep expiring
-
-**Symptom:** You are repeatedly asked to re-authenticate.
-
-**Steps to resolve:**
-
-1. Use the **Email / password** method — it obtains a fresh refresh token automatically.
-2. If using the manual auth code method, capture a fresh code each time.
-3. Ensure Home Assistant has reliable internet access; intermittent connectivity can cause token refresh failures.
-
-### Entities are missing
-
-**Symptom:** Some entities do not appear after setup.
-
-**Steps to resolve:**
-
-1. Check the options flow and make sure the relevant platform is toggled on.
+1. Open **HACS**, search for **Dimplex Hub**, click **Download**.
 2. Restart Home Assistant.
-3. Check the logs for errors during platform setup.
+3. **Settings** → **Devices & services** → **+ Add integration** → **Dimplex Hub**.
 
-### Energy sensor shows `unavailable` in summer
+### Manual
 
-This is expected. See the [Energy monitoring](#energy-monitoring) section above.
+Copy `custom_components/dimplex` into your Home Assistant `custom_components/` directory,
+restart, then add the integration as above.
 
-### Still stuck?
+Requires Home Assistant **2025.1** or later. Full instructions, including the two
+authentication methods, are in
+[Getting started](https://dimplex-hass.kroper.uk/start/).
 
-If you cannot resolve your issue, please [open a GitHub issue](https://github.com/kroperuk/dimplex-controller-hass/issues) with:
+## ⚠️ Appliance support
 
-1. Your Home Assistant version.
-2. The integration version.
-3. The relevant log entries (redact any personal information).
-4. Steps to reproduce the problem.
+Panel heaters and QRAD are exercised regularly. Quantum storage heaters behave differently —
+a target does nothing until there is stored charge — and hot water cylinder support exists in
+the underlying library but has never been run against hardware.
 
-## Contributing
+Some Quantum heaters also reject remote setpoint and timer-mode writes with HTTP 403; the
+integration falls back to a schedule rewrite where it can, and reports a readable error
+where it cannot.
 
-Contributions are welcome! Please read the [contribution guidelines](CONTRIBUTING.md) before opening a pull request.
+## 🤝 Contributing
 
-Key points:
+Contributions are welcome — please read the [contribution guidelines](CONTRIBUTING.md) first.
 
-- Use **Conventional Commits** (`feat:`, `fix:`, `chore:`, etc.) — this drives the automated changelog and release process.
-- Run `ruff check`, `ruff format --check` and `pytest` locally before pushing.
-- Pre-commit hooks are available — run `pre-commit install` once.
-- CI publishes pre-releases as semver tags (`vX.Y.Z-rc.N` on main, `vX.Y.Z-pr.P.R` for PRs) with matching `manifest` versions; stable remains `vX.Y.Z`. See [docs/advanced.md](docs/advanced.md#pre-release-dev-builds).
+- Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`,
+  `chore:` …); this drives the automated changelog and release.
+- Run `ruff check`, `ruff format --check` and `pytest` before pushing, or install the hooks
+  with `pre-commit install`.
+- Documentation changes: `zensical build` reports broken links and missing anchors.
+- CI publishes pre-releases as semver tags (`vX.Y.Z-rc.N` on main, `vX.Y.Z-pr.P.R` for PRs).
+  See [dev & pre-release builds](https://dimplex-hass.kroper.uk/internals/dev-releases/).
 
-## Credits
+## 🐛 Reporting a problem
 
-This project was generated from [@oncleben31](https://github.com/oncleben31)'s [Home Assistant Custom Component Cookiecutter](https://github.com/oncleben31/cookiecutter-homeassistant-custom-component) template.
+[Open an issue](https://github.com/KRoperUK/dimplex-controller-hass/issues/new/choose) with
+your Home Assistant version, the integration version, the relevant log lines (redacted), and
+steps to reproduce. Attaching a **diagnostics download** is the fastest route to an answer —
+it decodes the appliance's engaged modes by name.
 
-Code template was mainly taken from [@Ludeeus](https://github.com/ludeeus)'s [integration_blueprint](https://github.com/custom-components/integration_blueprint) template.
+## 🙏 Credits
+
+Generated from [@oncleben31](https://github.com/oncleben31)'s
+[Home Assistant Custom Component Cookiecutter](https://github.com/oncleben31/cookiecutter-homeassistant-custom-component)
+template, with code templates from [@Ludeeus](https://github.com/ludeeus)'s
+[integration_blueprint](https://github.com/custom-components/integration_blueprint).
