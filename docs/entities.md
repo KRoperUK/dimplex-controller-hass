@@ -14,12 +14,12 @@ One climate entity per appliance.
 
 ### Presets
 
-| Preset    | Behaviour                                                          |
-| --------- | ------------------------------------------------------------------ |
-| `comfort` | Clears boost/away and turns EcoStart off when active.              |
-| `boost`   | Enables boost (default ~60 minutes, boost temperature when known). |
-| `away`    | Enables away mode at the appliance away temperature when known.    |
-| `eco`     | Enables EcoStart.                                                  |
+| Preset    | Behaviour                                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------------------------------ |
+| `comfort` | Clears boost/away and turns EcoStart off when active.                                                              |
+| `boost`   | Enables boost (default ~60 minutes, boost temperature when known).                                                 |
+| `away`    | Enables away mode at the appliance away temperature when known, clamped to the 7-18 °C the cloud accepts for Away. |
+| `eco`     | Enables EcoStart.                                                                                                  |
 
 ### Services
 

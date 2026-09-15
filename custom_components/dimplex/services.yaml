@@ -77,12 +77,15 @@ set_away:
           integration: dimplex
     temperature:
       name: Temperature
-      description: Away setback target. Defaults to 16 °C; the cloud accepts 7-30 °C.
+      description: >-
+        Away setback target. Defaults to 16 °C. The cloud accepts 7-18 °C for Away —
+        lower than the 7-30 °C available for a normal setpoint — and silently reduces
+        anything higher, so values above 18 are clamped here with a warning.
       default: 16
       selector:
         number:
           min: 7
-          max: 30
+          max: 18
           step: 0.5
           unit_of_measurement: "°C"
     days:
@@ -118,11 +121,12 @@ clear_away:
           integration: dimplex
     temperature:
       name: Temperature
+      description: Accompanies the clear; the cloud accepts 7-18 °C for Away.
       default: 16
       selector:
         number:
           min: 7
-          max: 30
+          max: 18
           step: 0.5
           unit_of_measurement: "°C"
 
