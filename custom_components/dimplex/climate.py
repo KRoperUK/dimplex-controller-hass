@@ -274,8 +274,16 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
 
     @property
     def current_temperature(self) -> float | None:
+        """Return the room temperature, ignoring the cloud's 0xFF sentinel.
+
+        The cloud reports 255 for a temperature field with no active value (see
+        ``sane_temperature``). Without this filter the thermostat card showed
+        255 °C and the recorder stored it.
+        """
         status = self._status
-        return status.RoomTemperature if status else None
+        if status is None:
+            return None
+        return sane_temperature(getattr(status, "RoomTemperature", None))
 
     @property
     def target_temperature(self) -> float | None:

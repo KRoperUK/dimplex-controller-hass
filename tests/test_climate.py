@@ -766,3 +766,52 @@ async def test_away_preset_clamps_to_the_away_ceiling(hass):
         )
 
     assert set_away.await_args.kwargs["temperature"] == AWAY_TEMP_MAX == 18.0
+
+
+@pytest.mark.asyncio
+async def test_climate_current_temperature_ignores_sentinel(hass):
+    """A 255 RoomTemperature must not surface as 255 °C on the thermostat card.
+
+    ``current_temperature`` was the one temperature read that skipped
+    ``sane_temperature()``, so when the cloud reported its 0xFF "no value" sentinel
+    the card showed 255 °C and the recorder stored it in history.
+    """
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload(room=255)
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.attributes.get("current_temperature") is None
+
+    # The room-temperature sensor already filtered it; both must agree.
+    sensor_state = next(
+        (
+            candidate
+            for candidate in hass.states.async_all()
+            if candidate.entity_id.startswith("sensor.") and "room_temperature" in candidate.entity_id
+        ),
+        None,
+    )
+    assert sensor_state is not None
+    assert sensor_state.state in ("unknown", "unavailable")
+
+
+@pytest.mark.asyncio
+async def test_climate_current_temperature_passes_real_readings(hass):
+    """The sentinel filter must not swallow legitimate temperatures."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    with _api_data(_payload(room=19.5)):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = hass.states.get(_climate_entity(hass))
+    assert state is not None
+    assert state.attributes.get("current_temperature") == 19.5
