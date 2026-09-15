@@ -19,7 +19,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .api import CannotConnect, DimplexApiClient, InvalidAuth
+from .api import CannotConnect, ControlRejected, DimplexApiClient, InvalidAuth
 from .capabilities import capabilities_for_row
 from .const import (
     AWAY_FLAG,
@@ -149,12 +149,12 @@ def _is_timer_off_like(timer_mode: int | None) -> bool:
 def _translate_control_errors(func: Any) -> Any:
     """Surface Dimplex control failures as a clear HomeAssistantError.
 
-    The API adapter raises :class:`InvalidAuth` / :class:`CannotConnect` (the
-    latter also wraps any non-200 cloud response, e.g. a 403). Without this,
-    Home Assistant reports the raw exception as a generic 500 / "unknown error"
-    to the user (dimplex-controller-hass#149). Some appliances — notably certain
-    Quantum storage heaters — reject remote timer-mode / setpoint writes, so a
-    control call can legitimately fail; make that legible instead of opaque.
+    The API adapter raises :class:`InvalidAuth`, :class:`ControlRejected` (the cloud
+    refused this control for this appliance) or :class:`CannotConnect` (it did not
+    get through). Without this, Home Assistant reports the raw exception as a
+    generic 500 / "unknown error" to the user (dimplex-controller-hass#149). The two
+    connection cases get different wording because the user's next step differs:
+    a refusal will not fix itself, a timeout may.
     """
 
     @functools.wraps(func)
@@ -164,11 +164,16 @@ def _translate_control_errors(func: Any) -> Any:
             return await func(self, *args, **kwargs)
         except InvalidAuth as err:
             raise HomeAssistantError(f"Dimplex authentication failed while controlling {name}.") from err
+        except ControlRejected as err:
+            raise HomeAssistantError(
+                f"The Dimplex cloud rejected this control for {name}. The heater may not "
+                "support it remotely — some Quantum storage heaters reject off/setpoint "
+                "changes — so retrying will not help."
+            ) from err
         except CannotConnect as err:
             raise HomeAssistantError(
-                f"The Dimplex cloud rejected the request for {name}. The heater may not "
-                "support this control remotely (some Quantum storage heaters reject "
-                "off/setpoint changes), or the service is temporarily unavailable."
+                f"Could not reach the Dimplex cloud to control {name}. The service may be "
+                "temporarily unavailable; nothing was changed."
             ) from err
 
     return _wrapper
@@ -346,10 +351,17 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         appliance_id = self._appliance.ApplianceId
         try:
             await self._api.async_set_appliance_setpoint(hub_id, appliance_id, float(temperature))
-        except CannotConnect:
-            _LOGGER.debug(
-                "Dedicated setpoint endpoint rejected for %s; falling back to a schedule rewrite",
+        except ControlRejected as err:
+            # Only a refusal (403/405/501) earns the destructive path. A timeout or
+            # 5xx raises plain CannotConnect and propagates, because rewriting every
+            # timer period over a dropped connection would silently destroy the
+            # user's schedule (#197).
+            _LOGGER.warning(
+                "%s refused the dedicated setpoint endpoint (%s); rewriting its timer "
+                "schedule to %s °C instead, which overwrites every period",
                 self._appliance.FriendlyName,
+                getattr(err, "status", None) or "rejected",
+                temperature,
             )
             await self._api.async_set_target_temperature(hub_id, appliance_id, float(temperature))
         await self.coordinator.async_request_refresh()

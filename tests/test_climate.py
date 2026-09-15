@@ -570,8 +570,8 @@ async def test_climate_turn_on_restores_legacy_frost_timer_mode(hass):
 
 @pytest.mark.asyncio
 async def test_climate_set_temperature_falls_back_to_schedule_rewrite(hass):
-    """An appliance that rejects the dedicated setpoint still gets its target."""
-    from custom_components.dimplex.api import CannotConnect
+    """An appliance that *refuses* the dedicated setpoint still gets its target."""
+    from custom_components.dimplex.api import ControlRejected
 
     config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
@@ -586,7 +586,7 @@ async def test_climate_set_temperature_falls_back_to_schedule_rewrite(hass):
         patch(
             "custom_components.dimplex.DimplexApiClient.async_set_appliance_setpoint",
             new_callable=AsyncMock,
-            side_effect=CannotConnect("403"),
+            side_effect=ControlRejected("Forbidden", status=403),
         ) as set_point,
         patch(
             "custom_components.dimplex.DimplexApiClient.async_set_target_temperature",
@@ -602,6 +602,51 @@ async def test_climate_set_temperature_falls_back_to_schedule_rewrite(hass):
         )
         set_point.assert_awaited_once()
         rewrite_schedule.assert_awaited_once_with("hub-1", "appliance-1", 19.0)
+
+
+@pytest.mark.asyncio
+async def test_climate_set_temperature_does_not_rewrite_schedule_on_transient_error(hass):
+    """A timeout or 5xx must never trigger the destructive schedule rewrite (#197).
+
+    ``async_set_target_temperature`` overwrites *every* period of the appliance's
+    timer schedule. Before #197 it ran for any ``CannotConnect``, so a single dropped
+    connection while nudging the target destroyed the user's schedule silently.
+    """
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex.api import CannotConnect
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload()
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_appliance_setpoint",
+            new_callable=AsyncMock,
+            side_effect=CannotConnect("timed out"),
+        ) as set_point,
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_target_temperature",
+            new_callable=AsyncMock,
+        ) as rewrite_schedule,
+        _api_data(payload),
+        pytest.raises(HomeAssistantError, match="Could not reach the Dimplex cloud"),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_TEMPERATURE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: 19.0},
+            blocking=True,
+        )
+
+    set_point.assert_awaited_once()
+    rewrite_schedule.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -21,14 +21,24 @@ sequenceDiagram
     alt accepted
         Cloud->>App: apply setpoint
         Cloud-->>HA: 200 OK
-    else rejected (some Quantum heaters)
+    else refused (some Quantum heaters)
         Cloud-->>HA: 403 Forbidden
         Note over HA: fall back rather than fail
         HA->>Cloud: rewrite timer periods to 21.0
         Cloud->>App: apply schedule
         Cloud-->>HA: 200 OK
+    else unreachable
+        Cloud-->>HA: timeout or 5xx
+        Note over HA: raise an error, change nothing
     end
 ```
+
+Only a **refusal** unlocks the fallback — HTTP 403, 405 or 501, meaning this appliance will
+not accept the dedicated endpoint however many times you ask. A timeout or a 5xx is reported
+as an error and nothing is written, because the schedule rewrite overwrites _every_ period:
+before 4.1.0 a single dropped connection while nudging the target silently destroyed the
+whole schedule. When the fallback does run it logs a warning naming the appliance and the
+status, so it is visible rather than implicit.
 
 Before 4.1.0 the integration only ever did the second path, which is why Quantum storage
 heaters returned HTTP 403 and the write failed outright. The fallback is kept so no

@@ -14,7 +14,7 @@ from dimplex_controller import (
 )
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from custom_components.dimplex.api import CannotConnect, DimplexApiClient, InvalidAuth
+from custom_components.dimplex.api import CannotConnect, ControlRejected, DimplexApiClient, InvalidAuth
 
 # asyncio_mode = auto (pyproject.toml) auto-handles async tests, so no module-level
 # asyncio mark is needed — and adding one would break the sync unit tests below.
@@ -556,13 +556,15 @@ async def test_setpoint_and_frost_helpers_use_the_dedicated_endpoints(hass):
 @pytest.mark.parametrize(
     ("library_error", "expected"),
     [
-        (DimplexApiError(403, "Forbidden"), CannotConnect),
+        (DimplexApiError(403, "Forbidden"), ControlRejected),
+        (DimplexApiError(405, "Method Not Allowed"), ControlRejected),
+        (DimplexApiError(501, "Not Implemented"), ControlRejected),
         (DimplexConnectionError("offline"), CannotConnect),
         (DimplexAuthError("expired"), InvalidAuth),
     ],
 )
 async def test_control_errors_are_translated(hass, library_error, expected):
-    """A 403 from an appliance that rejects a write becomes CannotConnect, not a raw error."""
+    """A refusal becomes ControlRejected; a transient failure stays CannotConnect."""
     api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
     with (
         patch.object(
@@ -573,6 +575,42 @@ async def test_control_errors_are_translated(hass, library_error, expected):
         pytest.raises(expected),
     ):
         await api.async_set_appliance_setpoint("h", "a", 21.0)
+
+
+@pytest.mark.parametrize("status", [500, 502, 503, 400, 404, 429])
+async def test_transient_and_client_errors_are_not_control_rejections(hass, status):
+    """Only 403/405/501 may unlock the destructive schedule-rewrite fallback (#197).
+
+    A 5xx means the write did not get through, and 400/404 mean the payload or ids
+    are wrong — none of which justify overwriting every timer period.
+    """
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with (
+        patch.object(
+            api._client,
+            "set_appliance_setpoint_temperature",
+            new=AsyncMock(side_effect=DimplexApiError(status, "boom")),
+        ),
+        pytest.raises(CannotConnect) as caught,
+    ):
+        await api.async_set_appliance_setpoint("h", "a", 21.0)
+    assert not isinstance(caught.value, ControlRejected)
+
+
+async def test_control_rejected_carries_its_status(hass):
+    """The status is kept so the log line can say what the cloud actually answered."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with (
+        patch.object(
+            api._client,
+            "set_appliance_setpoint_temperature",
+            new=AsyncMock(side_effect=DimplexApiError(403, "Forbidden")),
+        ),
+        pytest.raises(ControlRejected) as caught,
+    ):
+        await api.async_set_appliance_setpoint("h", "a", 21.0)
+    assert caught.value.status == 403
+    assert isinstance(caught.value, CannotConnect)
 
 
 async def test_async_get_energy_for_hubs(hass):
