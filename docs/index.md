@@ -130,14 +130,28 @@ the appliance's engaged modes broken out so you can see what the heater is actua
 
   Setup failures, unavailable entities, and symptoms with known causes.
 
+- :material-hospital-box: **[Appliance support](reference/appliances.md)**
+
+  ***
+
+  What is verified against hardware, inferred from the official app, and
+  untested.
+
 </div>
+
+## Before you file a bug
+
+A [diagnostics download](help/diagnostics.md) decodes the appliance's engaged modes by
+name, which is usually enough to explain behaviour that looks wrong. Attaching one turns a
+long back-and-forth into a single reply.
 
 !!! warning "Not every appliance family is equally tested"
 
     Panel heaters and QRAD are exercised regularly. Quantum storage heaters behave
     differently — a target does nothing until there is stored charge — and hot water
     cylinder support exists in the underlying library but has never been run against
-    hardware.
+    hardware. See [appliance support](reference/appliances.md) for what is verified,
+    inferred and untested.
 
 ## Links
 
