@@ -4,7 +4,143 @@ description: Diagnose Dimplex Hub setup failures, unavailable entities, expiring
 
 # Troubleshooting
 
-This page helps you diagnose and resolve common issues with the Dimplex Hub integration.
+Find your symptom below, or read the section that matches where it went wrong.
+
+!!! tip "If the heating behaves oddly, check your version first"
+
+    Five separate mode-handling bugs were fixed in **4.1.0**. If you are on 4.0.2 or earlier
+    and boost, away or presets do something unexpected, upgrading is very likely the whole
+    answer — see [upgrading](upgrading.md).
+
+## Symptom index
+
+| Symptom                                        | Likely cause                                                                         |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Boost does nothing, or the wrong thing happens | [Boost engages the wrong mode](#boost-does-nothing-or-something-else-happens)        |
+| Away drops the heater to 7 °C                  | [Away engaged frost protection](#away-pins-the-heater-to-7-c)                        |
+| Away will not go above 18 °C                   | [That is the cloud's real limit](#away-will-not-go-above-18-c)                       |
+| Changing the preset appears to do nothing      | [Presets used to stack instead of replace](#changing-the-preset-does-nothing)        |
+| Changing the temperature is rejected           | [Some Quantum heaters refuse remote writes](#changing-the-temperature-is-rejected)   |
+| The heater reports 7 °C after being turned off | [Correct — "off" is frost protection](#the-heater-reports-7-c-after-i-turned-it-off) |
+| A target on a storage heater had no effect     | [No stored charge to release](#a-target-on-a-storage-heater-did-nothing)             |
+| `preset_mode` disagrees with the mode sensors  | [One preset cannot show several modes](#preset_mode-disagrees-with-the-mode-sensors) |
+| My timer schedule changed by itself            | [Setpoint writes used to rewrite it](#my-timer-schedule-changed-by-itself)           |
+| Entities are `unavailable`                     | [Empty cloud overview](#entities-are-unavailable)                                    |
+| Energy sensor `unavailable` in summer          | [Expected](#energy-sensor-shows-unavailable-in-summer)                               |
+| Repeatedly asked to re-authenticate            | [Token refresh](#tokens-keep-expiring)                                               |
+| HACS offers an older version                   | [Pre-release channel](#hacs-shows-an-update-after-installing-a-pre-release)          |
+
+## Heating behaviour
+
+### Boost does nothing, or something else happens
+
+**Symptom:** You select the `boost` preset or call `dimplex.set_boost`, and the heater either
+does nothing visible or brings on the next scheduled period instead.
+
+**Cause:** Releases before 4.1.0 assumed boost was mode bit 16. Bit 16 is **Advance**. The
+integration was asking the appliance to advance, which on a scheduled heater looks like
+"nothing happened" outside a scheduled window. This was
+[#163](https://github.com/kroperuk/dimplex-controller-hass/issues/163).
+
+**Fix:** Upgrade to 4.1.0 or later. Boost is bit 2.
+
+**If you are already on 4.1.0+:** enable the **Boost active** diagnostic sensor and check
+whether the appliance reports boost engaged. If it does and the room does not warm, the write
+succeeded and the appliance is choosing not to act — likely
+[a storage heater with no charge](#a-target-on-a-storage-heater-did-nothing).
+
+### Away pins the heater to 7 °C
+
+**Symptom:** Enabling away drops the target to 7 °C, whatever temperature you asked for.
+
+**Cause:** Before 4.1.0, away was assumed to be mode bit 32. Bit 32 is **FrostProtect**, which
+is fixed at 7 °C and ignores any temperature sent with it. Same root cause as above.
+
+**Fix:** Upgrade to 4.1.0 or later, then clear and re-set away once so the appliance leaves
+frost protection.
+
+### Away will not go above 18 °C
+
+**Symptom:** You ask for away at 21 °C and get 18 °C, with a warning in the log.
+
+**Cause:** Not a bug. The cloud accepts only **7–18 °C** for away — the official app's away
+picker stops at 18 too — and silently reduces anything higher. Rather than let your 21 °C
+become 18 °C invisibly, the integration clamps it locally and says so.
+[#174](https://github.com/kroperuk/dimplex-controller-hass/issues/174).
+
+**If you want a higher setback:** use a normal setpoint (7–30 °C) on a schedule instead of
+away mode.
+
+### Changing the preset does nothing
+
+**Symptom:** You switch from `away` to `eco`, or between any two non-`comfort` presets, and the
+entity keeps reporting the old one.
+
+**Cause:** Before 4.1.0 each preset only _added_ its own state without clearing the others.
+Selecting `eco` enabled EcoStart but left away engaged, and because the entity resolves away
+ahead of EcoStart, it kept reporting `away`.
+[#173](https://github.com/kroperuk/dimplex-controller-hass/issues/173).
+
+**Fix:** Upgrade to 4.1.0 or later, where a preset clears the others before engaging its own.
+
+### Changing the temperature is rejected
+
+**Symptom:** `climate.set_temperature` fails, historically as a generic "unknown error" or
+HTTP 500.
+
+**Cause:** Some Quantum storage heaters refuse remote setpoint and timer-mode writes with
+HTTP 403. Before 4.1.0 the integration only used the schedule-rewrite path, which those units
+reject outright. [#149](https://github.com/kroperuk/dimplex-controller-hass/issues/149).
+
+**Fix:** Upgrade. 4.1.0 uses the cloud's dedicated setpoint endpoint first and falls back to
+the schedule rewrite only if that is refused. If both are refused you now get a readable error
+naming the appliance instead of an opaque failure — that appliance genuinely does not accept
+remote setpoint changes, and the official app will not manage it either.
+
+### The heater reports 7 °C after I turned it off
+
+**Symptom:** `climate.turn_off` leaves the target at 7 °C rather than blank or off.
+
+**Cause:** Not a bug. Dimplex appliances have **no off mode**. "Off", in the official app and
+here, means frost protection: a fixed 7 °C anti-freeze floor. See
+[why "off" reports 7 °C](../use/temperature.md#why-off-reports-7-c).
+
+### A target on a storage heater did nothing
+
+**Symptom:** You set 22 °C on a Quantum or other storage heater and nothing happens, with no
+error.
+
+**Cause:** Charge-based heaters store heat overnight and release it during the day. With no
+stored charge there is nothing to release, so a perfectly successful write has no observable
+effect. This is indistinguishable from a failed write unless you check.
+
+**What to do:** Confirm the write landed — the target-temperature sensor should show your
+value — and compare against the official app at the same moment. See
+[Quantum and other storage heaters](../reference/appliances.md#quantum-and-other-storage-heaters).
+
+### `preset_mode` disagrees with the mode sensors
+
+**Symptom:** **Boost active** and **Away active** are both `on`, but `preset_mode` says
+`boost`. Or **Advance active** is `on` and the preset says `comfort`.
+
+**Cause:** Not a bug. The appliance holds a _bitfield_ of modes and several can be engaged at
+once; Home Assistant's `preset_mode` is one string and can only show one of them. Advance has
+no preset at all.
+
+**What to do:** Trust the diagnostic sensors, and automate on those rather than on
+`preset_mode`. See
+[why `preset_mode` can disagree with reality](../use/modes.md#why-preset_mode-can-disagree-with-reality).
+
+### My timer schedule changed by itself
+
+**Symptom:** Setting a temperature from Home Assistant altered your weekly programme.
+
+**Cause:** Before 4.1.0, every setpoint write was implemented as a rewrite of the timer
+periods — there was no other path.
+
+**Fix:** Upgrade. 4.1.0 writes through `SetApplianceSetpointTemperature`, which leaves the
+schedule alone. The rewrite survives only as a fallback for appliances that reject the
+dedicated endpoint. Repair your programme in the official app once after upgrading.
 
 ## Setup failures
 
