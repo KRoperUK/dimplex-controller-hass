@@ -528,26 +528,32 @@ jobs:
             done
 
   # Main release-candidate dev builds — a push to main that changed the component,
-  # once CI is green. Never for the "chore(main): release X.Y.Z" commit (matched via
-  # ": release ") which release-please lands when its PR merges.
+  # once CI is green. Never for the release-please commit, whose subject is
+  # "chore(main): release X.Y.Z".
   #
   # Tags are vX.Y.Z-rc.N on a synthetic version commit (version files only).
   # We do not force-push a moving `dev` branch: those commits are unsigned bot
   # commits and conflict with "Commits must have verified signatures" rules.
   # Install RCs via the prerelease tag / HACS instead. main is never mutated.
   #
-  # Do NOT reintroduce `needs: [changes, ci]` here. The aggregate gate needs
-  # `conventional_commits`, which only runs on pull_request; on a push to main it is
-  # skipped, and that skip propagates through `ci` (which survives it via
-  # `if: always()`) to skip this job — every condition in the `if` below evaluated
-  # true and no RC was ever cut. Depend on the real jobs, as sungrow-hass does.
+  # Two things here are load-bearing and easy to break:
+  #
+  # 1. Depend on the real jobs, not the aggregate `ci` gate. `ci` needs
+  #    `conventional_commits`, which only runs on pull_request; on a push to main
+  #    that job is skipped, and the skip propagates through `ci` (which survives it
+  #    via `if: always()`) to skip this job before its `if` is consulted. No RC was
+  #    ever cut from main for that reason.
+  # 2. Match the release-please commit on its *subject*, with startsWith. A
+  #    `contains` test against the whole message also matches any commit whose body
+  #    merely mentions the release-commit prefix — including a commit describing
+  #    this very guard, which is how it was found.
   dev-release-main:
     needs: [changes, translations, lint, mypy, pre-commit, test, hacs_validate, scripts]
     if: >-
       needs.changes.outputs.component == 'true' &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
-      !contains(github.event.head_commit.message, ': release ')
+      !startsWith(github.event.head_commit.message, 'chore(main): release ')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
