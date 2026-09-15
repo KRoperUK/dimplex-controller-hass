@@ -56,7 +56,11 @@ or related CI config), CI runs **translations**, **lint**, **mypy**, **pre-commi
 **pytest**, **HACS/hassfest**, and shell script syntax checks. The aggregate `ci`
 job fails unless all of those succeed (and conventional commit titles pass on PRs).
 
-Docs-only PRs still get a green `ci` without the full matrix.
+When your PR changes documentation (`docs/`, `includes/`, `overrides/`,
+`zensical.toml`, `README.md`, or a user-visible surface such as `services.yaml`),
+CI runs a **docs** job: a strict `zensical build` plus
+`scripts/check-docs-coverage.sh`. Docs-only PRs still skip the heavy integration
+matrix.
 
 Re-apply branch protection / rulesets with:
 
@@ -140,8 +144,19 @@ uv pip install --python .venv zensical
 .venv/bin/zensical build    # one-shot build into ./site
 ```
 
-`zensical build` reports broken internal links and missing heading anchors, so run
-it before pushing documentation changes.
+`strict = true` is set in `zensical.toml`, so `zensical build` **fails** on a broken
+internal link or a missing heading anchor. CI runs the same command, so run it before
+pushing documentation changes.
+
+CI also runs:
+
+```bash
+bash scripts/check-docs-coverage.sh
+```
+
+which fails when an action in `services.yaml`, an entity `translation_key`, or an
+options-flow constant exists but is not mentioned on its reference page. It only checks
+that the docs are _aware_ the thing exists — correctness still needs a human.
 
 Layout worth knowing:
 

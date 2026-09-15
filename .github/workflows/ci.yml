@@ -24,6 +24,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       component: ${{ steps.filter.outputs.component }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,6 +42,58 @@ jobs:
               - 'hacs.json'
               - '.github/workflows/ci.yml'
               - '.github/workflows/hacs-release-asset.yml'
+            docs:
+              - 'docs/**'
+              - 'includes/**'
+              - 'overrides/**'
+              - 'zensical.toml'
+              - 'README.md'
+              - 'custom_components/dimplex/services.yaml'
+              - 'custom_components/dimplex/const.py'
+              - 'custom_components/dimplex/*sensor.py'
+              - 'custom_components/dimplex/switch.py'
+              - 'custom_components/dimplex/climate.py'
+              - 'scripts/check-docs-coverage.sh'
+              - '.github/workflows/ci.yml'
+
+  # Documentation gate. Two cheap checks that between them would have caught most
+  # of the drift audited in #175:
+  #
+  #   * `zensical build` with `strict = true` fails on a broken internal link or a
+  #     missing heading anchor. Zensical already detected these and printed a
+  #     warning; without strict the workflow published anyway, and a dead link to
+  #     index.md#energy-monitoring shipped for months.
+  #   * check-docs-coverage.sh fails when an action, entity or option exists in the
+  #     integration but is not mentioned on its reference page. Crude string
+  #     matching is enough: every gap this repository has shipped was "a new thing
+  #     exists, the docs never mentioned it".
+  #
+  # Deliberately NOT added to `dev-release-main` or `dev-release` `needs`: a
+  # skipped job propagates its skip to dependents that lack `if: always()`, which
+  # is exactly how #171 stopped RC pre-releases from being cut for four merges.
+  docs:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Zensical
+        run: |
+          python -m pip install --upgrade pip
+          pip install zensical
+
+      - name: Build the docs, failing on broken links and anchors
+        run: zensical build
+
+      - name: Check every action, entity and option is documented
+        run: bash scripts/check-docs-coverage.sh
 
   conventional_commits:
     runs-on: ubuntu-latest
@@ -263,7 +316,7 @@ jobs:
   # bad component changes.
   ci:
     name: ci
-    needs: [changes, conventional_commits, translations, lint, mypy, pre-commit, test, hacs_validate, scripts]
+    needs: [changes, conventional_commits, docs, translations, lint, mypy, pre-commit, test, hacs_validate, scripts]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -272,9 +325,12 @@ jobs:
         run: |
           set -euo pipefail
           component="${{ needs.changes.outputs.component }}"
+          docs="${{ needs.changes.outputs.docs }}"
           event_name="${{ github.event_name }}"
           echo "event: ${event_name}"
           echo "component changes: ${component}"
+          echo "docs changes: ${docs}"
+          echo "docs: ${{ needs.docs.result }}"
           echo "conventional_commits: ${{ needs.conventional_commits.result }}"
           echo "translations: ${{ needs.translations.result }}"
           echo "lint: ${{ needs.lint.result }}"
@@ -291,6 +347,11 @@ jobs:
               echo "::error::conventional_commits did not succeed (${{ needs.conventional_commits.result }})"
               failed=1
             fi
+          fi
+
+          if [ "${docs}" = "true" ] && [ "${{ needs.docs.result }}" != "success" ]; then
+            echo "::error::docs did not succeed (${{ needs.docs.result }})"
+            failed=1
           fi
 
           if [ "${component}" != "true" ]; then

@@ -5,6 +5,11 @@ site_author = "KRoperUK"
 site_url = "https://dimplex-hass.kroper.uk/"
 copyright = "Copyright &copy; 2026 KRoperUK — an unofficial project, not affiliated with or endorsed by Dimplex or Glen Dimplex Heating &amp; Ventilation"
 
+# Turn zensical's link and anchor warnings into build failures. It already
+# detected these; without `strict` the docs workflow published anyway, and a dead
+# link to index.md#energy-monitoring shipped for months.
+strict = true
+
 repo_url = "https://github.com/KRoperUK/dimplex-controller-hass"
 repo_name = "KRoperUK/dimplex-controller-hass"
 edit_uri = "edit/main/docs/"
