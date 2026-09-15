@@ -144,7 +144,7 @@ Each appliance is exposed as a `climate` entity with:
 - presets: `comfort`, `boost`, `away`, `eco` (EcoStart)
 - `climate.set_temperature` / `climate.set_preset_mode`
 
-Schedule editing beyond setpoint rewrites is still limited by the cloud API.
+Setting a target uses the cloud's dedicated setpoint endpoint, so it applies immediately and leaves your timer schedule untouched. Editing the schedule itself is still limited by the cloud API.
 
 ## Upgrading to 3.0.0
 

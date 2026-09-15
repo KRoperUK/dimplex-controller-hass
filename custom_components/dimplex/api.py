@@ -5,6 +5,8 @@ from __future__ import annotations
 import base64
 import json
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
@@ -47,6 +49,22 @@ class CannotConnect(Exception):
 
 class InvalidAuth(Exception):
     """Error to indicate there is invalid auth."""
+
+
+@contextmanager
+def _translated_errors() -> Iterator[None]:
+    """Map library exceptions onto the adapter's config-flow error types.
+
+    Every control call needs the same mapping, and a non-200 cloud response —
+    including the HTTP 403 some Quantum heaters return for writes they do not
+    support — arrives as :class:`DimplexApiError`.
+    """
+    try:
+        yield
+    except DimplexAuthError as exception:
+        raise InvalidAuth from exception
+    except (DimplexConnectionError, DimplexApiError) as exception:
+        raise CannotConnect from exception
 
 
 class DimplexApiClient:
@@ -248,60 +266,54 @@ class DimplexApiClient:
 
     async def async_set_eco_start(self, hub_id: str, appliance_id: str, enable: bool) -> None:
         """Enable or disable EcoStart for an appliance."""
-        try:
+        with _translated_errors():
             await self._client.set_eco_start(hub_id, [appliance_id], enable)
-        except DimplexAuthError as exception:
-            raise InvalidAuth from exception
-        except DimplexConnectionError as exception:
-            raise CannotConnect from exception
-        except DimplexApiError as exception:
-            raise CannotConnect from exception
 
     async def async_set_open_window_detection(self, hub_id: str, appliance_id: str, enable: bool) -> None:
         """Enable or disable open-window detection for an appliance."""
-        try:
+        with _translated_errors():
             await self._client.set_open_window_detection(hub_id, [appliance_id], enable)
-        except DimplexAuthError as exception:
-            raise InvalidAuth from exception
-        except DimplexConnectionError as exception:
-            raise CannotConnect from exception
-        except DimplexApiError as exception:
-            raise CannotConnect from exception
+
+    async def async_set_appliance_setpoint(self, hub_id: str, appliance_id: str, temperature: float) -> None:
+        """Set the active setpoint via the app's own dedicated endpoint.
+
+        ``SetApplianceSetpointTemperature`` applies the target immediately and
+        leaves the stored timer periods untouched. Prefer this over
+        :meth:`async_set_target_temperature`, which rewrites the schedule and is
+        rejected with HTTP 403 by Quantum storage heaters (#149).
+        """
+        with _translated_errors():
+            await self._client.set_appliance_setpoint_temperature(hub_id, [appliance_id], temperature)
 
     async def async_set_target_temperature(self, hub_id: str, appliance_id: str, temperature: float) -> None:
-        """Set the appliance target temperature."""
-        try:
+        """Set the target temperature by rewriting the timer schedule.
+
+        Legacy path, kept as a fallback for appliances that reject the dedicated
+        setpoint endpoint. Destructive: it overwrites every period's setpoint.
+        """
+        with _translated_errors():
             await self._client.set_target_temperature(hub_id, appliance_id, temperature)
-        except DimplexAuthError as exception:
-            raise InvalidAuth from exception
-        except DimplexConnectionError as exception:
-            raise CannotConnect from exception
-        except DimplexApiError as exception:
-            raise CannotConnect from exception
 
     async def async_get_schedule(self, hub_id: str, appliance_id: str) -> Any:
         """Return timer mode settings for an appliance (read-only schedule)."""
-        try:
+        with _translated_errors():
             if hasattr(self._client, "get_schedule"):
                 return await self._client.get_schedule(hub_id, appliance_id)
             return await self._client.get_appliance_features(hub_id, appliance_id)
-        except DimplexAuthError as exception:
-            raise InvalidAuth from exception
-        except DimplexConnectionError as exception:
-            raise CannotConnect from exception
-        except DimplexApiError as exception:
-            raise CannotConnect from exception
 
     async def async_set_timer_mode(self, hub_id: str, appliance_id: str, mode: int) -> None:
-        """Set the appliance timer / operation mode (manual, frost, off, …)."""
-        try:
+        """Set the appliance timer / operation mode (manual, frost, off, …).
+
+        Writes the schedule editor, which Quantum rejects with HTTP 403. Use
+        :meth:`async_set_frost_protect` to turn an appliance off.
+        """
+        with _translated_errors():
             await self._client.set_mode(hub_id, appliance_id, mode)
-        except DimplexAuthError as exception:
-            raise InvalidAuth from exception
-        except DimplexConnectionError as exception:
-            raise CannotConnect from exception
-        except DimplexApiError as exception:
-            raise CannotConnect from exception
+
+    async def async_set_frost_protect(self, hub_id: str, appliance_id: str, *, enable: bool = True) -> None:
+        """Engage or clear frost protection — how the app turns a heater off."""
+        with _translated_errors():
+            await self._client.set_frost_protect(hub_id, [appliance_id], enable=enable)
 
     async def async_set_boost(
         self,
@@ -313,7 +325,7 @@ class DimplexApiClient:
         enable: bool = True,
     ) -> None:
         """Enable or disable Boost."""
-        try:
+        with _translated_errors():
             await self._client.set_boost(
                 hub_id,
                 [appliance_id],
@@ -321,12 +333,6 @@ class DimplexApiClient:
                 duration_minutes=duration_minutes,
                 enable=enable,
             )
-        except DimplexAuthError as exception:
-            raise InvalidAuth from exception
-        except DimplexConnectionError as exception:
-            raise CannotConnect from exception
-        except DimplexApiError as exception:
-            raise CannotConnect from exception
 
     async def async_set_away(
         self,
@@ -337,19 +343,13 @@ class DimplexApiClient:
         enable: bool = True,
     ) -> None:
         """Enable or disable Away mode."""
-        try:
+        with _translated_errors():
             await self._client.set_away(
                 hub_id,
                 [appliance_id],
                 temperature=temperature,
                 enable=enable,
             )
-        except DimplexAuthError as exception:
-            raise InvalidAuth from exception
-        except DimplexConnectionError as exception:
-            raise CannotConnect from exception
-        except DimplexApiError as exception:
-            raise CannotConnect from exception
 
     async def async_get_energy_report(
         self,
