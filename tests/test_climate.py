@@ -619,3 +619,72 @@ async def test_climate_temperature_limits_come_from_capabilities(hass):
     assert state is not None
     assert state.attributes.get("min_temp") == 7.0
     assert state.attributes.get("max_temp") == 30.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payload_kwargs", "preset", "expect_boost_enable", "expect_away_enable", "expect_eco"),
+    [
+        # away -> eco: the reported no-op. Away must be cleared, EcoStart enabled.
+        ({"away": True}, "eco", None, False, True),
+        # away -> boost
+        ({"away": True}, "boost", True, False, None),
+        # boost -> away
+        ({"boost": True}, "boost_to_away", None, None, None),
+        # eco -> boost: EcoStart must be turned off, not left on underneath.
+        ({"eco": True}, "boost", True, None, False),
+    ],
+)
+async def test_preset_switch_clears_the_previous_preset(
+    hass, payload_kwargs, preset, expect_boost_enable, expect_away_enable, expect_eco
+):
+    """Selecting a preset establishes it outright rather than layering onto the last (#173)."""
+    if preset == "boost_to_away":
+        preset = "away"
+        expect_boost_enable, expect_away_enable = False, True
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload(**payload_kwargs)
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_boost",
+            new_callable=AsyncMock,
+        ) as set_boost,
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_away",
+            new_callable=AsyncMock,
+        ) as set_away,
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_eco_start",
+            new_callable=AsyncMock,
+        ) as set_eco,
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_PRESET_MODE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_PRESET_MODE: preset},
+            blocking=True,
+        )
+
+    for mock, expected, name in (
+        (set_boost, expect_boost_enable, "boost"),
+        (set_away, expect_away_enable, "away"),
+    ):
+        if expected is None:
+            assert mock.await_count == 0, f"{name} should not have been written"
+        else:
+            assert mock.await_count == 1, f"{name} should have been written once"
+            assert mock.await_args.kwargs["enable"] is expected
+
+    if expect_eco is None:
+        assert set_eco.await_count == 0
+    else:
+        set_eco.assert_awaited_once_with("hub-1", "appliance-1", expect_eco)
