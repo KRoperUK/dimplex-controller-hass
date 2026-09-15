@@ -1,33 +1,32 @@
 <!--
-  Glossary of Dimplex and Home Assistant vocabulary.
+  Abbreviations used across the documentation.
 
-  Appended to every documentation page by pymdownx.snippets (`auto_append` in
-  zensical.toml). With the `content.tooltips` theme feature, each term below
-  gets a hover definition wherever it appears in the prose — define once, works
-  everywhere, no per-page markup.
+  Appended to every page by pymdownx.snippets (`auto_append` in zensical.toml).
+  With the `content.tooltips` theme feature, each entry below gets a hover
+  definition wherever it appears — define once, works everywhere.
 
-  Kept outside docs/ on purpose: zensical 0.0.62 has no `exclude_docs`, so a
-  .md file inside the docs root would be published as its own page.
+  Kept outside docs/ on purpose: zensical 0.0.62 has no `exclude_docs`, so a .md
+  file inside the docs root would be published as its own page.
 
-  Only add terms whose meaning is genuinely non-obvious or Dimplex-specific.
-  An abbreviation defined here is styled on every page, so a common English
-  word would produce noise on every occurrence.
+  THE RULE: abbreviations only, and only ones the documentation actually uses.
+  Not ordinary words, however domain-specific they feel. Three reasons, all
+  learned the hard way:
+
+  1. Every occurrence on every page is styled and gets a tooltip. Entries for
+     `Boost`, `Away` and `EcoStart` were underlined six to nine times per page,
+     on the very pages that explain them at length. That is noise, not help.
+  2. Matching is on the word, not the meaning. `Manual` was defined as the
+     appliance timer mode, so it attached that definition to "Manual auth code"
+     three times on the authentication page — where it was simply wrong.
+  3. Entries for terms the prose never uses (`APK`, `DHW`, `HWC`, `TSI`) only
+     misrepresent the vocabulary. Add one when you first write it.
+
+  If a term is a word rather than an abbreviation, link to the page that defines
+  it: modes in use/modes.md, energy registers in use/energy.md, hubs and zones in
+  reference/entities.md.
 -->
 
-*[Advance]: Skips forward to the next scheduled comfort period, bringing its setpoint on early, then hands control back to the schedule. Not a fixed-duration override.
-*[APK]: The Android application package for the official Dimplex Control app, from which this integration's protocol knowledge was reverse-engineered.
-*[Away]: A settable setback temperature (7-18 °C) held until a date you choose. Distinct from frost protection, which is fixed at 7 °C.
-*[Boost]: A temporary override to a higher target for a fixed number of minutes, after which the appliance returns to its schedule.
-*[DHW]: Domestic hot water.
-*[EcoStart]: A pre-heat setting that learns how long the room takes to warm and starts early so it reaches target on time. A setting, not an appliance mode.
-*[Frost protection]: The 7 °C anti-freeze floor. Because Dimplex appliances have no off mode, this is what "off" means for both the official app and this integration.
 *[GDHV]: Glen Dimplex Heating & Ventilation, the manufacturer behind the Dimplex cloud.
 *[HACS]: Home Assistant Community Store, the add-on manager used to install this integration.
-*[HWC]: Hot water cylinder.
-*[Hub]: The Dimplex gateway device that relays between your appliances and the cloud. One hub, many zones, many appliances.
-*[Manual]: A timer mode in which the appliance holds a single target and ignores its schedule.
-*[Setback]: A reduced target temperature held during periods the schedule treats as unoccupied.
-*[T1]: The first of two cloud energy registers, observed to be the off-peak (cheaper) rate.
-*[T2]: The second cloud energy register, observed to be the peak (more expensive) rate. Never summed with T1.
-*[TSI]: The cloud's telemetry reporting service, source of the daily kWh energy history.
-*[Zone]: A grouping of appliances beneath a hub, usually one room or area.
+*[T1]: The first of the cloud's two energy registers, observed to be the off-peak (cheaper) rate.
+*[T2]: The second of the cloud's two energy registers, observed to be the peak (more expensive) rate. Never summed with T1.
