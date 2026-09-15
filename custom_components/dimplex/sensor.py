@@ -23,7 +23,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, HEAT_DEMAND_FLAGS, has_any_mode, sane_temperature
+from .const import DOMAIN, ENERGY_REPORT_DAYS, HEAT_DEMAND_FLAGS, has_any_mode, sane_temperature
 from .entity import DimplexEntity, resolve_via_device_id
 
 
@@ -208,11 +208,18 @@ class DimplexEnergySensorEntityDescription(SensorEntityDescription):
 
 
 ENERGY_SENSORS: tuple[DimplexEnergySensorEntityDescription, ...] = (
+    # No state_class on the two window sensors, deliberately. Their value is
+    # sum(last ENERGY_REPORT_DAYS of cloud telemetry) — a rolling window, not a
+    # meter reading — so it falls whenever a day leaving the back of the window
+    # carried more kWh than the day entering it. Declaring TOTAL_INCREASING made
+    # Home Assistant's reset detection treat that dip as a new meter cycle and add
+    # the whole value to long-term statistics again (#196). Without a state_class
+    # they stay readable sensors and never reach the statistics engine; use the
+    # "today" sensors for the Energy Dashboard.
     DimplexEnergySensorEntityDescription(
         key="energy",
         translation_key="energy_lifetime",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         mode="lifetime",
         register="t1",
@@ -230,7 +237,6 @@ ENERGY_SENSORS: tuple[DimplexEnergySensorEntityDescription, ...] = (
         key="energy_t2",
         translation_key="energy_t2_lifetime",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         entity_registry_enabled_default=False,
         mode="lifetime",
@@ -518,8 +524,13 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
 
     @property
     def last_reset(self) -> datetime | None:
-        """Return window start for TOTAL state class (not used for TOTAL_INCREASING)."""
-        if self.entity_description.state_class == SensorStateClass.TOTAL_INCREASING:
+        """Return the window start, which Home Assistant only accepts for TOTAL.
+
+        HA raises if ``last_reset`` is set on any other state class, so this must
+        test for TOTAL rather than exclude TOTAL_INCREASING — the window sensors now
+        carry no state class at all (#196).
+        """
+        if self.entity_description.state_class != SensorStateClass.TOTAL:
             return None
         summary = self._summary()
         if summary is None:
@@ -536,6 +547,7 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         return {
             "mode": summary.mode,
             "register": self.entity_description.register,
+            "window_days": ENERGY_REPORT_DAYS if self.entity_description.mode == "lifetime" else 1,
             "window_start": summary.start.isoformat() if summary.start else None,
             "window_end": summary.end.isoformat() if summary.end else None,
             "telemetry_points": summary.point_count,

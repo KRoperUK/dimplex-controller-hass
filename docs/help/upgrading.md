@@ -21,6 +21,19 @@ working around any of it, stop.
     the update back on Home Assistant below 2026.9 instead of offering an install that
     cannot work.
 
+!!! danger "Check your Energy Dashboard if you used an \"Energy lifetime\" sensor"
+
+    Those sensors were a rolling 30-day window declared `total_increasing`, so every time the
+    window dipped by more than 10% — routine in spring and autumn — Home Assistant read it as
+    a meter reset and added the whole 30-day total to long-term statistics again. Your
+    dashboard may show considerably more energy than the heaters used.
+
+    They are renamed **Energy last 30 days** and now carry no state class, so Home Assistant
+    will not offer them as a consumption source at all. Existing entities keep their old
+    entity ID; only the display name changes. To clean up inflated history, go to
+    **Developer tools** → **Statistics**, find the entity and delete its statistic. The
+    **Energy today** sensors were always correct and need nothing.
+
 - **Setting a target no longer rewrites your schedule.** Writes go through the cloud's
   dedicated setpoint endpoint, with the old schedule rewrite kept only as a fallback for
   appliances that reject it. See
@@ -52,6 +65,8 @@ working around any of it, stop.
       mode on appliances an earlier release parked in the frost/off timer mode.
 - [ ] Enable the new mode binary sensors if you want them on a dashboard; they are
       diagnostic and off by default.
+- [ ] If an **Energy lifetime** sensor was a consumption source, remove it, add **Energy
+      today** instead, and delete the old statistic if the history looks inflated.
 
 ## To 3.0.0
 

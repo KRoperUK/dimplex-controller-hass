@@ -101,11 +101,16 @@ async def test_energy_lifetime_sensor_with_data(hass):
     assert state.state == "0.35"
     assert state.attributes.get("unit_of_measurement") == UnitOfEnergy.KILO_WATT_HOUR
     assert state.attributes.get("device_class") == SensorDeviceClass.ENERGY
-    assert state.attributes.get("state_class") == SensorStateClass.TOTAL_INCREASING
+    # No state_class, deliberately: the value is a rolling 30-day window sum, and
+    # declaring TOTAL_INCREASING let Home Assistant read every window dip as a meter
+    # reset and re-add the whole value to long-term statistics (#196).
+    assert state.attributes.get("state_class") is None
     assert state.attributes.get("mode") == "lifetime"
+    assert state.attributes.get("window_days") == 30
     assert state.attributes.get("telemetry_points") == 2
-    # TOTAL_INCREASING does not report last_reset; window_start is in extra attrs.
+    # last_reset is only valid for TOTAL; window_start carries the same information.
     assert state.attributes.get("last_reset") is None
+    assert state.attributes.get("window_start") is not None
 
 
 async def test_energy_daily_sensor(hass):
@@ -254,3 +259,29 @@ async def test_energy_sensor_unavailable_when_hub_key_missing(hass):
         state = _state(hass, "_energy")
     assert state is not None
     assert state.state == "unavailable"
+
+
+async def test_window_sensors_carry_no_state_class():
+    """No rolling-window sensor may enter long-term statistics (#196).
+
+    ``mode="lifetime"`` is a 30-day window sum, not a meter counter: it falls when a
+    heavy day leaves the window. With ``TOTAL_INCREASING`` Home Assistant's
+    ``reset_detected()`` treated a >10% fall as a new meter cycle and added the whole
+    state to the statistics sum, permanently inflating the Energy Dashboard. Only the
+    daily sensors, which have a real ``last_reset``, may declare a state class.
+    """
+    from custom_components.dimplex.sensor import ENERGY_SENSORS
+
+    windowed = [d for d in ENERGY_SENSORS if d.mode == "lifetime"]
+    daily = [d for d in ENERGY_SENSORS if d.mode == "daily"]
+    assert windowed and daily, "expected both window and daily energy descriptions"
+
+    for description in windowed:
+        assert description.state_class is None, (
+            f"{description.key} declares {description.state_class}; a rolling window "
+            "must not reach long-term statistics"
+        )
+    for description in daily:
+        assert description.state_class == SensorStateClass.TOTAL, (
+            f"{description.key} must stay TOTAL so its midnight last_reset is honoured"
+        )

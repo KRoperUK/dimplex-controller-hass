@@ -11,10 +11,10 @@ There is no wattage stream to read, so nothing here is a real-time meter.
 
 The cloud exposes two energy registers, and the integration never sums them.
 
-| Register | Sensors                              | Tariff (observed)    | Default  |
-| -------- | ------------------------------------ | -------------------- | -------- |
-| **T1**   | Energy today / Energy lifetime       | Off-peak, cheaper    | Enabled  |
-| **T2**   | Energy T2 today / Energy T2 lifetime | Peak, more expensive | Disabled |
+| Register | Sensors                                  | Tariff (observed)    | Default  |
+| -------- | ---------------------------------------- | -------------------- | -------- |
+| **T1**   | Energy today / Energy last 30 days       | Off-peak, cheaper    | Enabled  |
+| **T2**   | Energy T2 today / Energy T2 last 30 days | Peak, more expensive | Disabled |
 
 !!! warning "Do not merge them into one helper"
 
@@ -36,10 +36,20 @@ been observed, not something the cloud labels explicitly.
 Use the **today** sensors for the dashboard. They reset at local midnight and give clean
 daily bars.
 
-The **lifetime** sensors are cumulative totals across all history the cloud returns, with
-`last_reset` at the first telemetry day. Adding one to the Energy Dashboard imports the
-entire history at once, which produces a large pop-in on the first day — useful for a
-long-running total, surprising if you expected today's usage.
+The **last 30 days** sensors are a running window, not a meter: each poll fetches 30 days of
+cloud telemetry and sums it, so the figure _falls_ whenever a heavy day drops off the back of
+the window. They are for reading, not for statistics, and from 4.1.0 they carry **no state
+class** — which means Home Assistant will not offer them in the Energy Dashboard picker at
+all.
+
+!!! warning "If you added an \"Energy lifetime\" sensor to the Energy Dashboard before 4.1.0"
+
+    Those sensors were declared `total_increasing`, which tells Home Assistant the value only
+    ever rises. Every time the window dipped by more than 10%, the recorder read it as a
+    meter reset and added the whole 30-day total to your long-term statistics again — so the
+    dashboard may show substantially more energy than the heaters used. Check
+    **Developer tools** → **Statistics** for the entity and delete its statistic if the
+    history looks inflated; the daily sensors are unaffected.
 
 ## Behaviour worth knowing
 
@@ -58,12 +68,13 @@ long-running total, surprising if you expected today's usage.
 
 Each energy sensor carries the provenance of its total:
 
-| Attribute                     | Meaning                             |
-| ----------------------------- | ----------------------------------- |
-| `mode`                        | `lifetime` or `daily`               |
-| `register`                    | `t1` or `t2` — always separate      |
-| `window_start` / `window_end` | Bounds of the points summed         |
-| `telemetry_points`            | How many points went into the total |
+| Attribute                     | Meaning                                                   |
+| ----------------------------- | --------------------------------------------------------- |
+| `mode`                        | `lifetime` (the 30-day window) or `daily`                 |
+| `register`                    | `t1` or `t2` — always separate                            |
+| `window_days`                 | Days of telemetry summed — 30 for the window, 1 for today |
+| `window_start` / `window_end` | Bounds of the points summed                               |
+| `telemetry_points`            | How many points went into the total                       |
 
 If a figure looks wrong, `telemetry_points` and the window bounds usually explain it — a
 partial day, or a gap in cloud history.

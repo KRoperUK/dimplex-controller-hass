@@ -122,13 +122,13 @@
         "name": "Estimated power"
       },
       "energy_lifetime": {
-        "name": "Energy lifetime"
+        "name": "Energy last 30 days"
       },
       "energy_today": {
         "name": "Energy today"
       },
       "energy_t2_lifetime": {
-        "name": "Energy T2 lifetime"
+        "name": "Energy T2 last 30 days"
       },
       "energy_t2_today": {
         "name": "Energy T2 today"
