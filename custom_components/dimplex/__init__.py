@@ -176,8 +176,7 @@ def _interval_from_options(options: Mapping[str, Any], key: str, default: timede
 
 async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> bool:
     """Set up this integration using UI."""
-    if hass.data.get(DOMAIN) is None:
-        hass.data.setdefault(DOMAIN, {})
+    if not hass.config_entries.async_loaded_entries(DOMAIN):
         _LOGGER.info(STARTUP_MESSAGE)
 
     session = async_get_clientsession(hass)
@@ -222,7 +221,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
         options_snapshot=dict(entry.options),
     )
     entry.runtime_data = runtime
-    hass.data[DOMAIN][entry.entry_id] = runtime
 
     # Register hub and zone devices up front so platform entities can safely
     # reference them via via_device (see dimplex-controller-hass#117).
@@ -492,14 +490,42 @@ def _persist_tokens(
 
 async def async_unload_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> bool:
     """Handle removal of an entry."""
-    runtime = hass.data[DOMAIN][entry.entry_id]
+    runtime = entry.runtime_data
     unloaded = await hass.config_entries.async_unload_platforms(entry, runtime.platforms)
     if unloaded:
-        hass.data[DOMAIN].pop(entry.entry_id)
-        await async_unload_services(hass)
+        # The entry's own runtime_data is still attached here — Home Assistant only
+        # deletes it once this returns — so it has to be named explicitly for the
+        # "last entry" test in async_unload_services to mean anything.
+        await async_unload_services(hass, entry.entry_id)
         async_update_empty_energy_issue(hass, entry.entry_id, empty=False)
         async_update_empty_overview_issue(hass, entry.entry_id, empty=False)
     return unloaded
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    entry: DimplexConfigEntry,
+    device_entry: dr.DeviceEntry,
+) -> bool:
+    """Allow a device the appliance snapshot no longer reports to be deleted.
+
+    Appliances are re-read from the cloud on every poll, so a device that is no
+    longer returned is genuinely gone (removed from the account, or reassigned to
+    another hub) and there is nothing left to keep it present for. Home Assistant
+    asks this before removing a device from the registry; returning False would
+    make the entry permanently un-deletable (dimplex-controller-hass#198).
+    """
+    runtime = getattr(entry, "runtime_data", None)
+    if runtime is None:
+        return True
+
+    snapshot = runtime.status.data or {}
+    rows = snapshot.get("appliances") or []
+    present = {(DOMAIN, row["appliance"].ApplianceId) for row in rows}
+    present |= {(DOMAIN, f"zone_{row['zone'].ZoneId}") for row in rows if row.get("zone") is not None}
+    present |= {(DOMAIN, hub.HubId) for hub in snapshot.get("hubs") or []}
+
+    return not any(identifier in present for identifier in device_entry.identifiers)
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -511,7 +537,7 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     taken at setup, we distinguish user option changes (reload needed) from
     token persistence (no reload).
     """
-    runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    runtime = getattr(entry, "runtime_data", None)
     if runtime is not None and dict(entry.options) == runtime.options_snapshot:
         return
     await hass.config_entries.async_reload(entry.entry_id)

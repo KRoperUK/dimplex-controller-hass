@@ -16,7 +16,6 @@ from .const import (
     CONF_PASSWORD,
     CONF_REFRESH_TOKEN,
     CONF_USERNAME,
-    DOMAIN,
     VERSION,
 )
 
@@ -134,7 +133,7 @@ async def async_get_config_entry_diagnostics(
     entry: ConfigEntry,
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-    runtime = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    runtime = getattr(entry, "runtime_data", None)
     status_data = getattr(getattr(runtime, "status", None), "data", None) or {}
     energy_data = getattr(getattr(runtime, "energy", None), "data", None) or {}
     status_coord = getattr(runtime, "status", None)

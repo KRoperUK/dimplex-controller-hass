@@ -27,7 +27,6 @@ from .const import (
     BOOST_FLAG,
     CONF_BOOST_DURATION,
     DEFAULT_BOOST_DURATION,
-    DOMAIN,
     FROST_FLAG,
     TIMER_OFF_LIKE,
     TIMER_USER,
@@ -180,7 +179,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up climate platform."""
-    runtime = hass.data[DOMAIN][entry.entry_id]
+    runtime = entry.runtime_data
     entities = []
     for row in (runtime.status.data or {}).get("appliances", []):
         caps = capabilities_for_row(row["appliance"], row.get("status"))

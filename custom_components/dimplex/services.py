@@ -99,6 +99,21 @@ def _appliance_id_from_unique_id(config_entry_id: str, unique_id: str | None) ->
     return rest.rsplit("_", 1)[0]
 
 
+def _runtime_for(hass: HomeAssistant, config_entry_id: str) -> Any | None:
+    """Return the runtime of a loaded config entry, or ``None``.
+
+    Runtime lives on the config entry itself. Home Assistant *deletes*
+    ``runtime_data`` when an entry unloads, so this reads it with ``getattr``
+    rather than assuming it is still attached — and an action aimed at a device
+    belonging to an unloaded entry then reports the same "no runtime" error as
+    before.
+    """
+    entry = hass.config_entries.async_get_entry(config_entry_id)
+    if entry is None:
+        return None
+    return getattr(entry, "runtime_data", None)
+
+
 async def _resolve_appliance(hass: HomeAssistant, call: ServiceCall) -> tuple[str, str, str, Any] | None:
     """Return (entry_id, hub_id, appliance_id, api) from device_id or entity_id."""
     device_id = call.data.get(ATTR_DEVICE_ID)
@@ -138,7 +153,7 @@ async def _resolve_appliance(hass: HomeAssistant, call: ServiceCall) -> tuple[st
         _LOGGER.error("Could not resolve appliance id from service target")
         return None
 
-    runtime = hass.data.get(DOMAIN, {}).get(config_entry_id)
+    runtime = _runtime_for(hass, config_entry_id)
     if runtime is None:
         _LOGGER.error("No runtime for config entry %s", config_entry_id)
         return None
@@ -161,7 +176,7 @@ async def _refresh_status(hass: HomeAssistant, config_entry_id: str) -> None:
     Control services mutate appliance state on the cloud; without an explicit
     refresh the new state would not appear until the next scheduled poll.
     """
-    runtime = hass.data.get(DOMAIN, {}).get(config_entry_id)
+    runtime = _runtime_for(hass, config_entry_id)
     if runtime is not None:
         await runtime.status.async_request_refresh()
 
@@ -355,10 +370,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     )
 
 
-async def async_unload_services(hass: HomeAssistant) -> None:
-    """Remove domain services when last entry unloads."""
-    remaining = hass.data.get(DOMAIN) or {}
-    if remaining:
+async def async_unload_services(hass: HomeAssistant, unloading_entry_id: str | None = None) -> None:
+    """Remove domain services once the last config entry has unloaded.
+
+    ``unloading_entry_id`` names the entry being unloaded right now: its
+    ``runtime_data`` is still attached at this point, because Home Assistant only
+    deletes it after ``async_unload_entry`` returns. Without excluding it the
+    "no entries left" test would never be true and the services would be
+    registered forever.
+    """
+    still_loaded = any(
+        candidate.entry_id != unloading_entry_id and getattr(candidate, "runtime_data", None) is not None
+        for candidate in hass.config_entries.async_entries(DOMAIN)
+    )
+    if still_loaded:
         return
     if not hass.data.get(f"{DOMAIN}_services"):
         return
