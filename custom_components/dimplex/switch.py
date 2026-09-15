@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .api import DimplexApiClient
 from .const import DOMAIN
 from .entity import DimplexEntity
+from .errors import control_errors
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -98,22 +99,27 @@ class DimplexSwitch(DimplexEntity, SwitchEntity):
         description = self.entity_description
         return description.icon_on if self.is_on else description.icon_off
 
+    async def _async_set(self, enable: bool) -> None:
+        """Write the switch state, translating adapter failures for the user.
+
+        Without control_errors a rejected EcoStart or open-window write reached the
+        user as a raw adapter exception with a traceback, while the same failure on
+        the climate entity produced a readable message (#198).
+        """
+        name = getattr(self._appliance, "FriendlyName", None) or "Dimplex appliance"
+        with control_errors(name):
+            await self.entity_description.set_fn(
+                self._api,
+                self._hub.HubId,
+                self._appliance.ApplianceId,
+                enable,
+            )
+        await self.coordinator.async_request_refresh()
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
-        await self.entity_description.set_fn(
-            self._api,
-            self._hub.HubId,
-            self._appliance.ApplianceId,
-            True,
-        )
-        await self.coordinator.async_request_refresh()
+        await self._async_set(True)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
-        await self.entity_description.set_fn(
-            self._api,
-            self._hub.HubId,
-            self._appliance.ApplianceId,
-            False,
-        )
-        await self.coordinator.async_request_refresh()
+        await self._async_set(False)

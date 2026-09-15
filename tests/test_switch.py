@@ -99,3 +99,70 @@ async def test_switch_services(hass):
         )
         assert owd_func.called
         assert owd_func.call_args == call("hub-1", "appliance-1", True)
+
+
+@pytest.mark.parametrize(
+    ("adapter_error", "expected_message"),
+    [
+        ("ControlRejected", "rejected this control"),
+        ("CannotConnect", "Could not reach the Dimplex cloud"),
+        ("InvalidAuth", "authentication failed"),
+    ],
+)
+async def test_switch_failures_surface_a_readable_error(hass, adapter_error, expected_message):
+    """A rejected switch write must read like the climate entity's errors (#198).
+
+    ``switch.async_turn_on/off`` called the API bare, so an appliance that refuses
+    EcoStart raised a raw adapter exception at the user — the same "unknown error"
+    complaint that #149 raised for climate, which climate has translated ever since.
+    """
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex import api as api_module
+
+    error_cls = getattr(api_module, adapter_error)
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
+            return_value=_mock_coordinator_payload(),
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value={"energy": {}},
+        ),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = next(
+        state.entity_id
+        for state in hass.states.async_all()
+        if state.entity_id.startswith("switch.") and "ecostart" in state.entity_id
+    )
+
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_eco_start",
+            side_effect=error_cls("nope"),
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
+            return_value=_mock_coordinator_payload(),
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value={"energy": {}},
+        ),
+        pytest.raises(HomeAssistantError, match=expected_message),
+    ):
+        await hass.services.async_call(
+            SWITCH_DOMAIN,
+            SERVICE_TURN_ON,
+            service_data={ATTR_ENTITY_ID: entity_id},
+            blocking=True,
+        )

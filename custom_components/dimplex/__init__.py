@@ -23,7 +23,11 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import UNDEFINED, ConfigType
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import (
+    DataUpdateCoordinator,
+    TimestampDataUpdateCoordinator,
+    UpdateFailed,
+)
 
 from .api import CannotConnect, DimplexApiClient, InvalidAuth
 from .const import (
@@ -344,8 +348,14 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return data
 
 
-class DimplexEnergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Poll TSI energy reports on a slower cadence."""
+class DimplexEnergyCoordinator(TimestampDataUpdateCoordinator[dict[str, Any]]):
+    """Poll TSI energy reports on a slower cadence.
+
+    Timestamp variant deliberately: the energy sensors memoise their summary on
+    ``last_update_success_time``, which only exists here. As a plain
+    ``DataUpdateCoordinator`` the attribute was always absent, so the memo never
+    hit and ``summarise_energy`` was recomputed on every property read (#198).
+    """
 
     def __init__(
         self,
