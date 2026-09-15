@@ -65,6 +65,9 @@ Both raise the temperature now, but they end differently.
 Advance is what the official app offers for Quantum and storage heaters, where an arbitrary
 boost target is less meaningful than pulling the next charge/heat window forward.
 
+Both are bits in the appliance's mode bitfield, and advance has no Home Assistant preset of
+its own — see [Modes & presets](modes.md).
+
 ## Editing the weekly schedule
 
 Not supported. The integration reads the schedule and exposes it as a diagnostic
