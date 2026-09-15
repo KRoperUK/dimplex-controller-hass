@@ -58,6 +58,56 @@ async def test_validate_connection_success(hass):
     assert api.account_id == "acct-1"
 
 
+async def test_account_id_falls_back_to_the_hub_id(hass, caplog):
+    """A context without an account id keys the entry on the hub id instead.
+
+    Regression for dimplex-controller-hass#198: with no account id the config
+    flow set no unique id at all, so the same account could be added twice and
+    polled twice. The hub id is still stable for the account.
+    """
+    import logging
+
+    api = DimplexApiClient(
+        session=async_get_clientsession(hass),
+        username="user@example.com",
+        password="password",
+    )
+
+    with (
+        caplog.at_level(logging.WARNING, logger="custom_components.dimplex.api"),
+        patch.object(api._client, "get_user_context", new=AsyncMock(return_value=SimpleNamespace(Id=None))),
+        patch.object(
+            api._client,
+            "get_hubs",
+            new=AsyncMock(return_value=[SimpleNamespace(HubId="hub-9")]),
+        ),
+    ):
+        assert await api._resolve_account_id() == "hub-9"
+
+    assert "using hub hub-9 as the config entry's unique id" in caplog.text
+
+
+async def test_account_id_is_none_when_there_is_no_hub_either(hass):
+    """Nothing stable to key on: return None rather than inventing an id."""
+    api = DimplexApiClient(session=async_get_clientsession(hass))
+
+    with (
+        patch.object(api._client, "get_user_context", new=AsyncMock(return_value=SimpleNamespace(Id=None))),
+        patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[])),
+    ):
+        assert await api._resolve_account_id() is None
+
+
+def test_extract_expiry_logs_an_unparseable_token(hass, caplog):
+    """A token that will not parse is logged rather than swallowed silently."""
+    import logging
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.dimplex.api"):
+        assert DimplexApiClient._extract_expiry("not-a-jwt") == 0  # noqa: SLF001
+
+    assert "not a parseable JWT" in caplog.text
+
+
 async def test_validate_connection_invalid_auth(hass):
     """Test auth failure mapping."""
     api = DimplexApiClient(
