@@ -13,7 +13,7 @@ blueprint:
     by hand. See https://dimplex-hass.kroper.uk/use/modes/
   domain: automation
   homeassistant:
-    min_version: "2025.1.0"
+    min_version: "2026.9.0"
   input:
     presence_entity:
       name: Person or presence group

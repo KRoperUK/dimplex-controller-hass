@@ -1,11 +1,13 @@
 [tool.ruff]
-# The oldest Python we must stay loadable on, NOT the newest we develop against.
-# hacs.json declares a floor of Home Assistant 2025.1.0, which runs on Python
-# 3.12 (2025.2 raised the requirement to 3.13). ruff's formatter rewrites syntax to
-# suit target-version: at py314 it unparenthesises `except (TypeError, ValueError)`
-# per PEP 758, which is a SyntaxError on 3.12/3.13 and would stop the integration
-# loading on every HA release we claim to support. Raise this only together with
-# the hacs.json floor.
+# Deliberately the oldest Python we must stay loadable on, or older — never
+# newer. The hacs.json floor of Home Assistant 2026.9.0 requires Python >=3.14.2,
+# so py314 would be permissible; it is not used because ruff's formatter would
+# then rewrite `except (TypeError, ValueError)` to the PEP 758 form
+# `except TypeError, ValueError`, which reads like Python 2's `except E, name:`
+# binding and is a needless trap for contributors. py312 costs only 3.13/3.14
+# pyupgrade rewrites. tests/test_python_floor.py enforces the ceiling: this may
+# never exceed the Python implied by the hacs.json floor, or the integration
+# ships syntax the oldest supported Home Assistant cannot parse.
 target-version = "py312"
 line-length = 120
 

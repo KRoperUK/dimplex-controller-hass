@@ -86,7 +86,7 @@ client and distributed via [HACS](https://hacs.xyz).
 Copy `custom_components/dimplex` into your Home Assistant `custom_components/` directory,
 restart, then add the integration as above.
 
-Requires Home Assistant **2025.1** or later. Full instructions, including the two
+Requires Home Assistant **2026.9** or later. Full instructions, including the two
 authentication methods, are in
 [Getting started](https://dimplex-hass.kroper.uk/start/).
 
