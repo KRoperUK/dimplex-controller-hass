@@ -1,0 +1,37 @@
+{#-
+  Extends zensical's copyright partial with the integration version these docs
+  describe.
+
+  Section 2 of #175: nothing was version-stamped, so a reader could not tell
+  whether a page described 4.1.0 or predated 4.0.0. A per-page stamp in the
+  Markdown source was rejected — it has to be remembered on every new page and
+  every edit, and a forgotten one is indistinguishable from an accurate one.
+
+  This reads `extra.integration_version` from zensical.toml, which release-please
+  bumps on every release via its `generic` updater (the `x-release-please-version`
+  marker), so it is correct without anyone maintaining it.
+  scripts/check-docs-coverage.sh asserts it matches manifest.json, so if the
+  updater ever stops firing, the release PR fails rather than the footer quietly
+  going stale.
+-#}
+<div class="md-copyright">
+  {% if config.copyright %}
+    <div class="md-copyright__highlight">
+      {{ config.copyright }}
+    </div>
+  {% endif %}
+  {% if config.extra.integration_version %}
+    <div class="md-copyright__version">
+      Documenting integration
+      <a href="{{ config.repo_url }}/releases/tag/v{{ config.extra.integration_version }}">v{{ config.extra.integration_version }}</a>
+      &middot;
+      <a href="{{ config.repo_url }}/blob/main/CHANGELOG.md">changelog</a>
+    </div>
+  {% endif %}
+  {% if not config.extra.generator == false %}
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  {% endif %}
+</div>
