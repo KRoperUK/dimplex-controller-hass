@@ -108,13 +108,13 @@
         "name": "Puissance estimée"
       },
       "energy_lifetime": {
-        "name": "Énergie totale"
+        "name": "Énergie 30 derniers jours"
       },
       "energy_today": {
         "name": "Énergie aujourd'hui"
       },
       "energy_t2_lifetime": {
-        "name": "Énergie T2 totale"
+        "name": "Énergie T2 30 derniers jours"
       },
       "energy_t2_today": {
         "name": "Énergie T2 aujourd'hui"
