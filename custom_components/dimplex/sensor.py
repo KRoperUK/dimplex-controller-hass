@@ -482,11 +482,17 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
     def _summary(self) -> Any | None:
         """Memoised energy summary — computed once per coordinator update cycle.
 
-        The summary is used by available, native_value, last_reset, and
-        extra_state_attributes. Computing summarise_energy multiple times per
-        state read is wasted work for accounts with long telemetry histories.
+        The summary backs ``available``, ``native_value``, ``last_reset`` and
+        ``extra_state_attributes``, each of which is read on every state write, so
+        recomputing it per property is wasted work: a 30-day series at a 10-minute
+        interval is a few thousand points per sensor.
+
+        The cache key is the energy coordinator's ``last_update_success_time``,
+        which is why that coordinator is a ``TimestampDataUpdateCoordinator``. A
+        plain coordinator does not define the attribute, the key was always
+        ``None``, and the memo never hit (#198). ``None`` is treated as "no usable
+        key" and recomputes, rather than caching against a key that never changes.
         """
-        # Use the coordinator's last_updated timestamp as the cache key.
         last_updated = getattr(self.coordinator, "last_update_success_time", None)
         if last_updated is not None and last_updated == getattr(self, "_summary_ts", None):
             return self._summary_cached

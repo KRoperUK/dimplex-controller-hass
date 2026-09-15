@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 from typing import Any
 
@@ -12,6 +13,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from .const import AWAY_TEMP_MAX, AWAY_TEMP_MIN, DOMAIN, SETPOINT_TEMP_MAX, SETPOINT_TEMP_MIN
+from .errors import control_errors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -164,12 +166,31 @@ async def _refresh_status(hass: HomeAssistant, config_entry_id: str) -> None:
         await runtime.status.async_request_refresh()
 
 
+def _translated(handler: Any) -> Any:
+    """Translate adapter failures raised by an action handler.
+
+    Every ``dimplex.*`` action called the API bare, so a refusal or a dropped
+    connection surfaced as a raw adapter exception with a traceback — the same
+    failure the climate entity has reported readably since #149. The action name is
+    used as the target because an action may be aimed at an entity, a device or an
+    area, so there is not always a single appliance name to quote (#198).
+    """
+
+    @functools.wraps(handler)
+    async def _wrapper(call: ServiceCall) -> None:
+        with control_errors(f"{DOMAIN}.{call.service}"):
+            await handler(call)
+
+    return _wrapper
+
+
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Register dimplex domain services (idempotent)."""
     if hass.data.get(f"{DOMAIN}_services"):
         return
     hass.data[f"{DOMAIN}_services"] = True
 
+    @_translated
     async def handle_set_boost(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
@@ -184,6 +205,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         await _refresh_status(hass, entry_id)
 
+    @_translated
     async def handle_clear_boost(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
@@ -197,6 +219,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         await _refresh_status(hass, entry_id)
 
+    @_translated
     async def handle_set_away(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
@@ -212,6 +235,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         await _refresh_status(hass, entry_id)
 
+    @_translated
     async def handle_clear_away(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
@@ -225,6 +249,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         await _refresh_status(hass, entry_id)
 
+    @_translated
     async def handle_set_advance(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
@@ -238,6 +263,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         await _refresh_status(hass, entry_id)
 
+    @_translated
     async def handle_clear_advance(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
@@ -246,6 +272,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await api.async_set_advance(hub_id, appliance_id, enable=False)
         await _refresh_status(hass, entry_id)
 
+    @_translated
     async def handle_eco(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
@@ -254,6 +281,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await api.async_set_eco_start(hub_id, appliance_id, bool(call.data.get(ATTR_ENABLE, True)))
         await _refresh_status(hass, entry_id)
 
+    @_translated
     async def handle_owd(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:

@@ -15,11 +15,10 @@ from homeassistant.components.climate.const import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .api import CannotConnect, ControlRejected, DimplexApiClient, InvalidAuth
+from .api import ControlRejected, DimplexApiClient
 from .capabilities import capabilities_for_row
 from .const import (
     AWAY_FLAG,
@@ -35,6 +34,7 @@ from .const import (
     sane_temperature,
 )
 from .entity import DimplexEntity
+from .errors import control_errors
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -147,34 +147,18 @@ def _is_timer_off_like(timer_mode: int | None) -> bool:
 
 
 def _translate_control_errors(func: Any) -> Any:
-    """Surface Dimplex control failures as a clear HomeAssistantError.
+    """Surface Dimplex control failures on this entity as a clear HomeAssistantError.
 
-    The API adapter raises :class:`InvalidAuth`, :class:`ControlRejected` (the cloud
-    refused this control for this appliance) or :class:`CannotConnect` (it did not
-    get through). Without this, Home Assistant reports the raw exception as a
-    generic 500 / "unknown error" to the user (dimplex-controller-hass#149). The two
-    connection cases get different wording because the user's next step differs:
-    a refusal will not fix itself, a timeout may.
+    Thin wrapper over :func:`.errors.control_errors`, which switch entities and the
+    ``dimplex.*`` actions share, so the same failure reads the same way wherever the
+    user triggered it (dimplex-controller-hass#149).
     """
 
     @functools.wraps(func)
     async def _wrapper(self: DimplexClimate, *args: Any, **kwargs: Any) -> Any:
         name = getattr(self._appliance, "FriendlyName", None) or "Dimplex appliance"
-        try:
+        with control_errors(name):
             return await func(self, *args, **kwargs)
-        except InvalidAuth as err:
-            raise HomeAssistantError(f"Dimplex authentication failed while controlling {name}.") from err
-        except ControlRejected as err:
-            raise HomeAssistantError(
-                f"The Dimplex cloud rejected this control for {name}. The heater may not "
-                "support it remotely — some Quantum storage heaters reject off/setpoint "
-                "changes — so retrying will not help."
-            ) from err
-        except CannotConnect as err:
-            raise HomeAssistantError(
-                f"Could not reach the Dimplex cloud to control {name}. The service may be "
-                "temporarily unavailable; nothing was changed."
-            ) from err
 
     return _wrapper
 
