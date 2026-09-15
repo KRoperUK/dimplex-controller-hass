@@ -49,12 +49,15 @@ jobs:
               - 'overrides/**'
               - 'zensical.toml'
               - 'README.md'
+              - 'CONTRIBUTING.md'
+              - '.github/**/*.md'
               - 'custom_components/dimplex/services.yaml'
               - 'custom_components/dimplex/const.py'
               - 'custom_components/dimplex/*sensor.py'
               - 'custom_components/dimplex/switch.py'
               - 'custom_components/dimplex/climate.py'
               - 'scripts/check-docs-coverage.sh'
+              - 'scripts/check-md-alerts.sh'
               - '.github/workflows/ci.yml'
 
   # Documentation gate. Two cheap checks that between them would have caught most
@@ -68,6 +71,10 @@ jobs:
   #     integration but is not mentioned on its reference page. Crude string
   #     matching is enough: every gap this repository has shipped was "a new thing
   #     exists, the docs never mentioned it".
+  #   * check-md-alerts.sh fails when a `> [!IMPORTANT]` marker is not alone on its
+  #     line or not in a blockquote. GitHub reports nothing for either mistake, it
+  #     just renders the marker as literal text — which is how the README's
+  #     unofficial-project notice sat broken on the repository home page.
   #
   # Deliberately NOT added to `dev-release-main` or `dev-release` `needs`: a
   # skipped job propagates its skip to dependents that lack `if: always()`, which
@@ -95,6 +102,9 @@ jobs:
 
       - name: Check every action, entity and option is documented
         run: bash scripts/check-docs-coverage.sh
+
+      - name: Check GitHub alert syntax in Markdown
+        run: bash scripts/check-md-alerts.sh
 
   conventional_commits:
     runs-on: ubuntu-latest
