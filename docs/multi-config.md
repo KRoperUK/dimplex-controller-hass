@@ -18,4 +18,4 @@
 
 If product needs strict single-instance, we can set a unique id from cloud user id (`GetUserContext`) and abort duplicates. Until then, multi-entry remains available for power users and test accounts.
 
-Tracked by issue #101.
+This was tracked by [#101](https://github.com/kroperuk/dimplex-controller-hass/issues/101), now closed: multi-entry is the settled behaviour, not a pending decision.

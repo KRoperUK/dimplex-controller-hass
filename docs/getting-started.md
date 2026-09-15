@@ -4,7 +4,7 @@ This guide walks you through installing and configuring the Dimplex Hub integrat
 
 ## Prerequisites
 
-- A working Home Assistant installation (2023.1 or later recommended).
+- Home Assistant **2025.1** or later — the floor this integration declares in `hacs.json`.
 - A Dimplex cloud account with at least one registered appliance.
 - Internet access from your Home Assistant instance.
 
