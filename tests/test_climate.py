@@ -332,10 +332,10 @@ def test_sane_temperature_drops_sentinel():
     assert sane_temperature(None) is None
     assert sane_temperature("") is None
     assert sane_temperature("nan-ish") is None
-    # Valid readings are returned unchanged (representation preserved).
+    # Valid readings are returned as float.
     assert sane_temperature(21.5) == 21.5
-    assert sane_temperature(7) == 7
-    assert sane_temperature(20) == 20
+    assert sane_temperature(7) == 7.0
+    assert sane_temperature("20") == 20.0
 
 
 @pytest.mark.asyncio

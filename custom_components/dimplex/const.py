@@ -18,8 +18,7 @@ def sane_temperature(value: Any) -> float | None:
 
     ``None``/empty and the 0xFF (255) sentinel both map to ``None`` so callers
     can fall back or report "unknown" rather than an impossible value. Valid
-    readings are returned unchanged (type/representation preserved) so existing
-    sensor states are unaffected.
+    readings are returned as ``float``.
     """
     if value is None or value == "":
         return None
@@ -29,7 +28,7 @@ def sane_temperature(value: Any) -> float | None:
         return None
     if num >= SETPOINT_SENTINEL:
         return None
-    return value
+    return num
 
 
 NAME = "Dimplex Hub"

@@ -24,7 +24,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpda
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, sane_temperature
-from .entity import DimplexEntity
+from .entity import DimplexEntity, resolve_via_device_id
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -398,14 +398,19 @@ class DimplexZoneSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]
 
     @property
     def device_info(self) -> DeviceInfo:
-        return {
+        info: DeviceInfo = {
             "identifiers": {(DOMAIN, f"zone_{self._zone.ZoneId}")},
             "name": self._zone.ZoneName,
             "manufacturer": "Dimplex",
             "model": getattr(self._zone, "ZoneType", None) or "Zone",
-            "via_device": (DOMAIN, self._hub.HubId),
             "suggested_area": self._zone.ZoneName,
         }
+        via_device_id = resolve_via_device_id(
+            self.hass, (DOMAIN, self._hub.HubId), getattr(self.config_entry, "entry_id", None)
+        )
+        if via_device_id:
+            info["via_device_id"] = via_device_id
+        return info
 
 
 class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):
@@ -447,8 +452,10 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
             "model": model,
             "serial_number": self._appliance.ApplianceId,
             "suggested_area": self._zone.ZoneName,
-            "via_device": via,
         }
+        via_device_id = resolve_via_device_id(self.hass, via, getattr(self.config_entry, "entry_id", None))
+        if via_device_id:
+            info["via_device_id"] = via_device_id
         firmware = getattr(self._appliance, "FirmwareVersion", None)
         if firmware:
             info["sw_version"] = str(firmware)
