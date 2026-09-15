@@ -108,13 +108,13 @@
         "name": "Estimert effekt"
       },
       "energy_lifetime": {
-        "name": "Energi totalt"
+        "name": "Energi siste 30 dager"
       },
       "energy_today": {
         "name": "Energi i dag"
       },
       "energy_t2_lifetime": {
-        "name": "Energi T2 totalt"
+        "name": "Energi T2 siste 30 dager"
       },
       "energy_t2_today": {
         "name": "Energi T2 i dag"
