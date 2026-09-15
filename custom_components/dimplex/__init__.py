@@ -474,9 +474,14 @@ def _persist_tokens(
         CONF_ACCESS_TOKEN: token_data.get(CONF_ACCESS_TOKEN),
         CONF_EXPIRES_AT: token_data.get(CONF_EXPIRES_AT, 0),
     }
+    # ``expires_at`` is part of the comparison: an entry stored with 0 gets the
+    # expiry derived from the access token's own JWT claim on the next start
+    # (``DimplexApiClient.async_initialize``), and comparing only the tokens left
+    # that drift unpersisted, so it was recomputed on every restart (#198).
     if (
         entry.data.get(CONF_REFRESH_TOKEN) != current[CONF_REFRESH_TOKEN]
         or entry.data.get(CONF_ACCESS_TOKEN) != current[CONF_ACCESS_TOKEN]
+        or entry.data.get(CONF_EXPIRES_AT, 0) != current[CONF_EXPIRES_AT]
     ):
         _LOGGER.debug("Persisting refreshed tokens")
         data = {**entry.data, **current}

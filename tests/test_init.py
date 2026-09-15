@@ -6,6 +6,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dimplex import (
     DimplexRuntimeData,
+    _persist_tokens,
     async_unload_entry,
 )
 from custom_components.dimplex.const import (
@@ -190,3 +191,34 @@ async def test_status_coordinator_raises_auth_failed_on_invalid_auth(hass, bypas
         await coordinator._async_update_data()  # noqa: SLF001
 
     assert await async_unload_entry(hass, config_entry)
+
+
+async def test_token_expiry_drift_is_persisted(hass):
+    """Expiry derived from the access token's JWT is written back to the entry.
+
+    Regression for dimplex-controller-hass#198: the change check compared only
+    the tokens, so an entry stored with ``expires_at: 0`` had its expiry
+    re-derived from the JWT on every restart and never persisted.
+    """
+    from unittest.mock import MagicMock
+
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={**MOCK_ENTRY_DATA, "expires_at": 0},
+        entry_id="test",
+    )
+    config_entry.add_to_hass(hass)
+
+    client = MagicMock()
+    client.token_data = {
+        "refresh_token": "refresh_token",
+        "access_token": "access_token",
+        "expires_at": 1234567890,
+    }
+
+    _persist_tokens(hass, config_entry, client)
+
+    entry = hass.config_entries.async_get_entry(config_entry.entry_id)
+    assert entry.data["expires_at"] == 1234567890
+    # The tokens themselves are unchanged, so nothing else was disturbed.
+    assert entry.data["refresh_token"] == "refresh_token"
