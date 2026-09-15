@@ -6,6 +6,20 @@ hide:
 
 # Dimplex Hub for Home Assistant
 
+!!! danger "Unofficial project — not affiliated with Dimplex"
+
+    This integration is **not** affiliated with, endorsed by, or supported by Dimplex, Glen
+    Dimplex Heating & Ventilation, or the Glen Dimplex Group. It is an independent community
+    project built by **reverse-engineering** the official Dimplex Control Android app and the
+    private cloud API it talks to.
+
+    There is no public or documented API. Dimplex can change or withdraw that API at any
+    time and without notice, which may break this integration. Use it at your own risk.
+
+    Please do not contact Dimplex support about this integration —
+    [open an issue](https://github.com/KRoperUK/dimplex-controller-hass/issues/new/choose)
+    instead.
+
 Control and monitor Glen Dimplex electric heating from Home Assistant. The integration
 talks to the Dimplex cloud, discovers your hub, zones and appliances, and exposes them as
 native entities — a thermostat per heater, dual-rate energy for the Energy Dashboard, and
@@ -124,3 +138,18 @@ the appliance's engaged modes broken out so you can see what the heater is actua
 - [Report an issue](https://github.com/KRoperUK/dimplex-controller-hass/issues/new/choose)
 - [Install via HACS](https://my.home-assistant.io/redirect/hacs_repository/?owner=KRoperUK&repository=dimplex-controller-hass&category=integration)
 - [`dimplex-controller` on PyPI](https://pypi.org/project/dimplex-controller/) — the Python client underneath
+
+## Trademarks and attribution
+
+"Dimplex", "Quantum", "QRAD", "Glen Dimplex" and related names and marks are the property of
+their respective owners. They are used throughout this documentation only to describe which
+hardware and cloud service this integration is compatible with, and do not imply any
+affiliation, sponsorship or endorsement.
+
+Both this integration and the [`dimplex-controller`](https://pypi.org/project/dimplex-controller/)
+Python client underneath it were produced by observing the official Dimplex Control Android
+app, its network traffic and its decompiled source, in order to interoperate with hardware
+the authors own. Neither ships any Dimplex code.
+
+This project is licensed [MIT](https://github.com/KRoperUK/dimplex-controller-hass/blob/main/LICENSE)
+and is provided without warranty of any kind.

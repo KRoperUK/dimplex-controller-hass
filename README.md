@@ -20,6 +20,19 @@
 
 ---
 
+> [!IMPORTANT] > **Unofficial project.** This integration is not affiliated with, endorsed by, or supported
+> by Dimplex, Glen Dimplex Heating & Ventilation, or the Glen Dimplex Group. It is an
+> independent community project built by **reverse-engineering** the official Dimplex Control
+> Android app and the private cloud API it talks to.
+>
+> There is no public or documented API. Dimplex can change or withdraw that API at any time
+> and without notice, which may break this integration. Use it at your own risk.
+>
+> Please do not contact Dimplex support about this integration —
+> [open an issue here](https://github.com/KRoperUK/dimplex-controller-hass/issues) instead.
+> "Dimplex", "Quantum", "QRAD" and related marks belong to their respective owners and are
+> used here only to describe compatibility.
+
 Connects Home Assistant to the Dimplex cloud, discovers your hub, zones and appliances, and
 exposes them as native entities — a thermostat per heater, the appliance's engaged modes
 broken out as sensors, and dual-rate energy history for the Energy Dashboard.

@@ -3,3 +3,6 @@ contact_links:
   - name: Questions & discussions
     url: https://github.com/KRoperUK/dimplex-controller-hass/discussions
     about: Ask questions about setup, entities, or general usage here.
+  - name: This is an unofficial project
+    url: https://dimplex-hass.kroper.uk/#trademarks-and-attribution
+    about: Not affiliated with or supported by Dimplex. Please do not raise integration problems with Dimplex support.

@@ -4,6 +4,13 @@ description: Install the Dimplex Hub integration for Home Assistant via HACS or 
 
 # Install
 
+!!! warning "Unofficial integration"
+
+    Not affiliated with or supported by Dimplex. It works by talking to the same private
+    cloud API the official app uses, discovered by
+    [reverse-engineering that app](../index.md#trademarks-and-attribution). Dimplex can change
+    that API without notice.
+
 ## Before you start
 
 - Home Assistant **2025.1** or later — the floor this integration declares in `hacs.json`.
