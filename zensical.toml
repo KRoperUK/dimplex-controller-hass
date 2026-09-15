@@ -9,6 +9,8 @@ repo_url = "https://github.com/KRoperUK/dimplex-controller-hass"
 repo_name = "KRoperUK/dimplex-controller-hass"
 edit_uri = "edit/main/docs/"
 
+extra_css = ["stylesheets/extra.css"]
+
 nav = [
   { "Overview" = "index.md" },
   { "Getting started" = "getting-started.md" },
@@ -19,15 +21,30 @@ nav = [
 ]
 
 [project.theme]
+# Pinned explicitly: `docs.yml` installs zensical unpinned, and `variant` is a
+# defaulted setting, so an upstream default change would silently restyle the
+# whole site mid-release.
+variant = "modern"
+custom_dir = "overrides"
 language = "en"
+logo = "assets/brand/logo.png"
+favicon = "assets/brand/icon.png"
 features = [
-  "content.code.copy",
   "content.action.edit",
   "content.action.view",
+  "content.code.annotate",
+  "content.code.copy",
+  "content.code.select",
+  "content.footnote.tooltips",
+  "content.tabs.link",
+  "content.tooltips",
+  "navigation.footer",
+  "navigation.indexes",
   "navigation.instant",
   "navigation.instant.prefetch",
+  "navigation.instant.progress",
+  "navigation.path",
   "navigation.sections",
-  "navigation.footer",
   "navigation.top",
   "navigation.tracking",
   "search.highlight",
@@ -35,25 +52,41 @@ features = [
 ]
 
 [project.theme.icon]
-logo = "lucide/flame"
+repo = "fontawesome/brands/github"
+
+# Brand crimson (#d62945) lives in docs/stylesheets/extra.css; "custom" is what
+# tells the theme to read those CSS variables instead of a named palette.
+[[project.theme.palette]]
+media = "(prefers-color-scheme)"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun-moon"
+toggle.name = "Switch to light mode"
 
 [[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
 scheme = "default"
-primary = "deep orange"
-accent = "amber"
-toggle.icon = "lucide/moon"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
 toggle.name = "Switch to dark mode"
 
 [[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
 scheme = "slate"
-primary = "deep orange"
-accent = "amber"
-toggle.icon = "lucide/sun"
-toggle.name = "Switch to light mode"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to system preference"
 
 [[project.extra.social]]
 icon = "fontawesome/brands/github"
 link = "https://github.com/KRoperUK/dimplex-controller-hass"
+
+[[project.extra.social]]
+icon = "simple/homeassistant"
+link = "https://my.home-assistant.io/redirect/hacs_repository/?owner=KRoperUK&repository=dimplex-controller-hass&category=integration"
+name = "Install via HACS"
 
 [project.markdown_extensions.abbr]
 [project.markdown_extensions.admonition]
@@ -78,7 +111,24 @@ pygments_lang_class = true
 [project.markdown_extensions.pymdownx.magiclink]
 [project.markdown_extensions.pymdownx.mark]
 [project.markdown_extensions.pymdownx.smartsymbols]
+
+[project.markdown_extensions.pymdownx.snippets]
+# Glossary definitions appended to every page, so `content.tooltips` can render
+# a hover definition for the Dimplex vocabulary wherever a term appears.
+#
+# Kept outside docs/ deliberately: zensical 0.0.62 has no `exclude_docs`, so any
+# .md inside the docs root is published as a page of its own.
+auto_append = ["includes/glossary.md"]
+base_path = ["."]
+
 [project.markdown_extensions.pymdownx.superfences]
+# Declaring superfences at all replaces zensical's default `custom_fences`
+# rather than merging with it, which silently disabled mermaid: a ```mermaid
+# block rendered as a plain code block. Restore the default explicitly.
+[[project.markdown_extensions.pymdownx.superfences.custom_fences]]
+name = "mermaid"
+class = "mermaid"
+
 [project.markdown_extensions.pymdownx.tabbed]
 alternate_style = true
 combine_header_slug = true
