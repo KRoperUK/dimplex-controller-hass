@@ -62,7 +62,7 @@ set_away:
   name: Set away
   description: >-
     Enable away mode for a Dimplex appliance. Away holds a settable setback
-    target (7-30 °C) until the date you give it — unlike frost protection, which
+    target (7-18 °C) until the date you give it — unlike frost protection, which
     is always 7 °C.
   fields:
     device_id:

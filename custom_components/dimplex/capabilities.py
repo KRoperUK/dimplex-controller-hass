@@ -24,8 +24,10 @@ class LocalCapabilities:
     climate: bool = True
     default_boost_minutes: int = 60
     boost_durations: tuple[int, ...] = (30, 60, 120, 180)
-    # The official app's mode carousels (away / boost / frost / manual / eco)
-    # all offer 7-30 °C, and frost protection is always the 7 °C floor.
+    # Boost, frost, manual and eco carousels in the official app offer 7-30 °C,
+    # and frost protection is always the 7 °C floor. Away is the exception at
+    # 7-18 °C — see AWAY_TEMP_MIN/MAX in const.py, and dimplex-controller-py#98
+    # for re-reading the remaining per-mode ranges out of the APK.
     min_temp: float = 7.0
     max_temp: float = 30.0
     frost_temp: float = 7.0
