@@ -46,15 +46,19 @@ Prefer these for scripts when climate presets are too coarse:
 | Service                                     | Purpose                                                     |
 | ------------------------------------------- | ----------------------------------------------------------- |
 | `dimplex.set_boost` / `dimplex.clear_boost` | Boost on/off (`temperature` 7-30 °C, `duration` minutes)    |
-| `dimplex.set_away` / `dimplex.clear_away`   | Away on/off (`temperature` 7-30 °C, plus `days` or `until`) |
+| `dimplex.set_away` / `dimplex.clear_away`   | Away on/off (`temperature` 7-18 °C, plus `days` or `until`) |
 | `dimplex.set_eco_start`                     | EcoStart (`enable`)                                         |
 | `dimplex.set_open_window_detection`         | Open-window detection (`enable`)                            |
 
-Away is a _settable_ setback, not frost protection: the cloud accepts 7-30 °C and
-holds it until the moment you specify. Give it `days` for a simple count, or
+Away is a _settable_ setback, not frost protection: the cloud accepts **7-18 °C** for
+it and holds it until the moment you specify. Give it `days` for a simple count, or
 `until` for an exact return time (`until` wins if both are given); omit both for
-an open-ended away. Temperatures outside 7-30 °C are clamped, with a warning in
-the log — that is the range the cloud itself offers.
+an open-ended away.
+
+That 18 °C ceiling is lower than the 7-30 °C a normal setpoint allows. The official
+app's Away picker stops at 18 as well, and the cloud silently reduces anything higher
+— so requests above 18 are clamped here with a warning in the log, rather than being
+quietly applied as something other than what you asked for.
 
 Target with `device_id` (appliance device) or any `entity_id` on that appliance.
 
