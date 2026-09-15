@@ -21,3 +21,11 @@ This drives release-please's automated changelog and versioning.
 - [ ] `ruff format --check .` passes
 - [ ] `pytest` passes and new/changed behaviour is covered by tests
 - [ ] I have updated documentation where relevant
+
+For user-visible changes, CI enforces the last point — see
+[CONTRIBUTING](../CONTRIBUTING.md#build-the-documentation-locally):
+
+- [ ] A new action, entity or option is documented on its reference page
+      (`scripts/check-docs-coverage.sh`)
+- [ ] `zensical build` is clean — it fails on broken links and missing anchors
+- [ ] Blueprint changes validate (`python scripts/check-blueprints.py`)
