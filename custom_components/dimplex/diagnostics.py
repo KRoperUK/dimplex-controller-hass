@@ -6,6 +6,7 @@ import hashlib
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
+from dimplex_controller import ApplianceModeFlag
 from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -109,6 +110,25 @@ def _lib_version() -> str | None:
         return None
 
 
+def _active_modes(status: Any) -> list[str] | None:
+    """Decode ``ApplianceModes`` into readable mode names.
+
+    The raw bitfield is already in the status snapshot, but nobody reading a
+    diagnostics download should have to decode it by hand — that is how a
+    mode-mapping bug goes unnoticed (#163).
+    """
+    if status is None:
+        return None
+    modes = getattr(status, "ApplianceModes", None)
+    if modes is None:
+        return None
+    try:
+        flags = ApplianceModeFlag(int(modes))
+    except (TypeError, ValueError):
+        return None
+    return [member.name for member in ApplianceModeFlag if member.value and member in flags and member.name]
+
+
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -161,6 +181,7 @@ async def async_get_config_entry_diagnostics(
                 "hub_id": getattr(hub, "HubId", None),
                 "has_status": status is not None,
                 "status": _model_snapshot(status),
+                "active_modes": _active_modes(status),
                 "provisioning": _model_snapshot(prov),
             }
         )

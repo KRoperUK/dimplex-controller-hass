@@ -27,6 +27,8 @@ SERVICE_SET_BOOST = "set_boost"
 SERVICE_CLEAR_BOOST = "clear_boost"
 SERVICE_SET_AWAY = "set_away"
 SERVICE_CLEAR_AWAY = "clear_away"
+SERVICE_SET_ADVANCE = "set_advance"
+SERVICE_CLEAR_ADVANCE = "clear_advance"
 SERVICE_SET_ECO_START = "set_eco_start"
 SERVICE_SET_OPEN_WINDOW = "set_open_window_detection"
 
@@ -209,6 +211,27 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         )
         await _refresh_status(hass, entry_id)
 
+    async def handle_set_advance(call: ServiceCall) -> None:
+        resolved = await _resolve_appliance(hass, call)
+        if resolved is None:
+            return
+        entry_id, hub_id, appliance_id, api = resolved
+        await api.async_set_advance(
+            hub_id,
+            appliance_id,
+            enable=True,
+            temperature=call.data.get(ATTR_TEMPERATURE),
+        )
+        await _refresh_status(hass, entry_id)
+
+    async def handle_clear_advance(call: ServiceCall) -> None:
+        resolved = await _resolve_appliance(hass, call)
+        if resolved is None:
+            return
+        entry_id, hub_id, appliance_id, api = resolved
+        await api.async_set_advance(hub_id, appliance_id, enable=False)
+        await _refresh_status(hass, entry_id)
+
     async def handle_eco(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
@@ -266,6 +289,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN,
+        SERVICE_SET_ADVANCE,
+        handle_set_advance,
+        schema=_target_schema().extend({vol.Optional(ATTR_TEMPERATURE): vol.Coerce(float)}),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CLEAR_ADVANCE,
+        handle_clear_advance,
+        schema=_target_schema(),
+    )
+    hass.services.async_register(
+        DOMAIN,
         SERVICE_SET_ECO_START,
         handle_eco,
         schema=_target_schema().extend({vol.Optional(ATTR_ENABLE, default=True): cv.boolean}),
@@ -290,6 +325,8 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_CLEAR_BOOST,
         SERVICE_SET_AWAY,
         SERVICE_CLEAR_AWAY,
+        SERVICE_SET_ADVANCE,
+        SERVICE_CLEAR_ADVANCE,
         SERVICE_SET_ECO_START,
         SERVICE_SET_OPEN_WINDOW,
     ):

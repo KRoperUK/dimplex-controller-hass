@@ -10,6 +10,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dimplex.const import DOMAIN
 from custom_components.dimplex.services import (
+    SERVICE_CLEAR_ADVANCE,
+    SERVICE_SET_ADVANCE,
     SERVICE_SET_AWAY,
     SERVICE_SET_BOOST,
     _appliance_id_from_unique_id,
@@ -248,3 +250,39 @@ async def test_mode_temperature_is_clamped_to_the_cloud_range(hass: HomeAssistan
         blocking=True,
     )
     assert runtime.api.async_set_boost.await_args.kwargs["temperature"] == 30.0
+
+
+async def test_advance_services(hass: HomeAssistant) -> None:
+    """Advance brings the next comfort period on early; clear cancels it."""
+    runtime = _make_runtime()
+    runtime.api.async_set_advance = AsyncMock()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_ADVANCE,
+        {"device_id": device_id},
+        blocking=True,
+    )
+    kwargs = runtime.api.async_set_advance.await_args.kwargs
+    assert kwargs["enable"] is True
+    # No explicit target -> the library sends the "follow the schedule" sentinel.
+    assert kwargs["temperature"] is None
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_ADVANCE,
+        {"device_id": device_id, "temperature": 22.0},
+        blocking=True,
+    )
+    assert runtime.api.async_set_advance.await_args.kwargs["temperature"] == 22.0
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_CLEAR_ADVANCE,
+        {"device_id": device_id},
+        blocking=True,
+    )
+    assert runtime.api.async_set_advance.await_args.kwargs["enable"] is False
+    assert runtime.status.async_request_refresh.await_count == 3

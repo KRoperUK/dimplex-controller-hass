@@ -602,3 +602,16 @@ def test_energy_registers_parse_separately():
     assert [v for _, v in t2] == [0.36, 0.18, 0.50]
     assert sum(v for _, v in t1) == 15.48
     assert sum(v for _, v in t2) == 1.04
+
+
+async def test_advance_helper_delegates_to_library(hass):
+    """Advance passes the optional target through; None lets the library pick 255."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with patch.object(api._client, "set_advance", new=AsyncMock()) as set_advance:
+        await api.async_set_advance("h", "a")
+        await api.async_set_advance("h", "a", enable=False, temperature=19.0)
+
+    first, second = set_advance.await_args_list
+    assert first.args == ("h", ["a"])
+    assert first.kwargs == {"enable": True, "temperature": None}
+    assert second.kwargs == {"enable": False, "temperature": 19.0}

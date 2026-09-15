@@ -138,6 +138,18 @@
       },
       "connected": {
         "name": "Tilkoblet"
+      },
+      "boost_active": {
+        "name": "Boost aktiv"
+      },
+      "away_active": {
+        "name": "Bortemodus aktiv"
+      },
+      "frost_protection": {
+        "name": "Frostbeskyttelse"
+      },
+      "advance_active": {
+        "name": "Framskynding aktiv"
       }
     },
     "switch": {

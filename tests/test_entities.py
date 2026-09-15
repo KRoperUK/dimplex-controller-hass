@@ -6,14 +6,14 @@ from unittest.mock import patch
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.dimplex.const import DOMAIN
+from custom_components.dimplex.const import BOOST_FLAG, DOMAIN
 
 from .const import MOCK_ENTRY_DATA
 
 pytestmark = pytest.mark.asyncio
 
 
-def _mock_coordinator_payload():
+def _mock_coordinator_payload(*, appliance_modes=None):
     hub = SimpleNamespace(
         HubId="hub-1",
         FriendlyName="My Hub",
@@ -46,6 +46,7 @@ def _mock_coordinator_payload():
         SetbackEnabled=True,
         ErrorCode="E1",
         WarningCode="W2",
+        ApplianceModes=appliance_modes,
     )
     return {"appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}]}
 
@@ -137,3 +138,36 @@ async def test_sensor_and_binary_sensor_entities(hass):
     # via_device identifier tuple). This mock zone has no ZoneId, so the appliance
     # links directly to the hub device.
     assert appliance_device.via_device_id == hub_device.id
+
+
+async def test_mode_binary_sensors_reflect_the_engaged_modes(hass):
+    """Per-mode diagnostics make a wrong mode mapping visible (#163)."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
+            # Timer + Boost engaged; Away / Frost / Advance are not.
+            return_value=_mock_coordinator_payload(appliance_modes=BOOST_FLAG | 1),
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value={"energy": {}},
+        ),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    def _state(needle: str):
+        for state in hass.states.async_all():
+            if state.entity_id.startswith("binary_sensor.") and needle in state.entity_id:
+                return state
+        return None
+
+    # The payload has Timer + Boost engaged.
+    assert _state("boost_active").state == "on"
+    assert _state("away_active").state == "off"
+    assert _state("frost_protection").state == "off"
+    assert _state("advance_active").state == "off"

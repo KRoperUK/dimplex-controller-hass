@@ -126,6 +126,48 @@ clear_away:
           step: 0.5
           unit_of_measurement: "°C"
 
+set_advance:
+  name: Advance
+  description: >-
+    Skip forward to the next schedule period, bringing the next comfort setpoint
+    on early. Leave the temperature empty to follow the schedule's own target,
+    which is what the official app does for Quantum and storage heaters.
+  fields:
+    device_id:
+      name: Device
+      selector:
+        device:
+          integration: dimplex
+    entity_id:
+      name: Entity
+      selector:
+        entity:
+          integration: dimplex
+    temperature:
+      name: Temperature
+      description: Optional explicit target to advance to.
+      selector:
+        number:
+          min: 7
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+
+clear_advance:
+  name: Cancel advance
+  description: Cancel an active advance and return to the schedule.
+  fields:
+    device_id:
+      name: Device
+      selector:
+        device:
+          integration: dimplex
+    entity_id:
+      name: Entity
+      selector:
+        entity:
+          integration: dimplex
+
 set_eco_start:
   name: Set EcoStart
   description: Enable or disable EcoStart.

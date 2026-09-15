@@ -315,6 +315,28 @@ class DimplexApiClient:
         with _translated_errors():
             await self._client.set_frost_protect(hub_id, [appliance_id], enable=enable)
 
+    async def async_set_advance(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        *,
+        enable: bool = True,
+        temperature: float | None = None,
+    ) -> None:
+        """Advance to the next schedule period, or cancel an advance.
+
+        ``temperature`` is the target to advance to. Left unset, the library
+        sends the ``255`` "follow the schedule" sentinel, which is what the app
+        does for Quantum and Storage Heater models.
+        """
+        with _translated_errors():
+            await self._client.set_advance(
+                hub_id,
+                [appliance_id],
+                enable=enable,
+                temperature=temperature,
+            )
+
     async def async_set_boost(
         self,
         hub_id: str,

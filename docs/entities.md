@@ -26,6 +26,7 @@ One climate entity per appliance.
 - `climate.set_temperature` — writes the target through the cloud's dedicated setpoint endpoint, so your schedule is left intact. Appliances that reject it fall back to a schedule rewrite.
 - `climate.set_preset_mode` — boost / away / eco / comfort.
 - `climate.turn_on` / `climate.turn_off` — off engages frost protection and clears boost/away; on clears it again.
+- `dimplex.set_advance` / `dimplex.clear_advance` — skip forward to the next schedule period, bringing its setpoint on early.
 
 > Climate (and most status entities) are **unavailable** when the cloud returns an empty appliance overview (common when heaters have not telemetered recently).
 
@@ -79,6 +80,13 @@ When energy history is empty for several successful polls (common in summer), th
 | Open window | window       | Open-window detection **status** (enabled flag from cloud). |
 | Setback     | —            | Setback mode active.                                        |
 | Connected   | connectivity | Hub connection (one per hub).                               |
+
+The appliance mode bitfield is also broken out as four **diagnostic** binary
+sensors — Boost active, Away active, Frost protection, Advance active. The climate
+entity folds these into one preset, which is precisely what hid the mode mismatch
+behind [#163](https://github.com/kroperuk/dimplex-controller-hass/issues/163): the
+integration asked for Boost and the heater engaged Advance, with nothing on the
+dashboard to say so. A diagnostics download also lists the engaged modes by name.
 
 ## Switches
 
