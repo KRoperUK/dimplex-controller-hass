@@ -22,6 +22,15 @@ Import one by copying it into `<config>/blueprints/automation/dimplex/` and relo
 automations, then **Settings** → **Automations & scenes** → **Create automation** → **Use a
 blueprint**.
 
+All three declare a minimum Home Assistant of 2025.1.0, matching the integration, and are
+validated in CI against Home Assistant's own blueprint and automation schemas.
+
+!!! note "`away_when_everyone_leaves` does not clear away again"
+
+    It engages away when presence drops, and nothing turns it off. Pair it with a second
+    automation selecting the `comfort` preset on return, which clears away, boost and
+    EcoStart together.
+
 ## Boost when a room gets cold
 
 ```yaml

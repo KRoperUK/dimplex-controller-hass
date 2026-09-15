@@ -37,6 +37,7 @@ jobs:
               - 'custom_components/**'
               - 'tests/**'
               - 'scripts/**'
+              - 'blueprints/**'
               - 'pyproject.toml'
               - 'requirements_test.txt'
               - 'hacs.json'
@@ -222,6 +223,9 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements_test.txt
+
+      - name: Validate blueprints against Home Assistant's schema
+        run: python scripts/check-blueprints.py
 
       - name: Run tests with coverage
         run: >-

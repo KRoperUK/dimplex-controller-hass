@@ -1,10 +1,23 @@
 blueprint:
   name: Dimplex away when everyone leaves
-  description: Set climate away preset when a person/group is not home.
+  description: >-
+    Engage the climate `away` preset when a person or presence group stops being
+    home.
+
+    Away holds a settable setback target until you clear it — the appliance away
+    temperature when known, capped at the 18 °C the Dimplex cloud accepts. It is
+    not frost protection, which is fixed at 7 °C.
+
+    This blueprint only engages away. It does not clear it when you return, so
+    pair it with a second automation selecting the `comfort` preset, or clear it
+    by hand. See https://dimplex-hass.kroper.uk/use/modes/
   domain: automation
+  homeassistant:
+    min_version: "2025.1.0"
   input:
     presence_entity:
-      name: Person or group entity
+      name: Person or presence group
+      description: Away engages when this entity leaves the `home` state.
       selector:
         entity:
     climate_entity:
@@ -14,13 +27,13 @@ blueprint:
           domain: climate
           integration: dimplex
 
-trigger:
-  - platform: state
+triggers:
+  - trigger: state
     entity_id: !input presence_entity
     to: "not_home"
 
-action:
-  - service: climate.set_preset_mode
+actions:
+  - action: climate.set_preset_mode
     target:
       entity_id: !input climate_entity
     data:

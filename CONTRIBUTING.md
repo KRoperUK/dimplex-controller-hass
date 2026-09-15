@@ -158,6 +158,20 @@ which fails when an action in `services.yaml`, an entity `translation_key`, or a
 options-flow constant exists but is not mentioned on its reference page. It only checks
 that the docs are _aware_ the thing exists — correctness still needs a human.
 
+## Validate the blueprints
+
+The blueprints under `blueprints/automation/dimplex/` are checked in CI against Home
+Assistant's own schemas — `BLUEPRINT_SCHEMA`, and then the automation platform schema
+applied to the result of substituting sample inputs. Run it locally with:
+
+```bash
+.venv/bin/python scripts/check-blueprints.py
+```
+
+Adding a new blueprint input means adding a sample value to `SAMPLE_INPUTS` in that
+script, or the check fails asking for one. It runs as a step in the `test` job, which
+already installs Home Assistant.
+
 Layout worth knowing:
 
 | Path                         | Contents                                          |
