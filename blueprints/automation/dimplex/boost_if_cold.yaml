@@ -1,10 +1,26 @@
 blueprint:
   name: Dimplex boost if room is cold
-  description: Enable climate boost when room temperature falls below a threshold during the day.
+  description: >-
+    Engage the climate `boost` preset when a room temperature sensor falls below
+    a threshold, within a time window.
+
+    Boost runs for the duration set in the integration options — 60 minutes by
+    default — and then hands back to the schedule. For explicit control over the
+    target and duration, use the `dimplex.set_boost` action instead. See
+    https://dimplex-hass.kroper.uk/reference/actions/
+
+    On charge-based storage heaters a boost may have no visible effect until
+    there is stored charge to release. See
+    https://dimplex-hass.kroper.uk/reference/appliances/
   domain: automation
+  homeassistant:
+    min_version: "2025.1.0"
   input:
     temperature_sensor:
       name: Room temperature sensor
+      description: >-
+        Usually the Dimplex "Room temperature" sensor for the same appliance, but
+        any temperature sensor works.
       selector:
         entity:
           domain: sensor
@@ -17,6 +33,7 @@ blueprint:
           integration: dimplex
     threshold:
       name: Temperature threshold (°C)
+      description: Boost engages when the sensor drops below this.
       default: 17
       selector:
         number:
@@ -26,6 +43,8 @@ blueprint:
           unit_of_measurement: "°C"
     after:
       name: Active after
+      description: >-
+        Without a time window a cold night triggers a boost in the small hours.
       default: "06:00:00"
       selector:
         time:
@@ -35,18 +54,18 @@ blueprint:
       selector:
         time:
 
-trigger:
-  - platform: numeric_state
+triggers:
+  - trigger: numeric_state
     entity_id: !input temperature_sensor
     below: !input threshold
 
-condition:
+conditions:
   - condition: time
     after: !input after
     before: !input before
 
-action:
-  - service: climate.set_preset_mode
+actions:
+  - action: climate.set_preset_mode
     target:
       entity_id: !input climate_entity
     data:

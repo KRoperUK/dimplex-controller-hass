@@ -1,7 +1,14 @@
 blueprint:
   name: Dimplex notify on open window
-  description: Send a notification when open-window detection is active.
+  description: >-
+    Send a notification when a Dimplex appliance's open-window detection trips.
+
+    The binary sensor reflects the appliance's own detection, reported by the
+    cloud — it is not a separate window contact. See
+    https://dimplex-hass.kroper.uk/reference/entities/
   domain: automation
+  homeassistant:
+    min_version: "2025.1.0"
   input:
     open_window_entity:
       name: Open window binary sensor
@@ -10,7 +17,13 @@ blueprint:
           domain: binary_sensor
           integration: dimplex
     notify_service:
-      name: Notify service (e.g. notify.mobile_app_phone)
+      # Key kept as `notify_service` deliberately: renaming a blueprint input
+      # breaks every automation already built from it. Only the label is updated
+      # to Home Assistant's current "action" wording.
+      name: Notify action
+      description: >-
+        The notify action to call, for example `notify.mobile_app_phone` or
+        `notify.persistent_notification`.
       selector:
         text:
     title:
@@ -24,13 +37,13 @@ blueprint:
       selector:
         text:
 
-trigger:
-  - platform: state
+triggers:
+  - trigger: state
     entity_id: !input open_window_entity
     to: "on"
 
-action:
-  - service: !input notify_service
+actions:
+  - action: !input notify_service
     data:
       title: !input title
       message: !input message
