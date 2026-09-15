@@ -126,3 +126,29 @@
   margin: 1.2em auto;
   text-align: center;
 }
+
+/* ---------------------------------------------------------------------------
+ * Footer version stamp.
+ *
+ * Rendered by overrides/partials/copyright.html from extra.integration_version,
+ * so every page says which release it describes. Sits below the copyright line
+ * and should read as secondary to it.
+ * ------------------------------------------------------------------------- */
+
+.md-copyright__version {
+  font-size: 0.62rem;
+  line-height: 1.5;
+  opacity: 0.75;
+}
+
+.md-copyright__version a {
+  color: currentcolor;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+.md-copyright__version a:hover,
+.md-copyright__version a:focus-visible {
+  color: var(--md-accent-fg-color);
+}

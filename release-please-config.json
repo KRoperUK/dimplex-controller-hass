@@ -12,6 +12,10 @@
         {
           "type": "generic",
           "path": "custom_components/dimplex/const.py"
+        },
+        {
+          "type": "generic",
+          "path": "zensical.toml"
         }
       ]
     }

@@ -121,6 +121,11 @@ accent = "custom"
 toggle.icon = "lucide/moon"
 toggle.name = "Switch to system preference"
 
+[project.extra]
+# Bumped by release-please via its `generic` updater; asserted equal to
+# manifest.json by scripts/check-docs-coverage.sh so it cannot drift silently.
+integration_version = "4.0.2" # x-release-please-version
+
 [[project.extra.social]]
 icon = "fontawesome/brands/github"
 link = "https://github.com/KRoperUK/dimplex-controller-hass"

@@ -102,15 +102,38 @@ for opt in $options; do
   fi
 done
 
+# --- 4. Version stamp -----------------------------------------------------
+# The docs footer shows the integration version from zensical.toml, bumped by
+# release-please. If that updater ever stops firing, the footer would quietly
+# advertise an old version on every page — so assert it matches the manifest.
+# `|| true` matters: under `set -euo pipefail` a grep that finds nothing would
+# abort the script here, before the checks below could report anything useful.
+manifest_version=$(grep -oE '"version" *: *"[^"]+"' "$component/manifest.json" | grep -oE '"[^"]+"$' | tr -d '"' || true)
+docs_version=$(grep -oE '^integration_version *= *"[^"]+"' zensical.toml | grep -oE '"[^"]+"' | tr -d '"' || true)
+
+if [[ -z "$manifest_version" ]]; then
+  echo "::error file=$component/manifest.json::could not read a version — has the format changed?"
+  status=1
+fi
+if [[ -z "$docs_version" ]]; then
+  echo "::error file=zensical.toml::no integration_version — the docs footer stamp is missing"
+  status=1
+elif [[ "$docs_version" != "$manifest_version" ]]; then
+  echo "::error file=zensical.toml::integration_version is $docs_version but manifest.json says $manifest_version"
+  echo "  -> release-please should bump both; check the generic updater is configured for zensical.toml" >&2
+  status=1
+fi
+
 if [[ "$status" -eq 0 ]]; then
   echo "✓ docs coverage OK"
   echo "  actions:  $(echo "$actions" | wc -w | tr -d ' ')"
   echo "  entities: $(echo "$keys" | wc -w | tr -d ' ')"
   echo "  options:  $(echo "$options" | wc -w | tr -d ' ')"
+  echo "  version:  $docs_version (matches manifest)"
 else
   echo "" >&2
-  echo "Documentation is missing a user-visible surface. Add it to the reference" >&2
-  echo "page named above — a one-line table row is enough to pass this check." >&2
+  echo "See the annotated error(s) above. For a missing action, entity or option," >&2
+  echo "a one-line table row on the named reference page is enough to pass." >&2
 fi
 
 exit "$status"
