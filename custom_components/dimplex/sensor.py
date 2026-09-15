@@ -23,7 +23,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, sane_temperature
+from .const import DOMAIN, HEAT_DEMAND_FLAGS, has_any_mode, sane_temperature
 from .entity import DimplexEntity, resolve_via_device_id
 
 
@@ -97,8 +97,7 @@ def _estimated_power_kw(status: Any, appliance: Any) -> float | None:
     if status is not None:
         if getattr(status, "ComfortStatus", None):
             heating = True
-        modes = getattr(status, "ApplianceModes", None) or 0
-        if modes & 16:  # boost flag
+        if has_any_mode(status, HEAT_DEMAND_FLAGS):
             heating = True
         duration = getattr(status, "BoostDuration", None)
         if duration is not None and duration > 0:

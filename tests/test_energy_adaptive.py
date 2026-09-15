@@ -10,7 +10,11 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from custom_components.dimplex import DimplexEnergyCoordinator
 from custom_components.dimplex.__init__ import _interval_from_options
 from custom_components.dimplex.api import CannotConnect
-from custom_components.dimplex.const import DEFAULT_ENERGY_BACKOFF_INTERVAL, ENERGY_EMPTY_BACKOFF_THRESHOLD
+from custom_components.dimplex.const import (
+    BOOST_FLAG,
+    DEFAULT_ENERGY_BACKOFF_INTERVAL,
+    ENERGY_EMPTY_BACKOFF_THRESHOLD,
+)
 from custom_components.dimplex.sensor import _estimated_power_kw
 
 
@@ -78,7 +82,7 @@ def test_any_heating_active_boost():
 
 def test_any_heating_active_manual():
     coord = object.__new__(DimplexEnergyCoordinator)
-    status = SimpleNamespace(ComfortStatus=False, ApplianceModes=16, BoostDuration=0)
+    status = SimpleNamespace(ComfortStatus=False, ApplianceModes=BOOST_FLAG, BoostDuration=0)
     coord._status = MagicMock(data={"appliances": [{"status": status}]})
     assert coord._any_heating_active() is True
 

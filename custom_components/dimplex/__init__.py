@@ -40,8 +40,10 @@ from .const import (
     DEFAULT_STATUS_INTERVAL,
     DOMAIN,
     ENERGY_EMPTY_BACKOFF_THRESHOLD,
+    HEAT_DEMAND_FLAGS,
     PLATFORMS,
     STARTUP_MESSAGE,
+    has_any_mode,
 )
 from .repairs import (
     async_update_empty_energy_issue,
@@ -379,8 +381,7 @@ class DimplexEnergyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 continue
             if getattr(status, "ComfortStatus", None):
                 return True
-            modes = getattr(status, "ApplianceModes", None) or 0
-            if modes & 16:
+            if has_any_mode(status, HEAT_DEMAND_FLAGS):
                 return True
             duration = getattr(status, "BoostDuration", None)
             if duration is not None and duration > 0:

@@ -15,7 +15,7 @@
   ],
   "quality_scale": "silver",
   "requirements": [
-    "dimplex-controller>=0.11.0"
+    "dimplex-controller>=0.13.0"
   ],
   "version": "4.0.2"
 }
