@@ -1,2 +1,3 @@
 homeassistant
 dimplex-controller>=0.13.0
+zensical
