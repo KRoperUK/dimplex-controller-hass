@@ -13,12 +13,31 @@ repos:
         exclude: ^\.vscode/
       - id: end-of-file-fixer
       - id: trailing-whitespace
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.7
+  # ruff runs from the environment, like the mypy/pytest hooks below, so
+  # requirements_test.txt is the single source of truth for its version.
+  #
+  # It used to be pinned twice — here via ruff-pre-commit's `rev:`, and in
+  # requirements_test.txt — with scripts/check-ruff-pin.sh holding the two
+  # together. That coupling was deliberate, but it meant dependabot could only
+  # ever bump one side, so every ruff bump PR failed the pin check and could not
+  # merge; #162 was red for exactly that reason and had to be superseded (#201).
+  # One pin, and the problem cannot occur. Requires ruff on PATH: the dev venv
+  # (requirements_test.txt) provides it, and CI installs it before running the
+  # hooks.
+  - repo: local
     hooks:
       - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
+        name: ruff (lint, --fix)
+        entry: ruff check --force-exclude --fix --exit-non-zero-on-fix
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
       - id: ruff-format
+        name: ruff (format)
+        entry: ruff format --force-exclude
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
   - repo: local
     hooks:
       # Canonicalise HA manifests (domain/name first, then alpha; indent=2).
