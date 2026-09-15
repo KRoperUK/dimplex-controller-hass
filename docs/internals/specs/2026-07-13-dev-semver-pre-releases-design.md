@@ -1,3 +1,7 @@
+---
+description: Internal design note — how CI produces semver pre-release versions (vX.Y.Z-rc.N and vX.Y.Z-pr.P.R) for HACS dev builds without rewriting main.
+---
+
 # Design: Semver pre-release versions for HACS dev builds
 
 **Issue:** [KRoperUK/dimplex-controller-hass#77](https://github.com/KRoperUK/dimplex-controller-hass/issues/77)
