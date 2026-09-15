@@ -1,0 +1,10 @@
+# Documentation generator, pinned on purpose.
+#
+# The docs *gate* (ci.yml) and the docs *deploy* (docs.yml) both install from this
+# file, so they cannot run different generator versions, and an upstream zensical
+# release cannot turn CI red or change the published site without a change here.
+#
+# 0.0.62 specifically: zensical.toml is written against its behaviour (the mermaid
+# custom-fence handling and `strict`), so a different version is not a safe swap
+# (dimplex-controller-hass#201).
+zensical==0.0.62
