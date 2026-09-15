@@ -1,8 +1,17 @@
-blank_issues_enabled: false
+# Issue chooser configuration.
+#
+# `blank_issues_enabled` is true because Discussions is disabled on this
+# repository. It was false, alongside a contact link to /discussions — so someone
+# with a question that is not a bug or a feature request had no route at all: the
+# link 404s, and blank issues were switched off (#202).
+#
+# If Discussions is enabled (Settings → Features → Discussions), add the link back
+# below and this can return to false.
+blank_issues_enabled: true
 contact_links:
-  - name: Questions & discussions
-    url: https://github.com/KRoperUK/dimplex-controller-hass/discussions
-    about: Ask questions about setup, entities, or general usage here.
+  - name: Documentation
+    url: https://dimplex-hass.kroper.uk/
+    about: Setup, entities, and an energy-monitoring walkthrough before filing an issue.
   - name: This is an unofficial project
     url: https://dimplex-hass.kroper.uk/#trademarks-and-attribution
     about: Not affiliated with or supported by Dimplex. Please do not raise integration problems with Dimplex support.
