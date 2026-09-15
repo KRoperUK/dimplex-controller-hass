@@ -11,7 +11,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from .const import DOMAIN
+from .const import AWAY_TEMP_MAX, AWAY_TEMP_MIN, DOMAIN, SETPOINT_TEMP_MAX, SETPOINT_TEMP_MIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,30 +35,44 @@ SERVICE_SET_OPEN_WINDOW = "set_open_window_detection"
 _DEFAULT_BOOST_TEMP = 25.0
 _DEFAULT_BOOST_MINUTES = 60
 _DEFAULT_AWAY_TEMP = 16.0
-# Away accepts 7-30 °C in the official app; 7 is the anti-freeze floor.
-_MIN_MODE_TEMP = 7.0
-_MAX_MODE_TEMP = 30.0
 _MAX_AWAY_DAYS = 365
 
 
-def _mode_temperature(call: ServiceCall, default: float) -> float:
-    """Return the requested mode temperature, clamped to the cloud's 7-30 °C range.
+def _mode_temperature(
+    call: ServiceCall,
+    default: float,
+    *,
+    minimum: float = SETPOINT_TEMP_MIN,
+    maximum: float = SETPOINT_TEMP_MAX,
+) -> float:
+    """Return the requested mode temperature, clamped to what the cloud accepts.
 
-    Out-of-range values are clamped rather than rejected so existing automations
-    keep working, but the clamp is logged — the appliance would otherwise apply
-    something the user did not ask for with no explanation.
+    Out-of-range values are clamped rather than rejected so existing automations keep
+    working, but the clamp is logged — the appliance would otherwise apply something
+    the user did not ask for with no explanation. Away has a lower ceiling than the
+    other modes, so callers pass its own bounds.
     """
     requested = float(call.data.get(ATTR_TEMPERATURE, default))
-    clamped = min(max(requested, _MIN_MODE_TEMP), _MAX_MODE_TEMP)
+    clamped = min(max(requested, minimum), maximum)
     if clamped != requested:
         _LOGGER.warning(
             "Requested %.1f °C is outside the %.0f-%.0f °C range the Dimplex cloud accepts; using %.1f °C",
             requested,
-            _MIN_MODE_TEMP,
-            _MAX_MODE_TEMP,
+            minimum,
+            maximum,
             clamped,
         )
     return clamped
+
+
+def _away_temperature(call: ServiceCall) -> float:
+    """Away target, clamped to the cloud's 7-18 °C Away range (#174)."""
+    return _mode_temperature(
+        call,
+        _DEFAULT_AWAY_TEMP,
+        minimum=AWAY_TEMP_MIN,
+        maximum=AWAY_TEMP_MAX,
+    )
 
 
 def _target_schema() -> vol.Schema:
@@ -191,7 +205,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await api.async_set_away(
             hub_id,
             appliance_id,
-            temperature=_mode_temperature(call, _DEFAULT_AWAY_TEMP),
+            temperature=_away_temperature(call),
             enable=True,
             until=call.data.get(ATTR_UNTIL),
             number_of_days=int(call.data.get(ATTR_DAYS, 0)),
@@ -206,7 +220,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await api.async_set_away(
             hub_id,
             appliance_id,
-            temperature=_mode_temperature(call, _DEFAULT_AWAY_TEMP),
+            temperature=_away_temperature(call),
             enable=False,
         )
         await _refresh_status(hass, entry_id)

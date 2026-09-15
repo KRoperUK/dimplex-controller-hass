@@ -23,6 +23,8 @@ from .api import CannotConnect, DimplexApiClient, InvalidAuth
 from .capabilities import capabilities_for_row
 from .const import (
     AWAY_FLAG,
+    AWAY_TEMP_MAX,
+    AWAY_TEMP_MIN,
     BOOST_FLAG,
     CONF_BOOST_DURATION,
     DEFAULT_BOOST_DURATION,
@@ -461,6 +463,8 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
                 )
             elif state == _MODE_AWAY:
                 away_temp = float(status.AwayTemperature) if status and status.AwayTemperature else DEFAULT_AWAY_TEMP
+                # Away tops out well below the setpoint range (#174).
+                away_temp = min(max(away_temp, AWAY_TEMP_MIN), AWAY_TEMP_MAX)
                 await self._api.async_set_away(hub_id, appliance_id, temperature=away_temp, enable=True)
             elif state == _MODE_ECO_START:
                 await self._api.async_set_eco_start(hub_id, appliance_id, True)

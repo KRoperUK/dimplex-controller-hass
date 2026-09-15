@@ -3,7 +3,10 @@
 from datetime import timedelta
 from typing import Any
 
+import dimplex_controller as _dc
 from dimplex_controller import (
+    MODE_TEMP_MAX,
+    MODE_TEMP_MIN,
     NO_SETPOINT_SENTINEL,
     ApplianceModeFlag,
     TimerMode,
@@ -16,6 +19,21 @@ from homeassistant.const import Platform
 # produced a nonsensical "255 °C" target temperature on the climate entity and
 # the target-temperature sensor. Treat 255 (and anything at/above it) as unset.
 SETPOINT_SENTINEL = float(NO_SETPOINT_SENTINEL)
+
+# --- Temperature bounds ----------------------------------------------------
+# Setpoints and most mode carousels span 7–30 °C.
+SETPOINT_TEMP_MIN = float(MODE_TEMP_MIN)
+SETPOINT_TEMP_MAX = float(MODE_TEMP_MAX)
+
+# Away is the exception: the cloud accepts only 7–18 °C for it, and the official
+# app's Away picker will not offer above 18. A higher request is silently reduced
+# to 18 somewhere in the cloud or the appliance, so clamp locally and say so
+# rather than letting it happen invisibly (#174).
+#
+# Prefer the library's own bounds once it publishes Away-specific ones
+# (KRoperUK/dimplex-controller-py#98); until then use the measured figures.
+AWAY_TEMP_MIN = float(getattr(_dc, "AWAY_TEMP_MIN", 7.0))
+AWAY_TEMP_MAX = float(getattr(_dc, "AWAY_TEMP_MAX", 18.0))
 
 # --- Appliance mode bits ---------------------------------------------------
 # ``EApplianceModes`` values, sourced from the library rather than hard-coded.

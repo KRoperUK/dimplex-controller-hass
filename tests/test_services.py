@@ -8,7 +8,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.dimplex.const import DOMAIN
+from custom_components.dimplex.const import AWAY_TEMP_MAX, DOMAIN
 from custom_components.dimplex.services import (
     SERVICE_CLEAR_ADVANCE,
     SERVICE_SET_ADVANCE,
@@ -230,7 +230,7 @@ async def test_set_away_accepts_an_until_datetime(hass: HomeAssistant) -> None:
 
 
 async def test_mode_temperature_is_clamped_to_the_cloud_range(hass: HomeAssistant) -> None:
-    """Out-of-range targets are clamped to 7-30 °C rather than silently misapplied."""
+    """Out-of-range targets are clamped rather than silently misapplied."""
     runtime = _make_runtime()
     entry = await _register_entry(hass, runtime)
     device_id = await _device_id(hass, entry)
@@ -250,6 +250,40 @@ async def test_mode_temperature_is_clamped_to_the_cloud_range(hass: HomeAssistan
         blocking=True,
     )
     assert runtime.api.async_set_boost.await_args.kwargs["temperature"] == 30.0
+
+
+async def test_away_has_a_lower_ceiling_than_a_setpoint(hass: HomeAssistant) -> None:
+    """Away tops out at 18 °C; the cloud silently reduces anything higher (#174)."""
+    runtime = _make_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    # The reported case: 25 was accepted locally and became 18 at the appliance.
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_AWAY,
+        {"device_id": device_id, "temperature": 25.0},
+        blocking=True,
+    )
+    assert runtime.api.async_set_away.await_args.kwargs["temperature"] == AWAY_TEMP_MAX == 18.0
+
+    # A value inside the Away range passes through untouched.
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_AWAY,
+        {"device_id": device_id, "temperature": 17.0},
+        blocking=True,
+    )
+    assert runtime.api.async_set_away.await_args.kwargs["temperature"] == 17.0
+
+    # Boost keeps the wider setpoint range — only Away is known to differ.
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_BOOST,
+        {"device_id": device_id, "temperature": 25.0},
+        blocking=True,
+    )
+    assert runtime.api.async_set_boost.await_args.kwargs["temperature"] == 25.0
 
 
 async def test_advance_services(hass: HomeAssistant) -> None:

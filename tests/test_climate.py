@@ -28,6 +28,7 @@ from custom_components.dimplex.climate import (
 from custom_components.dimplex.const import (
     ADVANCE_FLAG,
     AWAY_FLAG,
+    AWAY_TEMP_MAX,
     BOOST_FLAG,
     DOMAIN,
     FROST_FLAG,
@@ -688,3 +689,35 @@ async def test_preset_switch_clears_the_previous_preset(
         assert set_eco.await_count == 0
     else:
         set_eco.assert_awaited_once_with("hub-1", "appliance-1", expect_eco)
+
+
+@pytest.mark.asyncio
+async def test_away_preset_clamps_to_the_away_ceiling(hass):
+    """The away preset must not replay an out-of-range AwayTemperature (#174)."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload()
+    # An appliance reporting an Away target above the ceiling — the cloud would
+    # reduce it silently, so send what will actually be applied.
+    payload["appliances"][0]["status"].AwayTemperature = 25.0
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_away",
+            new_callable=AsyncMock,
+        ) as set_away,
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_PRESET_MODE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_PRESET_MODE: "away"},
+            blocking=True,
+        )
+
+    assert set_away.await_args.kwargs["temperature"] == AWAY_TEMP_MAX == 18.0
