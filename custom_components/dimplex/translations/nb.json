@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Dimplex Hub",
-        "description": "Velg foretrukket autentiseringsmetode.",
+        "description": "Uoffisiell integrasjon — ikke tilknyttet eller støttet av Dimplex. Den bruker det samme private sky-API-et som den offisielle appen, funnet ved omvendt utvikling, så Dimplex kan endre eller ødelegge det uten varsel.\n\nVelg ønsket autentiseringsmetode.",
         "data": {
           "auth_method": "Autentiseringsmetode"
         }

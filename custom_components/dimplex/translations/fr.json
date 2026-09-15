@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Dimplex Hub",
-        "description": "Choisissez votre méthode d'authentification préférée.",
+        "description": "Intégration non officielle — sans aucun lien avec Dimplex ni prise en charge par Dimplex. Elle utilise la même API cloud privée que l'application officielle, découverte par ingénierie inverse ; Dimplex peut donc la modifier ou la casser sans préavis.\n\nChoisissez votre méthode d'authentification préférée.",
         "data": {
           "auth_method": "Méthode d'authentification"
         }

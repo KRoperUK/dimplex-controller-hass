@@ -1,5 +1,14 @@
 # Contribution guidelines
 
+> **This is an unofficial project.** It is not affiliated with, endorsed by, or supported by
+> Dimplex, Glen Dimplex Heating & Ventilation, or the Glen Dimplex Group. It works by talking
+> to the private cloud API used by the official Dimplex Control app, discovered by
+> reverse-engineering that app. No Dimplex code is included or redistributed.
+>
+> Contributions must respect that boundary: describe behaviour observed from the official
+> app or from your own hardware, but do not paste decompiled Dimplex source, proprietary
+> assets, or credentials into this repository.
+
 Contributing to this project should be as easy and transparent as possible, whether it's:
 
 - Reporting a bug

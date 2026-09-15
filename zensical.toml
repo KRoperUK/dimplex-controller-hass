@@ -3,7 +3,7 @@ site_name = "Dimplex Hub Integration"
 site_description = "Home Assistant integration for Glen Dimplex Heating & Ventilation appliances"
 site_author = "KRoperUK"
 site_url = "https://dimplex-hass.kroper.uk/"
-copyright = "Copyright &copy; 2026 KRoperUK"
+copyright = "Copyright &copy; 2026 KRoperUK — an unofficial project, not affiliated with or endorsed by Dimplex or Glen Dimplex Heating &amp; Ventilation"
 
 repo_url = "https://github.com/KRoperUK/dimplex-controller-hass"
 repo_name = "KRoperUK/dimplex-controller-hass"
