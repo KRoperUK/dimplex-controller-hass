@@ -73,6 +73,31 @@ for action in $actions; do
   fi
 done
 
+# --- 1b. Actions are registered *and* declared ------------------------------
+# services.yaml is what Home Assistant reads for the UI and what section 1 walks,
+# so an action registered in services.py but missing from the yaml would be both
+# undocumented and invisible to this check. Cross-check the SERVICE_* constants.
+service_consts=$(grep -oE '^SERVICE_[A-Z_]+ *= *"[a-z_]+"' "$component/services.py" || true)
+if [[ -z "$service_consts" ]]; then
+  echo "::error file=$component/services.py::found no SERVICE_* constants — has the format changed?"
+  status=1
+fi
+while IFS= read -r line; do
+  [[ -n "$line" ]] || continue
+  const=${line%% *}
+  name=$(printf '%s' "$line" | grep -oE '"[a-z_]+"' | tr -d '"')
+  # Registered? The call spans lines, so just look for the constant being used
+  # somewhere other than its own definition.
+  if ! grep -q "^\s*$const,\s*$" "$component/services.py"; then
+    continue
+  fi
+  if ! grep -qE "^$name:" "$component/services.yaml"; then
+    echo "::error file=$component/services.yaml::action '$name' is registered in services.py but not declared here"
+    echo "  -> without a services.yaml entry it has no name, description or fields in the UI" >&2
+    status=1
+  fi
+done <<<"$service_consts"
+
 # --- 2. Entity translation keys ------------------------------------------
 # Matches both `translation_key="x"` and `_attr_translation_key = "x"`.
 # repairs.py is excluded: its keys are repair issue ids, not entities.
