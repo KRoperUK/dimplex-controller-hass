@@ -52,7 +52,18 @@ def test_check_translation_parity_runs() -> None:
     )
 
 
-@pytest.mark.parametrize("script", ["check-ruff-pin.sh", "check-translation-parity.sh"])
+def test_check_md_alerts_passes() -> None:
+    """Every GitHub alert in tracked Markdown must be renderable as a callout.
+
+    A marker that is not alone on its line, or not inside a blockquote, renders
+    as literal text with no warning from GitHub — see the script's header.
+    """
+    result = _run("check-md-alerts.sh")
+    assert result.returncode == 0, f"broken GitHub alert:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    assert "✓" in result.stdout
+
+
+@pytest.mark.parametrize("script", ["check-ruff-pin.sh", "check-translation-parity.sh", "check-md-alerts.sh"])
 def test_scripts_are_executable(script: str) -> None:
     """Maintenance scripts must have the executable bit set so CI can run them."""
     path = REPO_ROOT / "scripts" / script

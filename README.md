@@ -20,7 +20,8 @@
 
 ---
 
-> [!IMPORTANT] > **Unofficial project.** This integration is not affiliated with, endorsed by, or supported
+> [!IMPORTANT]
+> **Unofficial project.** This integration is not affiliated with, endorsed by, or supported
 > by Dimplex, Glen Dimplex Heating & Ventilation, or the Glen Dimplex Group. It is an
 > independent community project built by **reverse-engineering** the official Dimplex Control
 > Android app and the private cloud API it talks to.
