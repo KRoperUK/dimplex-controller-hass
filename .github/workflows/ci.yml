@@ -325,11 +325,16 @@ jobs:
   # Pre-releases use semver tags (vX.Y.Z-pr.P.R) pointing at a *synthetic* commit that
   # rewrites only manifest/const version files so HACS installs a version that sorts
   # above the last stable and below the eventual X.Y.Z. main is never mutated.
+  #
+  # Depends on the concrete jobs, NOT the aggregate `ci` gate. `ci` runs with
+  # `if: always()` and needs `conventional_commits`, which is skipped on push — and
+  # a skipped job in the needs graph skips everything downstream of it that does not
+  # itself use always(). Gating on `ci` therefore silently stopped these builds from
+  # ever running on main. See the note on dev-release-main.
   dev-release:
-    needs: [changes, ci]
+    needs: [changes, translations, lint, mypy, pre-commit, test, hacs_validate, scripts]
     if: >-
       needs.changes.outputs.component == 'true' &&
-      needs.ci.result == 'success' &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       !startsWith(github.head_ref, 'release-please--')
@@ -530,11 +535,16 @@ jobs:
   # We do not force-push a moving `dev` branch: those commits are unsigned bot
   # commits and conflict with "Commits must have verified signatures" rules.
   # Install RCs via the prerelease tag / HACS instead. main is never mutated.
+  #
+  # Do NOT reintroduce `needs: [changes, ci]` here. The aggregate gate needs
+  # `conventional_commits`, which only runs on pull_request; on a push to main it is
+  # skipped, and that skip propagates through `ci` (which survives it via
+  # `if: always()`) to skip this job — every condition in the `if` below evaluated
+  # true and no RC was ever cut. Depend on the real jobs, as sungrow-hass does.
   dev-release-main:
-    needs: [changes, ci]
+    needs: [changes, translations, lint, mypy, pre-commit, test, hacs_validate, scripts]
     if: >-
       needs.changes.outputs.component == 'true' &&
-      needs.ci.result == 'success' &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
       !contains(github.event.head_commit.message, ': release ')
