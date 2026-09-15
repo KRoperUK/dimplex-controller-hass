@@ -138,6 +138,18 @@
       },
       "connected": {
         "name": "Connecté"
+      },
+      "boost_active": {
+        "name": "Boost actif"
+      },
+      "away_active": {
+        "name": "Mode absence actif"
+      },
+      "frost_protection": {
+        "name": "Protection antigel"
+      },
+      "advance_active": {
+        "name": "Avance active"
       }
     },
     "switch": {

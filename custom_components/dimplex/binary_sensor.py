@@ -12,12 +12,20 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import DOMAIN
+from .const import (
+    ADVANCE_FLAG,
+    AWAY_FLAG,
+    BOOST_FLAG,
+    DOMAIN,
+    FROST_FLAG,
+    has_any_mode,
+)
 from .entity import DimplexEntity
 
 
@@ -52,6 +60,42 @@ APPLIANCE_BINARY_SENSORS: tuple[DimplexBinarySensorEntityDescription, ...] = (
         is_on_fn=lambda status: bool(status and getattr(status, "SetbackEnabled", False)),
         icon_on="mdi:thermometer-chevron-down",
         icon_off="mdi:thermometer",
+    ),
+    # Which mode the appliance is *actually* in. The climate entity folds these
+    # into a single preset, which hid the #163 mismatch between the mode asked
+    # for and the mode engaged. Diagnostic, so they stay out of the way until
+    # someone goes looking.
+    DimplexBinarySensorEntityDescription(
+        key="boost_active",
+        translation_key="boost_active",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        is_on_fn=lambda status: has_any_mode(status, BOOST_FLAG),
+        icon_on="mdi:rocket-launch",
+        icon_off="mdi:rocket-launch-outline",
+    ),
+    DimplexBinarySensorEntityDescription(
+        key="away_active",
+        translation_key="away_active",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        is_on_fn=lambda status: has_any_mode(status, AWAY_FLAG),
+        icon_on="mdi:home-export-outline",
+        icon_off="mdi:home-outline",
+    ),
+    DimplexBinarySensorEntityDescription(
+        key="frost_protection",
+        translation_key="frost_protection",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        is_on_fn=lambda status: has_any_mode(status, FROST_FLAG),
+        icon_on="mdi:snowflake",
+        icon_off="mdi:snowflake-off",
+    ),
+    DimplexBinarySensorEntityDescription(
+        key="advance_active",
+        translation_key="advance_active",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        is_on_fn=lambda status: has_any_mode(status, ADVANCE_FLAG),
+        icon_on="mdi:fast-forward",
+        icon_off="mdi:fast-forward-outline",
     ),
 )
 

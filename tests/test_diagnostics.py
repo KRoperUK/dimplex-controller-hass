@@ -410,3 +410,21 @@ async def test_diagnostics_redacts_tokens_and_summarises_energy(hass: HomeAssist
     assert data["appliances"][0]["appliance_id"] == "app-1"
     assert data["energy_summary"]["hub-1"]["t1"]["app-1"]["point_count"] == 2
     assert "energy_summary" in data
+
+
+async def test_active_modes_decodes_the_bitfield() -> None:
+    """Diagnostics spell out the engaged modes so nobody decodes 0xNN by hand."""
+    from custom_components.dimplex.const import ADVANCE_FLAG, BOOST_FLAG, FROST_FLAG
+    from custom_components.dimplex.diagnostics import _active_modes
+
+    assert _active_modes(None) is None
+    assert _active_modes(SimpleNamespace(ApplianceModes=None)) is None
+    assert _active_modes(SimpleNamespace()) is None
+    assert _active_modes(SimpleNamespace(ApplianceModes="junk")) is None
+    assert _active_modes(SimpleNamespace(ApplianceModes=0)) == []
+    assert _active_modes(SimpleNamespace(ApplianceModes=1 | BOOST_FLAG)) == ["TIMER_MODE", "BOOST"]
+    # The values this integration used to call boost and away.
+    assert _active_modes(SimpleNamespace(ApplianceModes=ADVANCE_FLAG | FROST_FLAG)) == [
+        "ADVANCE",
+        "FROST_PROTECT",
+    ]

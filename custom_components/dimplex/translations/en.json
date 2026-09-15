@@ -152,6 +152,18 @@
       },
       "connected": {
         "name": "Connected"
+      },
+      "boost_active": {
+        "name": "Boost active"
+      },
+      "away_active": {
+        "name": "Away active"
+      },
+      "frost_protection": {
+        "name": "Frost protection"
+      },
+      "advance_active": {
+        "name": "Advance active"
       }
     },
     "switch": {
