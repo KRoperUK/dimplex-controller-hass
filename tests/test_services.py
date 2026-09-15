@@ -1,5 +1,6 @@
 """Tests for domain services."""
 
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -9,6 +10,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dimplex.const import DOMAIN
 from custom_components.dimplex.services import (
+    SERVICE_SET_AWAY,
     SERVICE_SET_BOOST,
     _appliance_id_from_unique_id,
     async_setup_services,
@@ -185,3 +187,64 @@ async def test_service_unknown_appliance_is_noop(hass: HomeAssistant) -> None:
     )
     runtime.api.async_set_boost.assert_not_awaited()
     runtime.status.async_request_refresh.assert_not_awaited()
+
+
+async def test_set_away_accepts_a_duration_in_days(hass: HomeAssistant) -> None:
+    """#163: the app requires an away duration, so the service must accept one."""
+    runtime = _make_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_AWAY,
+        {"device_id": device_id, "temperature": 18.0, "days": 3},
+        blocking=True,
+    )
+
+    kwargs = runtime.api.async_set_away.await_args.kwargs
+    assert kwargs["temperature"] == 18.0
+    assert kwargs["number_of_days"] == 3
+    assert kwargs["until"] is None
+    assert kwargs["enable"] is True
+
+
+async def test_set_away_accepts_an_until_datetime(hass: HomeAssistant) -> None:
+    """An explicit come-home moment is passed through as the away-until date."""
+    runtime = _make_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_AWAY,
+        {"device_id": device_id, "until": "2026-12-24 09:30:00"},
+        blocking=True,
+    )
+
+    kwargs = runtime.api.async_set_away.await_args.kwargs
+    assert kwargs["until"] == datetime(2026, 12, 24, 9, 30)
+    assert kwargs["number_of_days"] == 0
+
+
+async def test_mode_temperature_is_clamped_to_the_cloud_range(hass: HomeAssistant) -> None:
+    """Out-of-range targets are clamped to 7-30 °C rather than silently misapplied."""
+    runtime = _make_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_AWAY,
+        {"device_id": device_id, "temperature": 4.0},
+        blocking=True,
+    )
+    assert runtime.api.async_set_away.await_args.kwargs["temperature"] == 7.0
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_BOOST,
+        {"device_id": device_id, "temperature": 45.0},
+        blocking=True,
+    )
+    assert runtime.api.async_set_boost.await_args.kwargs["temperature"] == 30.0

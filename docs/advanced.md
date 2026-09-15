@@ -43,12 +43,18 @@ Changing options reloads the integration.
 
 Prefer these for scripts when climate presets are too coarse:
 
-| Service                                     | Purpose                                          |
-| ------------------------------------------- | ------------------------------------------------ |
-| `dimplex.set_boost` / `dimplex.clear_boost` | Boost on/off (`temperature`, `duration` minutes) |
-| `dimplex.set_away` / `dimplex.clear_away`   | Away on/off                                      |
-| `dimplex.set_eco_start`                     | EcoStart (`enable`)                              |
-| `dimplex.set_open_window_detection`         | Open-window detection (`enable`)                 |
+| Service                                     | Purpose                                                     |
+| ------------------------------------------- | ----------------------------------------------------------- |
+| `dimplex.set_boost` / `dimplex.clear_boost` | Boost on/off (`temperature` 7-30 °C, `duration` minutes)    |
+| `dimplex.set_away` / `dimplex.clear_away`   | Away on/off (`temperature` 7-30 °C, plus `days` or `until`) |
+| `dimplex.set_eco_start`                     | EcoStart (`enable`)                                         |
+| `dimplex.set_open_window_detection`         | Open-window detection (`enable`)                            |
+
+Away is a _settable_ setback, not frost protection: the cloud accepts 7-30 °C and
+holds it until the moment you specify. Give it `days` for a simple count, or
+`until` for an exact return time (`until` wins if both are given); omit both for
+an open-ended away. Temperatures outside 7-30 °C are clamped, with a warning in
+the log — that is the range the cloud itself offers.
 
 Target with `device_id` (appliance device) or any `entity_id` on that appliance.
 

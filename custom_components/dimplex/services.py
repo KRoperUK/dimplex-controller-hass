@@ -19,6 +19,8 @@ ATTR_DEVICE_ID = "device_id"
 ATTR_ENTITY_ID = "entity_id"
 ATTR_TEMPERATURE = "temperature"
 ATTR_DURATION = "duration"
+ATTR_DAYS = "days"
+ATTR_UNTIL = "until"
 ATTR_ENABLE = "enable"
 
 SERVICE_SET_BOOST = "set_boost"
@@ -31,6 +33,30 @@ SERVICE_SET_OPEN_WINDOW = "set_open_window_detection"
 _DEFAULT_BOOST_TEMP = 25.0
 _DEFAULT_BOOST_MINUTES = 60
 _DEFAULT_AWAY_TEMP = 16.0
+# Away accepts 7-30 °C in the official app; 7 is the anti-freeze floor.
+_MIN_MODE_TEMP = 7.0
+_MAX_MODE_TEMP = 30.0
+_MAX_AWAY_DAYS = 365
+
+
+def _mode_temperature(call: ServiceCall, default: float) -> float:
+    """Return the requested mode temperature, clamped to the cloud's 7-30 °C range.
+
+    Out-of-range values are clamped rather than rejected so existing automations
+    keep working, but the clamp is logged — the appliance would otherwise apply
+    something the user did not ask for with no explanation.
+    """
+    requested = float(call.data.get(ATTR_TEMPERATURE, default))
+    clamped = min(max(requested, _MIN_MODE_TEMP), _MAX_MODE_TEMP)
+    if clamped != requested:
+        _LOGGER.warning(
+            "Requested %.1f °C is outside the %.0f-%.0f °C range the Dimplex cloud accepts; using %.1f °C",
+            requested,
+            _MIN_MODE_TEMP,
+            _MAX_MODE_TEMP,
+            clamped,
+        )
+    return clamped
 
 
 def _target_schema() -> vol.Schema:
@@ -136,7 +162,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await api.async_set_boost(
             hub_id,
             appliance_id,
-            temperature=float(call.data.get(ATTR_TEMPERATURE, _DEFAULT_BOOST_TEMP)),
+            temperature=_mode_temperature(call, _DEFAULT_BOOST_TEMP),
             duration_minutes=int(call.data.get(ATTR_DURATION, _DEFAULT_BOOST_MINUTES)),
             enable=True,
         )
@@ -150,7 +176,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await api.async_set_boost(
             hub_id,
             appliance_id,
-            temperature=float(call.data.get(ATTR_TEMPERATURE, _DEFAULT_BOOST_TEMP)),
+            temperature=_mode_temperature(call, _DEFAULT_BOOST_TEMP),
             enable=False,
         )
         await _refresh_status(hass, entry_id)
@@ -163,8 +189,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await api.async_set_away(
             hub_id,
             appliance_id,
-            temperature=float(call.data.get(ATTR_TEMPERATURE, _DEFAULT_AWAY_TEMP)),
+            temperature=_mode_temperature(call, _DEFAULT_AWAY_TEMP),
             enable=True,
+            until=call.data.get(ATTR_UNTIL),
+            number_of_days=int(call.data.get(ATTR_DAYS, 0)),
         )
         await _refresh_status(hass, entry_id)
 
@@ -176,7 +204,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await api.async_set_away(
             hub_id,
             appliance_id,
-            temperature=float(call.data.get(ATTR_TEMPERATURE, _DEFAULT_AWAY_TEMP)),
+            temperature=_mode_temperature(call, _DEFAULT_AWAY_TEMP),
             enable=False,
         )
         await _refresh_status(hass, entry_id)
@@ -222,7 +250,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN,
         SERVICE_SET_AWAY,
         handle_set_away,
-        schema=_target_schema().extend({vol.Optional(ATTR_TEMPERATURE, default=_DEFAULT_AWAY_TEMP): vol.Coerce(float)}),
+        schema=_target_schema().extend(
+            {
+                vol.Optional(ATTR_TEMPERATURE, default=_DEFAULT_AWAY_TEMP): vol.Coerce(float),
+                vol.Optional(ATTR_DAYS): vol.All(vol.Coerce(int), vol.Range(min=1, max=_MAX_AWAY_DAYS)),
+                vol.Optional(ATTR_UNTIL): cv.datetime,
+            }
+        ),
     )
     hass.services.async_register(
         DOMAIN,

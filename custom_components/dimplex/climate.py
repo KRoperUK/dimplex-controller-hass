@@ -187,8 +187,6 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         | ClimateEntityFeature.TURN_OFF
     )
     _attr_hvac_modes = [HVACMode.HEAT, HVACMode.OFF]
-    _attr_min_temp = 5.0
-    _attr_max_temp = 30.0
     _attr_target_temperature_step = 0.5
 
     def __init__(
@@ -204,6 +202,19 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
     @property
     def _caps(self) -> Any:
         return capabilities_for_row(self._appliance, self._status)
+
+    @property
+    def min_temp(self) -> float:
+        """Lowest settable target, from the appliance capability matrix.
+
+        The cloud's own pickers stop at 7 °C — the frost-protection floor — so
+        offering less than that just produces rejected writes.
+        """
+        return float(self._caps.min_temp)
+
+    @property
+    def max_temp(self) -> float:
+        return float(self._caps.max_temp)
 
     @property
     def _timer_mode(self) -> int | None:

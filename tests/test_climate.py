@@ -601,3 +601,21 @@ async def test_climate_set_temperature_falls_back_to_schedule_rewrite(hass):
         )
         set_point.assert_awaited_once()
         rewrite_schedule.assert_awaited_once_with("hub-1", "appliance-1", 19.0)
+
+
+@pytest.mark.asyncio
+async def test_climate_temperature_limits_come_from_capabilities(hass):
+    """min/max temp follow the cloud's own 7-30 °C range, not a hard-coded 5.0."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload()
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.attributes.get("min_temp") == 7.0
+    assert state.attributes.get("max_temp") == 30.0

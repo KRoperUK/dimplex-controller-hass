@@ -341,14 +341,24 @@ class DimplexApiClient:
         *,
         temperature: float,
         enable: bool = True,
+        until: datetime | None = None,
+        number_of_days: int = 0,
     ) -> None:
-        """Enable or disable Away mode."""
+        """Enable or disable Away mode.
+
+        ``until`` is the "away until" moment the app sends. ``number_of_days`` is
+        the simpler equivalent — the library converts it to a date. Away accepts
+        a target between 7 and 30 °C and defaults to the 7 °C anti-freeze floor,
+        so a low temperature here is by design, not a fault.
+        """
         with _translated_errors():
             await self._client.set_away(
                 hub_id,
                 [appliance_id],
                 temperature=temperature,
                 enable=enable,
+                until=until,
+                number_of_days=number_of_days,
             )
 
     async def async_get_energy_report(
