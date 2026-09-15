@@ -42,7 +42,7 @@ async def test_set_boost_service_by_device(hass: HomeAssistant) -> None:
         "appliances": [{"hub": hub, "zone": SimpleNamespace(ZoneName="Z"), "appliance": appliance, "status": None}]
     }
     runtime = SimpleNamespace(api=api, status=status_coord)
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+    entry.runtime_data = runtime
 
     await async_setup_services(hass)
 
@@ -93,7 +93,7 @@ def _make_runtime():
 async def _register_entry(hass: HomeAssistant, runtime, entry_id: str = "svc-entry"):
     entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id=entry_id)
     entry.add_to_hass(hass)
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+    entry.runtime_data = runtime
     await async_setup_services(hass)
     return entry
 
