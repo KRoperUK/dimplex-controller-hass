@@ -75,7 +75,7 @@ async def test_diagnostics_with_all_appliances_offline(hass: HomeAssistant) -> N
     energy_coord.update_interval = "0:30:00"
 
     runtime = SimpleNamespace(status=status_coord, energy=energy_coord)
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+    entry.runtime_data = runtime
 
     with patch("custom_components.dimplex.diagnostics.version", return_value="0.9.0"):
         data = await async_get_config_entry_diagnostics(hass, entry)
@@ -154,7 +154,8 @@ async def test_diagnostics_with_no_runtime(hass: HomeAssistant) -> None:
     """Diagnostics still produce a valid payload when the runtime is missing.
 
     Edge case: the integration is configured but the entry has been
-    removed from ``hass.data`` (e.g. mid-unload). The function must not
+    unloaded, so Home Assistant has deleted its ``runtime_data``. The
+    function must not
     raise; it should return a payload with empty coordinators and
     appliance sections.
     """
@@ -165,7 +166,7 @@ async def test_diagnostics_with_no_runtime(hass: HomeAssistant) -> None:
         entry_id="diag-no-runtime",
     )
     entry.add_to_hass(hass)
-    # Intentionally do NOT add a runtime to hass.data.
+    # Intentionally leave the entry without runtime_data.
 
     with patch("custom_components.dimplex.diagnostics.version", return_value="0.9.0"):
         data = await async_get_config_entry_diagnostics(hass, entry)
@@ -322,7 +323,7 @@ async def test_diagnostics_provisioning_property_branch(hass: HomeAssistant) -> 
     energy_coord.update_interval = "0:30:00"
 
     runtime = SimpleNamespace(status=status_coord, energy=energy_coord)
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+    entry.runtime_data = runtime
 
     with patch("custom_components.dimplex.diagnostics.version", return_value="0.9.0"):
         data = await async_get_config_entry_diagnostics(hass, entry)
@@ -392,7 +393,7 @@ async def test_diagnostics_redacts_tokens_and_summarises_energy(hass: HomeAssist
     energy_coord.update_interval = "0:30:00"
 
     runtime = SimpleNamespace(status=status_coord, energy=energy_coord)
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+    entry.runtime_data = runtime
 
     with patch("custom_components.dimplex.diagnostics.version", return_value="0.9.0"):
         data = await async_get_config_entry_diagnostics(hass, entry)

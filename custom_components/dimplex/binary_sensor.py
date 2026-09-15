@@ -113,7 +113,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up binary_sensor platform."""
-    runtime = hass.data[DOMAIN][entry.entry_id]
+    runtime = entry.runtime_data
     coordinator: DataUpdateCoordinator[dict[str, Any]] = runtime.status
     rows = (coordinator.data or {}).get("appliances", [])
     entities: list[BinarySensorEntity] = [

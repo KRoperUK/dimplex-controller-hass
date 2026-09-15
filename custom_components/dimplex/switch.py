@@ -13,7 +13,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .api import DimplexApiClient
-from .const import DOMAIN
 from .entity import DimplexEntity
 from .errors import control_errors
 
@@ -62,7 +61,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up switch platform."""
-    runtime = hass.data[DOMAIN][entry.entry_id]
+    runtime = entry.runtime_data
     rows = (runtime.status.data or {}).get("appliances", [])
     entities = [
         DimplexSwitch(runtime.status, entry, appliance_row, runtime.api, description)

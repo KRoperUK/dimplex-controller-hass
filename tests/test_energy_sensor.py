@@ -323,7 +323,7 @@ async def test_energy_summary_is_memoised_across_property_reads(hass):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    runtime = hass.data[DOMAIN][config_entry.entry_id]
+    runtime = config_entry.runtime_data
     # Must be the timestamp variant, or the memo below cannot work at all.
     assert isinstance(runtime.energy, DimplexEnergyCoordinator)
     assert runtime.energy.last_update_success_time is not None

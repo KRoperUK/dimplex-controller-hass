@@ -29,6 +29,35 @@ def test_schedule_sensor_native_value_and_periods():
     assert attrs["periods"][0]["temperature"] == 20.0
 
 
+def test_zone_sensor_goes_unavailable_when_the_zone_disappears():
+    """A zone the cloud stops reporting must not keep a stale anchor alive.
+
+    ``available`` used to consult only ``last_update_success``, so a zone that was
+    removed or renamed in the Dimplex app left its anchor reporting forever (#198).
+    """
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "e1"
+    hub = SimpleNamespace(HubId="h1")
+    zone = SimpleNamespace(ZoneId="z1", ZoneName="Living", ZoneType="Heating")
+    appliance = SimpleNamespace(ApplianceId="a1")
+    row = {"hub": hub, "zone": zone, "appliance": appliance, "status": None}
+
+    coord = MagicMock()
+    coord.last_update_success = True
+    coord.data = {"appliances": [row]}
+    sensor = DimplexZoneSensor(coord, entry, {"hub": hub, "zone": zone, "appliance": appliance})
+    assert sensor.available is True
+
+    # The zone is gone from the snapshot — removed or renamed in the app.
+    coord.data = {"appliances": []}
+    assert sensor.available is False
+
+    # Back, but the coordinator is failing: still unavailable.
+    coord.data = {"appliances": [row]}
+    coord.last_update_success = False
+    assert sensor.available is False
+
+
 def test_zone_device_identifiers():
     entry = MagicMock(spec=ConfigEntry)
     entry.entry_id = "e1"
