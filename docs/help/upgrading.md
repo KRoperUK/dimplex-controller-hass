@@ -55,6 +55,17 @@ working around any of it, stop.
 - **Advance is controllable** via `dimplex.set_advance` / `dimplex.clear_advance`.
 - **Four new diagnostic sensors** expose the engaged modes individually: boost, away, frost
   protection, advance.
+- **A dropped connection can no longer wipe your schedule.** The schedule-rewrite fallback now
+  runs only when the appliance genuinely _refuses_ the setpoint endpoint (HTTP 403, 405, 501).
+  A timeout or a server error is reported as an error and writes nothing, and when the fallback
+  does run it says so in the log. See [setting a target](../use/temperature.md#setting-a-target).
+- **Room temperature no longer shows 255 °C.** The cloud's 0xFF "no value" sentinel was being
+  passed through by the climate entity, while the room-temperature sensor beside it correctly
+  showed nothing.
+- **Failed switches and actions explain themselves.** A refused EcoStart toggle or
+  `dimplex.set_boost` used to surface a raw traceback; every control now produces the same
+  readable message the thermostat has given since 4.0.2, and distinguishes "this appliance
+  will not do this" from "the cloud was unreachable".
 
 ### After upgrading
 
@@ -76,10 +87,13 @@ A major release relative to 2.0.0.
 
 - **Climate entities are created per appliance.** Prefer them for setpoints and for the
   boost / away / eco presets.
-- **Energy is no longer a single mislabelled "30-day" total.** It is now two sensors:
-  **Energy lifetime** (cumulative cloud daily history) and **Energy today** (local calendar
-  day from midnight). Prefer **Energy today** for the Energy Dashboard unless you
-  deliberately want the full history imported at once.
+- **Energy became two sensors:** **Energy lifetime** and **Energy today** (local calendar day
+  from midnight). Prefer **Energy today** for the Energy Dashboard.
+
+  The "lifetime" half of that claim was wrong — it was still a 30-day window, and declaring
+  it a rising meter is what corrupted statistics. Corrected in 4.1.0, where it is named
+  **Energy last 30 days** and carries no state class; see the 4.1.0 notes above.
+
 - **Entity unique IDs and names may change.** EcoStart gained a stable `_ecostart` suffix,
   and open-window detection became a switch as well as a binary sensor. Expect some renamed
   entities and a one-off orphan cleanup.
@@ -94,8 +108,8 @@ A major release relative to 2.0.0.
 - [ ] Confirm the config entry is loaded, with no import or requirement errors in the log.
 - [ ] Review the new `climate.*` entities and the energy sensors.
 - [ ] Re-point automations that used old entity IDs.
-- [ ] For the Energy Dashboard use **Energy today** rather than dumping multi-year
-      **lifetime** history in, unless that is what you want.
+- [ ] For the Energy Dashboard use **Energy today**. (In 4.1.0 the window sensors can no
+      longer be selected as a consumption source at all.)
 
 ## Requirements
 

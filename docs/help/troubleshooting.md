@@ -14,21 +14,23 @@ Find your symptom below, or read the section that matches where it went wrong.
 
 ## Symptom index
 
-| Symptom                                        | Likely cause                                                                         |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Boost does nothing, or the wrong thing happens | [Boost engages the wrong mode](#boost-does-nothing-or-something-else-happens)        |
-| Away drops the heater to 7 °C                  | [Away engaged frost protection](#away-pins-the-heater-to-7-c)                        |
-| Away will not go above 18 °C                   | [That is the cloud's real limit](#away-will-not-go-above-18-c)                       |
-| Changing the preset appears to do nothing      | [Presets used to stack instead of replace](#changing-the-preset-does-nothing)        |
-| Changing the temperature is rejected           | [Some Quantum heaters refuse remote writes](#changing-the-temperature-is-rejected)   |
-| The heater reports 7 °C after being turned off | [Correct — "off" is frost protection](#the-heater-reports-7-c-after-i-turned-it-off) |
-| A target on a storage heater had no effect     | [No stored charge to release](#a-target-on-a-storage-heater-did-nothing)             |
-| `preset_mode` disagrees with the mode sensors  | [One preset cannot show several modes](#preset_mode-disagrees-with-the-mode-sensors) |
-| My timer schedule changed by itself            | [Setpoint writes used to rewrite it](#my-timer-schedule-changed-by-itself)           |
-| Entities are `unavailable`                     | [Empty cloud overview](#entities-are-unavailable)                                    |
-| Energy sensor `unavailable` in summer          | [Expected](#energy-sensor-shows-unavailable-in-summer)                               |
-| Repeatedly asked to re-authenticate            | [Token refresh](#tokens-keep-expiring)                                               |
-| HACS offers an older version                   | [Pre-release channel](#hacs-shows-an-update-after-installing-a-pre-release)          |
+| Symptom                                        | Likely cause                                                                                         |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Boost does nothing, or the wrong thing happens | [Boost engages the wrong mode](#boost-does-nothing-or-something-else-happens)                        |
+| Away drops the heater to 7 °C                  | [Away engaged frost protection](#away-pins-the-heater-to-7-c)                                        |
+| Away will not go above 18 °C                   | [That is the cloud's real limit](#away-will-not-go-above-18-c)                                       |
+| Changing the preset appears to do nothing      | [Presets used to stack instead of replace](#changing-the-preset-does-nothing)                        |
+| Changing the temperature is rejected           | [Some Quantum heaters refuse remote writes](#changing-the-temperature-is-rejected)                   |
+| The heater reports 7 °C after being turned off | [Correct — "off" is frost protection](#the-heater-reports-7-c-after-i-turned-it-off)                 |
+| A target on a storage heater had no effect     | [No stored charge to release](#a-target-on-a-storage-heater-did-nothing)                             |
+| `preset_mode` disagrees with the mode sensors  | [One preset cannot show several modes](#preset_mode-disagrees-with-the-mode-sensors)                 |
+| My timer schedule changed by itself            | [Setpoint writes used to rewrite it](#my-timer-schedule-changed-by-itself)                           |
+| Room temperature reads 255 °C                  | [The cloud's "no value" sentinel](#room-temperature-reads-255-c)                                     |
+| Energy Dashboard shows far too much energy     | [A window sensor was treated as a meter](#the-energy-dashboard-shows-far-more-than-the-heaters-used) |
+| Entities are `unavailable`                     | [Empty cloud overview](#entities-are-unavailable)                                                    |
+| Energy sensor `unavailable` in summer          | [Expected](#energy-sensor-shows-unavailable-in-summer)                                               |
+| Repeatedly asked to re-authenticate            | [Token refresh](#tokens-keep-expiring)                                                               |
+| HACS offers an older version                   | [Pre-release channel](#hacs-shows-an-update-after-installing-a-pre-release)                          |
 
 ## Heating behaviour
 
@@ -97,6 +99,11 @@ the schedule rewrite only if that is refused. If both are refused you now get a 
 naming the appliance instead of an opaque failure — that appliance genuinely does not accept
 remote setpoint changes, and the official app will not manage it either.
 
+The same wording now covers **every** control, not just the thermostat: switch toggles and all
+`dimplex.*` actions used to surface a raw traceback for the identical failure. The message also
+distinguishes a refusal, which will never succeed for that appliance, from an unreachable
+cloud, which is worth retrying.
+
 ### The heater reports 7 °C after I turned it off
 
 **Symptom:** `climate.turn_off` leaves the target at 7 °C rather than blank or off.
@@ -139,8 +146,47 @@ no preset at all.
 periods — there was no other path.
 
 **Fix:** Upgrade. 4.1.0 writes through `SetApplianceSetpointTemperature`, which leaves the
-schedule alone. The rewrite survives only as a fallback for appliances that reject the
-dedicated endpoint. Repair your programme in the official app once after upgrading.
+schedule alone. The rewrite survives only as a fallback for appliances that **refuse** the
+dedicated endpoint — HTTP 403, 405 or 501. A timeout or a server error no longer triggers it:
+during 4.1.0 development it did, so a single dropped connection while nudging the target could
+overwrite every period. When the fallback does run it now logs a warning naming the appliance
+and the status, so it is never silent. Repair your programme in the official app once after
+upgrading.
+
+### Room temperature reads 255 °C
+
+**Symptom:** The thermostat card shows a current temperature of 255 °C, and history has a spike
+to match — while the separate **Room temperature** sensor shows nothing at all.
+
+**Cause:** The cloud reports 0xFF (255) for a temperature field that has no active value. Every
+other temperature read filtered it; the climate entity's `current_temperature` was the one that
+did not, which is why the sensor and the card disagreed.
+
+**Fix:** Upgrade to 4.1.0. The sentinel now becomes "unknown" on both. Nothing needs repairing
+except the recorded history, which you can leave alone or purge for that entity.
+
+### The Energy Dashboard shows far more than the heaters used
+
+**Symptom:** Dimplex consumption on the Energy Dashboard is implausibly high — sometimes a
+month of usage appearing repeatedly.
+
+**Cause:** Before 4.1.0 the **Energy lifetime** sensors declared themselves rising meters
+(`total_increasing`) while actually reporting a rolling 30-day sum. The value falls whenever a
+heavy day drops off the back of that window, and Home Assistant reads a fall of more than 10%
+as a meter reset, adding the whole 30-day total to long-term statistics again. Routine in
+spring and autumn, and guaranteed after a cold snap.
+
+**Fix:** Upgrade to 4.1.0, which renames them **Energy last 30 days** and removes the state
+class, so they can no longer be selected as a consumption source.
+
+**Then clean up the history**, because statistics do not self-heal:
+
+1. Remove the sensor from **Settings** → **Dashboards** → **Energy** and add **Energy today**
+   instead.
+2. Go to **Developer tools** → **Statistics**, find the old entity, and delete its statistic.
+
+The **Energy today** sensors were always correct and need nothing. See
+[Energy monitoring](../use/energy.md).
 
 ## Setup failures
 
