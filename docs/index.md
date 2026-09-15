@@ -30,112 +30,179 @@ the appliance's engaged modes broken out so you can see what the heater is actua
 
 ## Start here
 
-<div class="grid cards" markdown>
+<!--
+  Grid cards use the `.grid` + `.card` form rather than `.grid.cards` + a Markdown
+  list. Both are styled identically by the theme, but the list form needs its card
+  body indented four spaces, and Prettier rewrites that to two — which Python-
+  Markdown does not treat as list continuation, so the divider and description
+  escaped the <li> and rendered as full-width siblings of the card.
 
-- :material-download: **[Install](start/index.md)**
+  `.card` divs put their content at column 0, so there is no indentation for
+  Prettier to change. Do not "simplify" this back to a list.
+-->
 
-  ***
+<div class="grid" markdown>
 
-  HACS or manual, then restart and add the integration.
+<div class="card" markdown>
 
-- :material-key: **[Connect your account](start/connect.md)**
+:material-download: **[Install](start/index.md)**
 
-  ***
+---
 
-  Email and password, or a browser auth code if that fails.
+HACS or manual, then restart and add the integration.
 
-- :material-thermostat: **[Modes & presets](use/modes.md)**
+</div>
 
-  ***
+<div class="card" markdown>
 
-  What boost, away, advance and frost protection actually do — and why one
-  Home Assistant preset cannot show all of them.
+:material-key: **[Connect your account](start/connect.md)**
 
-- :material-tune-vertical: **[Temperature & schedules](use/temperature.md)**
+---
 
-  ***
+Email and password, or a browser auth code if that fails.
 
-  How a setpoint is written, why "off" reports 7 °C, and what the cloud
-  will not let you change.
+</div>
 
-- :material-lightning-bolt: **[Energy monitoring](use/energy.md)**
+<div class="card" markdown>
 
-  ***
+:material-thermostat: **[Modes & presets](use/modes.md)**
 
-  Daily kWh history with T1 and T2 tariffs kept apart.
+---
+
+What boost, away, advance and frost protection actually do — and why one
+Home Assistant preset cannot show all of them.
+
+</div>
+
+<div class="card" markdown>
+
+:material-tune-vertical: **[Temperature & schedules](use/temperature.md)**
+
+---
+
+How a setpoint is written, why "off" reports 7 °C, and what the cloud
+will not let you change.
+
+</div>
+
+<div class="card" markdown>
+
+:material-lightning-bolt: **[Energy monitoring](use/energy.md)**
+
+---
+
+Daily kWh history with T1 and T2 tariffs kept apart.
+
+</div>
 
 </div>
 
 ## What you get
 
-<div class="grid cards" markdown>
+<div class="grid" markdown>
 
-- :material-home-thermometer: **Climate control**
+<div class="card" markdown>
 
-  ***
+:material-home-thermometer: **Climate control**
 
-  A thermostat per appliance: target temperature, heat/off, and boost / away /
-  eco presets. Setting a target uses the cloud's dedicated setpoint endpoint,
-  so your timer schedule is left alone.
+---
 
-- :material-eye: **Mode visibility**
+A thermostat per appliance: target temperature, heat/off, and boost / away /
+eco presets. Setting a target uses the cloud's dedicated setpoint endpoint,
+so your timer schedule is left alone.
 
-  ***
+</div>
 
-  The appliance holds a bitfield of modes and several can be engaged at once.
-  Four diagnostic sensors surface boost, away, frost protection and advance
-  individually, so a mismatch cannot hide behind a single preset.
+<div class="card" markdown>
 
-- :material-chart-line: **Dual-rate energy**
+:material-eye: **Mode visibility**
 
-  ***
+---
 
-  Daily kWh history per register. T1 and T2 are never summed, so off-peak and
-  peak stay separate in the Energy Dashboard.
+The appliance holds a bitfield of modes and several can be engaged at once.
+Four diagnostic sensors surface boost, away, frost protection and advance
+individually, so a mismatch cannot hide behind a single preset.
 
-- :material-refresh-auto: **Stays connected**
+</div>
 
-  ***
+<div class="card" markdown>
 
-  Tokens refresh automatically, polling backs off when heaters are idle, and
-  re-authentication uses Home Assistant's built-in reauth flow.
+:material-chart-line: **Dual-rate energy**
+
+---
+
+Daily kWh history per register. T1 and T2 are never summed, so off-peak and
+peak stay separate in the Energy Dashboard.
+
+</div>
+
+<div class="card" markdown>
+
+:material-refresh-auto: **Stays connected**
+
+---
+
+Tokens refresh automatically, polling backs off when heaters are idle, and
+re-authentication uses Home Assistant's built-in reauth flow.
+
+</div>
 
 </div>
 
 ## Reference
 
-<div class="grid cards" markdown>
+<div class="grid" markdown>
 
-- :material-format-list-bulleted: **[Entities](reference/entities.md)**
+<div class="card" markdown>
 
-  ***
+:material-format-list-bulleted: **[Entities](reference/entities.md)**
 
-  Every entity, what it reads, and which are disabled by default.
+---
 
-- :material-play-circle: **[Actions](reference/actions.md)**
+Every entity, what it reads, and which are disabled by default.
 
-  ***
+</div>
 
-  The `dimplex.*` actions, their fields and accepted ranges.
+<div class="card" markdown>
 
-- :material-tune: **[Options](reference/options.md)**
+:material-play-circle: **[Actions](reference/actions.md)**
 
-  ***
+---
 
-  Platform toggles, poll intervals and what is stored in the config entry.
+The `dimplex.*` actions, their fields and accepted ranges.
 
-- :material-lifebuoy: **[Troubleshooting](help/troubleshooting.md)**
+</div>
 
-  ***
+<div class="card" markdown>
 
-  Setup failures, unavailable entities, and symptoms with known causes.
+:material-tune: **[Options](reference/options.md)**
 
-- :material-hospital-box: **[Appliance support](reference/appliances.md)**
+---
 
-  ***
+Platform toggles, poll intervals and what is stored in the config entry.
 
-  What is verified against hardware, inferred from the official app, and
-  untested.
+</div>
+
+<div class="card" markdown>
+
+:material-lifebuoy: **[Troubleshooting](help/troubleshooting.md)**
+
+---
+
+Setup failures, unavailable entities, and symptoms with known causes.
+
+</div>
+
+<div class="card" markdown>
+
+:material-hospital-box: **[Appliance support](reference/appliances.md)**
+
+---
+
+What is verified against hardware, inferred from the official app, and
+untested.
+
+</div>
 
 </div>
 
