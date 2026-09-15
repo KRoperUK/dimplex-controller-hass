@@ -10,6 +10,7 @@ from homeassistant.components.climate import (
     SERVICE_SET_PRESET_MODE,
     SERVICE_SET_TEMPERATURE,
     SERVICE_TURN_OFF,
+    SERVICE_TURN_ON,
 )
 from homeassistant.components.climate import (
     DOMAIN as CLIMATE_DOMAIN,
@@ -20,6 +21,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.dimplex.climate import (
     _is_away_active,
     _is_boost_active,
+    _is_frost_protect_active,
     _is_timer_off_like,
     _timer_mode_from_schedule,
 )
@@ -28,6 +30,7 @@ from custom_components.dimplex.const import (
     AWAY_FLAG,
     BOOST_FLAG,
     DOMAIN,
+    FROST_FLAG,
     HEAT_DEMAND_FLAGS,
     TIMER_FROST,
     TIMER_OFF,
@@ -38,7 +41,7 @@ from custom_components.dimplex.const import (
 from .const import MOCK_ENTRY_DATA
 
 
-def _payload(*, boost=False, away=False, eco=False, room=21.5, target=20, timer_mode=1):
+def _payload(*, boost=False, away=False, eco=False, frost=False, room=21.5, target=20, timer_mode=1):
     hub = SimpleNamespace(HubId="hub-1")
     zone = SimpleNamespace(ZoneName="Living Room")
     appliance = SimpleNamespace(
@@ -59,7 +62,7 @@ def _payload(*, boost=False, away=False, eco=False, room=21.5, target=20, timer_
         AwayTemperature=15.0,
         BoostDuration=30 if boost else 0,
         AwayDateTime="2026-07-01T00:00:00" if away else None,
-        ApplianceModes=(BOOST_FLAG if boost else 0) | (AWAY_FLAG if away else 0),
+        ApplianceModes=((BOOST_FLAG if boost else 0) | (AWAY_FLAG if away else 0) | (FROST_FLAG if frost else 0)),
         OpenWindowEnabled=False,
         SetbackEnabled=False,
     )
@@ -169,9 +172,13 @@ async def test_climate_set_temperature_and_presets(hass):
 
     with (
         patch(
-            "custom_components.dimplex.DimplexApiClient.async_set_target_temperature",
+            "custom_components.dimplex.DimplexApiClient.async_set_appliance_setpoint",
             new_callable=AsyncMock,
         ) as set_temp,
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_target_temperature",
+            new_callable=AsyncMock,
+        ) as rewrite_schedule,
         _api_data(payload),
     ):
         await hass.services.async_call(
@@ -181,6 +188,8 @@ async def test_climate_set_temperature_and_presets(hass):
             blocking=True,
         )
         set_temp.assert_awaited_once_with("hub-1", "appliance-1", 22.5)
+        # The destructive schedule rewrite is only a fallback.
+        rewrite_schedule.assert_not_awaited()
 
     with (
         patch(
@@ -277,7 +286,7 @@ async def test_climate_comfort_clears_modes(hass):
 
 @pytest.mark.asyncio
 async def test_climate_turn_off_clears_boost_and_away(hass):
-    """Turning climate off clears boost/away and sets frost timer mode."""
+    """Turning climate off clears boost/away and engages frost protection."""
     config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
     payload = _payload(boost=True, away=True)
@@ -297,6 +306,10 @@ async def test_climate_turn_off_clears_boost_and_away(hass):
             new_callable=AsyncMock,
         ) as set_away,
         patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_frost_protect",
+            new_callable=AsyncMock,
+        ) as set_frost,
+        patch(
             "custom_components.dimplex.DimplexApiClient.async_set_timer_mode",
             new_callable=AsyncMock,
         ) as set_timer,
@@ -310,7 +323,9 @@ async def test_climate_turn_off_clears_boost_and_away(hass):
         )
         assert set_boost.await_count == 1
         assert set_away.await_count == 1
-        set_timer.assert_awaited_once_with("hub-1", "appliance-1", 2)
+        set_frost.assert_awaited_once_with("hub-1", "appliance-1", enable=True)
+        # No schedule write — SetTimerMode is what Quantum answers with 403.
+        set_timer.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -432,7 +447,7 @@ async def test_climate_control_error_surfaces_homeassistant_error(hass):
 
     config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
-    payload = _payload(timer_mode=1)  # heat, no boost/away -> turn off goes straight to set_timer_mode
+    payload = _payload(timer_mode=1)  # heat, no boost/away -> turn off goes straight to frost protect
 
     with _api_data(payload):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -441,7 +456,7 @@ async def test_climate_control_error_surfaces_homeassistant_error(hass):
     entity_id = _climate_entity(hass)
     with (
         patch(
-            "custom_components.dimplex.DimplexApiClient.async_set_timer_mode",
+            "custom_components.dimplex.DimplexApiClient.async_set_frost_protect",
             new_callable=AsyncMock,
             side_effect=CannotConnect("403"),
         ),
@@ -454,3 +469,135 @@ async def test_climate_control_error_surfaces_homeassistant_error(hass):
             {ATTR_ENTITY_ID: entity_id},
             blocking=True,
         )
+
+
+def test_frost_protect_helper():
+    """Frost protection is read from the mode bit, not the timer mode."""
+    assert _is_frost_protect_active(None) is False
+    assert _is_frost_protect_active(SimpleNamespace(ApplianceModes=FROST_FLAG)) is True
+    assert _is_frost_protect_active(SimpleNamespace(ApplianceModes=BOOST_FLAG)) is False
+    assert _is_frost_protect_active(SimpleNamespace(ApplianceModes=None)) is False
+    assert _is_frost_protect_active(SimpleNamespace()) is False
+
+
+@pytest.mark.asyncio
+async def test_climate_frost_mode_bit_reports_hvac_off(hass):
+    """The FrostProtect mode bit alone means off, with no schedule read needed."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    # Timer mode is a normal user timer — only the mode bit says "off".
+    payload = _payload(frost=True, timer_mode=1)
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == "off"
+    assert state.attributes.get("hvac_action") == "off"
+    assert state.attributes.get("preset_mode") is None
+
+
+@pytest.mark.asyncio
+async def test_climate_turn_on_clears_frost_protection(hass):
+    """Turning on clears the frost mode rather than only rewriting the schedule."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload(frost=True, timer_mode=1)
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_frost_protect",
+            new_callable=AsyncMock,
+        ) as set_frost,
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_timer_mode",
+            new_callable=AsyncMock,
+        ) as set_timer,
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_TURN_ON,
+            {ATTR_ENTITY_ID: entity_id},
+            blocking=True,
+        )
+        set_frost.assert_awaited_once_with("hub-1", "appliance-1", enable=False)
+        set_timer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_climate_turn_on_restores_legacy_frost_timer_mode(hass):
+    """Appliances parked in the frost/off timer mode by older releases recover."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload(timer_mode=TIMER_FROST)
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_frost_protect",
+            new_callable=AsyncMock,
+        ) as set_frost,
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_timer_mode",
+            new_callable=AsyncMock,
+        ) as set_timer,
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_TURN_ON,
+            {ATTR_ENTITY_ID: entity_id},
+            blocking=True,
+        )
+        # Mode bit is clear, so only the legacy schedule needs restoring.
+        set_frost.assert_not_awaited()
+        set_timer.assert_awaited_once_with("hub-1", "appliance-1", 0)
+
+
+@pytest.mark.asyncio
+async def test_climate_set_temperature_falls_back_to_schedule_rewrite(hass):
+    """An appliance that rejects the dedicated setpoint still gets its target."""
+    from custom_components.dimplex.api import CannotConnect
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload()
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_appliance_setpoint",
+            new_callable=AsyncMock,
+            side_effect=CannotConnect("403"),
+        ) as set_point,
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_target_temperature",
+            new_callable=AsyncMock,
+        ) as rewrite_schedule,
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_TEMPERATURE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: 19.0},
+            blocking=True,
+        )
+        set_point.assert_awaited_once()
+        rewrite_schedule.assert_awaited_once_with("hub-1", "appliance-1", 19.0)

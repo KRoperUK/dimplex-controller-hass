@@ -538,6 +538,43 @@ async def test_control_helpers_delegate_to_library(hass):
     set_owd.assert_awaited_once_with("h", ["a"], True)
 
 
+async def test_setpoint_and_frost_helpers_use_the_dedicated_endpoints(hass):
+    """The app's own setpoint / off endpoints are used, not the schedule editor."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with (
+        patch.object(api._client, "set_appliance_setpoint_temperature", new=AsyncMock()) as set_point,
+        patch.object(api._client, "set_frost_protect", new=AsyncMock()) as set_frost,
+    ):
+        await api.async_set_appliance_setpoint("h", "a", 21.5)
+        await api.async_set_frost_protect("h", "a", enable=True)
+        await api.async_set_frost_protect("h", "a", enable=False)
+
+    set_point.assert_awaited_once_with("h", ["a"], 21.5)
+    assert [call.kwargs["enable"] for call in set_frost.await_args_list] == [True, False]
+
+
+@pytest.mark.parametrize(
+    ("library_error", "expected"),
+    [
+        (DimplexApiError(403, "Forbidden"), CannotConnect),
+        (DimplexConnectionError("offline"), CannotConnect),
+        (DimplexAuthError("expired"), InvalidAuth),
+    ],
+)
+async def test_control_errors_are_translated(hass, library_error, expected):
+    """A 403 from an appliance that rejects a write becomes CannotConnect, not a raw error."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with (
+        patch.object(
+            api._client,
+            "set_appliance_setpoint_temperature",
+            new=AsyncMock(side_effect=library_error),
+        ),
+        pytest.raises(expected),
+    ):
+        await api.async_set_appliance_setpoint("h", "a", 21.0)
+
+
 async def test_async_get_energy_for_hubs(hass):
     """Energy-for-hubs helper returns t1/t2 maps per hub."""
     api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")

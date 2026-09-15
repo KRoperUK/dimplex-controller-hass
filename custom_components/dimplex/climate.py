@@ -27,7 +27,7 @@ from .const import (
     CONF_BOOST_DURATION,
     DEFAULT_BOOST_DURATION,
     DOMAIN,
-    TIMER_FROST,
+    FROST_FLAG,
     TIMER_OFF_LIKE,
     TIMER_USER,
     sane_temperature,
@@ -92,6 +92,16 @@ def _is_away_active(status: Any) -> bool:
         return bit
     away_dt = getattr(status, "AwayDateTime", None)
     return bool(away_dt and away_dt not in ("", "0001-01-01T00:00:00"))
+
+
+def _is_frost_protect_active(status: Any) -> bool:
+    """Return True when frost protection is engaged (the app's "off" state)."""
+    if status is None:
+        return False
+    prop = getattr(type(status), "is_frost_protect_active", None)
+    if isinstance(prop, property):
+        return bool(status.is_frost_protect_active)
+    return bool(_mode_bit(status, FROST_FLAG))
 
 
 def _timer_mode_from_schedule(schedule: Any) -> int | None:
@@ -163,8 +173,9 @@ async def async_setup_entry(
 class DimplexClimate(DimplexEntity, ClimateEntity):
     """Thermostat-style control for a Dimplex appliance.
 
-    HVAC OFF maps to timer frost protection (app "off" on most storage heaters /
-    radiators). HEAT restores user-timer mode. Boost/away remain climate presets.
+    HVAC OFF engages frost protection, which is how the official app turns a
+    heater off — there is no "off" mode, only the 7 °C anti-freeze floor. HEAT
+    clears it. Boost/away remain climate presets.
     """
 
     _attr_name = None  # device name is the climate entity name
@@ -249,7 +260,9 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         status = self._status
         if status is None:
             return HVACMode.OFF
-        if _is_timer_off_like(self._timer_mode):
+        # Frost protection is the app's "off". Appliances left in the legacy
+        # frost/off *timer* mode by earlier releases must still read as off.
+        if _is_frost_protect_active(status) or _is_timer_off_like(self._timer_mode):
             return HVACMode.OFF
         # Without a clear "off" bit in overview, treat missing temps as off.
         if status.RoomTemperature is None and status.ActiveSetPointTemperature is None:
@@ -259,7 +272,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
     @property
     def hvac_action(self) -> HVACAction | None:
         status = self._status
-        if status is None or _is_timer_off_like(self._timer_mode):
+        if status is None or _is_frost_protect_active(status) or _is_timer_off_like(self._timer_mode):
             return HVACAction.OFF
         if status.ComfortStatus:
             return HVACAction.HEATING
@@ -271,7 +284,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         if status is None:
             return None
         # Frost/off is expressed as HVACMode.OFF — do not also surface away/boost.
-        if _is_timer_off_like(self._timer_mode):
+        if _is_frost_protect_active(status) or _is_timer_off_like(self._timer_mode):
             return None
         if _is_boost_active(status):
             return PRESET_BOOST
@@ -283,23 +296,37 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
 
     @_translate_control_errors
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        """Set new target temperature."""
+        """Set a new target temperature.
+
+        Uses ``SetApplianceSetpointTemperature`` — the endpoint the official app
+        uses. It applies immediately and does not touch the stored schedule.
+        Appliances that reject it fall back to the legacy schedule rewrite, which
+        is what this integration used to do unconditionally and which Quantum
+        answers with HTTP 403 (#149).
+        """
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
             return
-        await self._api.async_set_target_temperature(
-            self._hub.HubId,
-            self._appliance.ApplianceId,
-            float(temperature),
-        )
+        hub_id = self._hub.HubId
+        appliance_id = self._appliance.ApplianceId
+        try:
+            await self._api.async_set_appliance_setpoint(hub_id, appliance_id, float(temperature))
+        except CannotConnect:
+            _LOGGER.debug(
+                "Dedicated setpoint endpoint rejected for %s; falling back to a schedule rewrite",
+                self._appliance.FriendlyName,
+            )
+            await self._api.async_set_target_temperature(hub_id, appliance_id, float(temperature))
         await self.coordinator.async_request_refresh()
 
     @_translate_control_errors
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set HVAC mode.
 
-        OFF → timer frost protection (app "off") and clear boost/away.
-        HEAT → user timer mode (schedule resumes) when currently frost/off.
+        OFF → frost protection at 7 °C, which is how the official app turns a
+        heater off, plus clearing boost/away. HEAT → clear frost protection, and
+        restore user-timer mode for appliances an earlier release parked in the
+        frost/off *timer* mode.
         """
         hub_id = self._hub.HubId
         appliance_id = self._appliance.ApplianceId
@@ -308,7 +335,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         if temp is None and status is not None:
             temp = sane_temperature(status.NormalTemperature)
         if temp is None:
-            temp = 16.0
+            temp = DEFAULT_AWAY_TEMP
 
         if hvac_mode == HVACMode.OFF:
             if _is_boost_active(status):
@@ -325,11 +352,13 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
                     temperature=temp,
                     enable=False,
                 )
-            await self._api.async_set_timer_mode(hub_id, appliance_id, TIMER_FROST)
-            self._invalidate_schedules()
+            await self._api.async_set_frost_protect(hub_id, appliance_id, enable=True)
         elif hvac_mode == HVACMode.HEAT:
+            if _is_frost_protect_active(status):
+                await self._api.async_set_frost_protect(hub_id, appliance_id, enable=False)
             if _is_timer_off_like(self._timer_mode):
-                # Resume schedule; MANUAL is available via timer APIs if needed later.
+                # Legacy state: an earlier release wrote the frost/off timer
+                # mode, so the schedule needs restoring as well.
                 await self._api.async_set_timer_mode(hub_id, appliance_id, TIMER_USER)
                 self._invalidate_schedules()
 
@@ -349,11 +378,11 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
             return
 
         status = self._status
-        comfort_temp = 21.0
-        if status and status.ActiveSetPointTemperature is not None:
-            comfort_temp = float(status.ActiveSetPointTemperature)
-        elif status and status.NormalTemperature is not None:
-            comfort_temp = float(status.NormalTemperature)
+        comfort_temp = sane_temperature(status.ActiveSetPointTemperature) if status else None
+        if comfort_temp is None and status is not None:
+            comfort_temp = sane_temperature(status.NormalTemperature)
+        if comfort_temp is None:
+            comfort_temp = 21.0
 
         hub_id = self._hub.HubId
         appliance_id = self._appliance.ApplianceId

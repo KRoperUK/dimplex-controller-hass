@@ -8,9 +8,9 @@ Entity names use Home Assistant’s `has_entity_name` pattern: the **device** is
 
 One climate entity per appliance.
 
-| Name            | Entity ID pattern     | Description                                                                                                                                                                          |
-| --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| _(device name)_ | `climate.<appliance>` | Thermostat: current room temperature, target setpoint, HVAC heat/off, presets. HVAC **off** follows timer frost protection / off (app “off”); **heat** is user-timer / manual modes. |
+| Name            | Entity ID pattern     | Description                                                                                                                                                                                                                    |
+| --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| _(device name)_ | `climate.<appliance>` | Thermostat: current room temperature, target setpoint, HVAC heat/off, presets. HVAC **off** is frost protection — the appliance has no off mode, only the 7 °C anti-freeze floor, which is exactly what the official app does. |
 
 ### Presets
 
@@ -23,9 +23,9 @@ One climate entity per appliance.
 
 ### Services
 
-- `climate.set_temperature` — writes the target via the cloud timer schedule.
+- `climate.set_temperature` — writes the target through the cloud's dedicated setpoint endpoint, so your schedule is left intact. Appliances that reject it fall back to a schedule rewrite.
 - `climate.set_preset_mode` — boost / away / eco / comfort.
-- `climate.turn_on` / `climate.turn_off` — heat restores user-timer mode; off sets frost protection and clears boost/away.
+- `climate.turn_on` / `climate.turn_off` — off engages frost protection and clears boost/away; on clears it again.
 
 > Climate (and most status entities) are **unavailable** when the cloud returns an empty appliance overview (common when heaters have not telemetered recently).
 
