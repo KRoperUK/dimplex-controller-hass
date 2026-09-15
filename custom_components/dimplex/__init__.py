@@ -22,7 +22,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.typing import UNDEFINED, ConfigType
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import CannotConnect, DimplexApiClient, InvalidAuth
@@ -97,37 +97,44 @@ def _ensure_parent_devices(hass: HomeAssistant, entry: DimplexConfigEntry, data:
     """Pre-register hub and zone devices before platforms set up.
 
     The Dimplex device tree is three levels deep: Hub → Zone → Appliance.
-    Appliance entities declare ``via_device`` pointing at the zone they
-    belong to, and zone entities declare ``via_device`` pointing at the
-    hub. To avoid Home Assistant's 2025.12 hard-failure on
-    ``via_device`` references whose target does not yet exist, we
-    register hubs and zones here, synchronously, before forwarding to
-    any platform. Platforms then only ever need to create appliance
-    devices — which always have an existing parent.
+    Appliance entities link to their zone and zone entities link to their hub,
+    both via ``via_device_id`` — the parent's *registry id*, which only exists
+    once the parent device does. So hubs and zones are registered here,
+    synchronously, before forwarding to any platform; platforms then only ever
+    create appliance devices, whose parent is guaranteed to exist.
+
+    ``via_device`` (the identifier-tuple form) is deliberately not used: Home
+    Assistant deprecated it in 2026.8 because identifiers are only unique per
+    config entry, and it is removed in 2027.8. Passing it — even as ``None`` —
+    logs a deprecation warning on every setup, because the registry only skips
+    the parameter when it is ``UNDEFINED``.
     """
     registry = dr.async_get(hass)
     seen_zones: set[tuple[str, str]] = set()
-    seen_hubs: set[str] = set()
+    hub_device_ids: dict[str, str] = {}
     for row in data.get("appliances") or []:
         hub = row.get("hub")
         zone = row.get("zone")
         hub_id = getattr(hub, "HubId", None) if hub is not None else None
         zone_id = getattr(zone, "ZoneId", None) if zone is not None else None
-        if hub_id and hub_id not in seen_hubs:
-            seen_hubs.add(hub_id)
-            registry.async_get_or_create(
+        if hub_id and hub_id not in hub_device_ids:
+            hub_device = registry.async_get_or_create(
                 config_entry_id=entry.entry_id,
                 identifiers={(DOMAIN, hub_id)},
                 manufacturer="Dimplex",
                 model=getattr(hub, "HubModel", None) or "Dimplex Hub",
                 name=getattr(hub, "HubName", None) or "Dimplex Hub",
             )
+            # Keep the registry id: it is what via_device_id needs, and reading it
+            # from the returned entry avoids a second lookup.
+            hub_device_ids[hub_id] = hub_device.id
         if not zone_id:
             continue
         zone_key = (DOMAIN, f"zone_{zone_id}")
         if zone_key in seen_zones:
             continue
         seen_zones.add(zone_key)
+        parent_id = hub_device_ids.get(hub_id) if hub_id else None
         registry.async_get_or_create(
             config_entry_id=entry.entry_id,
             identifiers={zone_key},
@@ -135,7 +142,10 @@ def _ensure_parent_devices(hass: HomeAssistant, entry: DimplexConfigEntry, data:
             model=getattr(zone, "ZoneType", None) or "Zone",
             name=getattr(zone, "ZoneName", None) or "Zone",
             suggested_area=getattr(zone, "ZoneName", None),
-            via_device=(DOMAIN, hub_id) if hub_id else None,
+            # UNDEFINED, not None, when there is no hub: the registry skips the
+            # parameter only when it is UNDEFINED, and an explicit None still runs
+            # its deprecation and self-reference checks.
+            via_device_id=parent_id if parent_id else UNDEFINED,
         )
 
 

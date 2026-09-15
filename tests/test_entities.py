@@ -171,3 +171,50 @@ async def test_mode_binary_sensors_reflect_the_engaged_modes(hass):
     assert _state("away_active").state == "off"
     assert _state("frost_protection").state == "off"
     assert _state("advance_active").state == "off"
+
+
+async def test_zone_devices_link_to_the_hub_without_deprecated_via_device(hass, caplog):
+    """Zones must link to their hub by registry id, with no deprecation warning.
+
+    Home Assistant deprecated the ``via_device`` identifier-tuple form in 2026.8 and
+    removes it in 2027.8. ``_ensure_parent_devices`` used to pass it — and passing it
+    even as ``None`` trips the warning, because the registry only skips the parameter
+    when it is ``UNDEFINED``. So this asserts both the linkage and the silence.
+    """
+    from homeassistant.helpers import device_registry as dr
+
+    payload = _mock_coordinator_payload()
+    payload["appliances"][0]["zone"] = SimpleNamespace(ZoneId="zone-1", ZoneName="Living Room", ZoneType="Heating")
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
+            return_value=payload,
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value={"energy": {}},
+        ),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    registry = dr.async_get(hass)
+    hub_device = registry.async_get_device_by_identifier((DOMAIN, "hub-1"), "test")
+    zone_device = registry.async_get_device_by_identifier((DOMAIN, "zone_zone-1"), "test")
+    appliance_device = registry.async_get_device_by_identifier((DOMAIN, "appliance-1"), "test")
+
+    assert hub_device is not None
+    assert zone_device is not None
+    assert appliance_device is not None
+
+    # Hub → Zone → Appliance, each link by registry id.
+    assert zone_device.via_device_id == hub_device.id
+    assert appliance_device.via_device_id == zone_device.id
+    assert hub_device.via_device_id is None
+
+    assert "via_device" not in caplog.text, "deprecated via_device parameter is back"
