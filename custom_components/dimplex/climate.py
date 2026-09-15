@@ -45,6 +45,28 @@ DEFAULT_BOOST_TEMP = 25.0
 DEFAULT_BOOST_MINUTES = DEFAULT_BOOST_DURATION
 DEFAULT_AWAY_TEMP = 16.0
 
+# The appliance-side states each preset owns. Home Assistant treats a preset as a
+# single mutually-exclusive state, so selecting one engages exactly these and clears
+# the rest — otherwise switching between two non-comfort presets does nothing
+# visible (#173).
+_MODE_BOOST = "boost"
+_MODE_AWAY = "away"
+_MODE_ECO_START = "eco_start"
+
+_PRESET_STATES: dict[str, frozenset[str]] = {
+    PRESET_COMFORT: frozenset(),
+    PRESET_BOOST: frozenset({_MODE_BOOST}),
+    PRESET_AWAY: frozenset({_MODE_AWAY}),
+    PRESET_ECO: frozenset({_MODE_ECO_START}),
+}
+
+# Capability flag gating each state, so an unsupported one is never engaged.
+_MODE_CAPABILITY: dict[str, str] = {
+    _MODE_BOOST: "boost",
+    _MODE_AWAY: "away",
+    _MODE_ECO_START: "eco_start",
+}
+
 
 def _mode_bit(status: Any, flag: int) -> bool | None:
     """Return whether ``flag`` is engaged, or ``None`` if modes are unknown."""
@@ -377,7 +399,15 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
 
     @_translate_control_errors
     async def async_set_preset_mode(self, preset_mode: str) -> None:
-        """Apply a climate preset (gated by appliance capabilities)."""
+        """Apply a climate preset (gated by appliance capabilities).
+
+        A preset is a single mutually-exclusive state, so this engages the states the
+        requested preset owns and clears the others. Previously each branch only
+        *added* its own state, which made switching between two non-comfort presets a
+        no-op — `eco` enabled EcoStart but left Away engaged, and because
+        :attr:`preset_mode` resolves boost before away before EcoStart, the entity
+        kept reporting ``away`` and nothing appeared to happen (#173).
+        """
         allowed = self.preset_modes or []
         if preset_mode not in allowed and preset_mode != PRESET_COMFORT:
             _LOGGER.warning(
@@ -388,47 +418,52 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
             )
             return
 
+        wanted = _PRESET_STATES.get(preset_mode)
+        if wanted is None:
+            _LOGGER.warning("Unsupported preset mode: %s", preset_mode)
+            return
+
         status = self._status
-        comfort_temp = sane_temperature(status.ActiveSetPointTemperature) if status else None
-        if comfort_temp is None and status is not None:
-            comfort_temp = sane_temperature(status.NormalTemperature)
-        if comfort_temp is None:
-            comfort_temp = 21.0
+        # Temperature to accompany a clear. The cloud wants one on every mode write,
+        # so fall back through the appliance's own setpoints before a fixed default.
+        fallback_temp = sane_temperature(status.ActiveSetPointTemperature) if status else None
+        if fallback_temp is None and status is not None:
+            fallback_temp = sane_temperature(status.NormalTemperature)
+        if fallback_temp is None:
+            fallback_temp = 21.0
 
         hub_id = self._hub.HubId
         appliance_id = self._appliance.ApplianceId
         caps = self._caps
 
-        if preset_mode == PRESET_BOOST:
-            if not caps.boost:
-                return
-            boost_temp = float(status.BoostTemperature) if status and status.BoostTemperature else DEFAULT_BOOST_TEMP
-            await self._api.async_set_boost(
-                hub_id,
-                appliance_id,
-                temperature=boost_temp,
-                duration_minutes=self._boost_minutes,
-                enable=True,
-            )
-        elif preset_mode == PRESET_AWAY:
-            if not caps.away:
-                return
-            away_temp = float(status.AwayTemperature) if status and status.AwayTemperature else DEFAULT_AWAY_TEMP
-            await self._api.async_set_away(hub_id, appliance_id, temperature=away_temp, enable=True)
-        elif preset_mode == PRESET_ECO:
-            if not caps.eco_start:
-                return
-            await self._api.async_set_eco_start(hub_id, appliance_id, True)
-        elif preset_mode == PRESET_COMFORT:
-            if _is_boost_active(status):
-                await self._api.async_set_boost(hub_id, appliance_id, temperature=comfort_temp, enable=False)
-            if _is_away_active(status):
-                await self._api.async_set_away(hub_id, appliance_id, temperature=comfort_temp, enable=False)
-            if status and status.EcoStartEnabled:
-                await self._api.async_set_eco_start(hub_id, appliance_id, False)
-        else:
-            _LOGGER.warning("Unsupported preset mode: %s", preset_mode)
-            return
+        # Clear first, so the appliance never holds two conflicting modes at once.
+        if _MODE_BOOST not in wanted and _is_boost_active(status):
+            await self._api.async_set_boost(hub_id, appliance_id, temperature=fallback_temp, enable=False)
+        if _MODE_AWAY not in wanted and _is_away_active(status):
+            await self._api.async_set_away(hub_id, appliance_id, temperature=fallback_temp, enable=False)
+        if _MODE_ECO_START not in wanted and status and status.EcoStartEnabled:
+            await self._api.async_set_eco_start(hub_id, appliance_id, False)
+
+        for state in wanted:
+            if not getattr(caps, _MODE_CAPABILITY[state], True):
+                _LOGGER.debug("Appliance %s does not support %s", self._appliance.FriendlyName, state)
+                continue
+            if state == _MODE_BOOST:
+                boost_temp = (
+                    float(status.BoostTemperature) if status and status.BoostTemperature else DEFAULT_BOOST_TEMP
+                )
+                await self._api.async_set_boost(
+                    hub_id,
+                    appliance_id,
+                    temperature=boost_temp,
+                    duration_minutes=self._boost_minutes,
+                    enable=True,
+                )
+            elif state == _MODE_AWAY:
+                away_temp = float(status.AwayTemperature) if status and status.AwayTemperature else DEFAULT_AWAY_TEMP
+                await self._api.async_set_away(hub_id, appliance_id, temperature=away_temp, enable=True)
+            elif state == _MODE_ECO_START:
+                await self._api.async_set_eco_start(hub_id, appliance_id, True)
 
         await self.coordinator.async_request_refresh()
 
