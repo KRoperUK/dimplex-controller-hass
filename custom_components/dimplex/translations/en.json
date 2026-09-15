@@ -54,7 +54,8 @@
     "abort": {
       "single_instance_allowed": "Only a single instance is allowed.",
       "already_configured": "This Dimplex account is already configured.",
-      "reauth_successful": "Re-authentication was successful."
+      "reauth_successful": "Re-authentication was successful.",
+      "reauth_account_mismatch": "That is a different Dimplex account to the one this entry was set up with."
     }
   },
   "options": {

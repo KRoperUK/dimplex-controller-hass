@@ -1,5 +1,6 @@
 """Test dimplex_controller config flow."""
 
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -341,6 +342,141 @@ async def test_reauth_credentials_invalid(hass):
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["step_id"] == "reauth_credentials"
     assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_reauth_rejects_a_different_account(hass):
+    """Reauth must not repoint an entry at another Dimplex account.
+
+    Regression for dimplex-controller-hass#198: any working credentials were
+    accepted and written to the existing entry, so every appliance id in it then
+    belonged to a hub this entry is not set up for and all its entities died with
+    no actionable error.
+    """
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test", unique_id="acct-1")
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_REAUTH,
+            "entry_id": config_entry.entry_id,
+        },
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+
+    with patch(
+        "custom_components.dimplex.config_flow.validate_credentials",
+        return_value=(
+            {"refresh_token": "other_rt", "access_token": "other_at", "expires_at": 456},
+            "acct-2",
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CREDENTIALS,
+        )
+
+    assert result["type"] == data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "reauth_account_mismatch"
+    entry = hass.config_entries.async_get_entry(config_entry.entry_id)
+    assert entry.data["access_token"] == "access_token"
+    assert entry.data["refresh_token"] == "refresh_token"
+
+
+async def test_reauth_accepts_the_same_account(hass):
+    """The identity check passes when the account matches the entry's unique id."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test", unique_id="acct-1")
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_REAUTH,
+            "entry_id": config_entry.entry_id,
+        },
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+
+    with patch(
+        "custom_components.dimplex.config_flow.validate_credentials",
+        return_value=(
+            {"refresh_token": "new_rt", "access_token": "new_at", "expires_at": 456},
+            "acct-1",
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CREDENTIALS,
+        )
+
+    assert result["type"] == data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    entry = hass.config_entries.async_get_entry(config_entry.entry_id)
+    assert entry.data["access_token"] == "new_at"
+
+
+async def test_credentials_without_an_account_id_warns(hass, caplog):
+    """An account id-less login still creates the entry, but says it is unkeyed.
+
+    Setting the unique id only when the context carried an account id allowed a
+    duplicate entry and double polling (#198). The API adapter now falls back to
+    the hub id; if even that is missing there is nothing stable to key on, which
+    must not pass silently.
+    """
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+
+    with (
+        caplog.at_level(logging.WARNING, logger="custom_components.dimplex.config_flow"),
+        patch(
+            "custom_components.dimplex.config_flow.validate_credentials",
+            return_value=(
+                {"refresh_token": "rt", "access_token": "at", "expires_at": 123},
+                None,
+            ),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CREDENTIALS,
+        )
+
+    assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
+    assert "no unique id" in caplog.text
+
+
+async def test_unexpected_credentials_error_is_logged(hass, caplog):
+    """An unexpected failure is logged, not just reported as "unknown"."""
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+
+    with (
+        caplog.at_level(logging.ERROR, logger="custom_components.dimplex.config_flow"),
+        patch(
+            "custom_components.dimplex.config_flow.validate_credentials",
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CREDENTIALS,
+        )
+
+    assert result["errors"] == {"base": "unknown"}
+    assert "Unexpected error validating Dimplex credentials" in caplog.text
+    assert "RuntimeError: boom" in caplog.text
 
 
 # ── options ─────────────────────────────────────────────────────
