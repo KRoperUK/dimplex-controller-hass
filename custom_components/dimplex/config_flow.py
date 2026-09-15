@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -29,6 +30,8 @@ from .const import (
     NAME,
     PLATFORMS,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _extract_auth_code(raw_input: str) -> str:
@@ -123,11 +126,10 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 except CannotConnect:
                     self._errors["base"] = "cannot_connect"
                 except Exception:
+                    _LOGGER.exception("Unexpected error validating Dimplex credentials")
                     self._errors["base"] = "unknown"
                 else:
-                    if account_id:
-                        await self.async_set_unique_id(account_id)
-                        self._abort_if_unique_id_configured()
+                    await self._set_account_unique_id(account_id)
                     return self.async_create_entry(
                         title=NAME,
                         data={
@@ -170,11 +172,10 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 except CannotConnect:
                     self._errors["base"] = "cannot_connect"
                 except Exception:
+                    _LOGGER.exception("Unexpected error exchanging the Dimplex auth code")
                     self._errors["base"] = "unknown"
                 else:
-                    if account_id:
-                        await self.async_set_unique_id(account_id)
-                        self._abort_if_unique_id_configured()
+                    await self._set_account_unique_id(account_id)
                     return self.async_create_entry(
                         title=NAME,
                         data={
@@ -189,6 +190,26 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({vol.Required(CONF_AUTH_CODE): str}),
             errors=self._errors,
             description_placeholders={"auth_url": auth_url},
+        )
+
+    async def _set_account_unique_id(self, account_id: str | None) -> None:
+        """Key the entry on the Dimplex account and abort if it exists already.
+
+        The unique id used to be set only when the user context carried an
+        account id, so an account whose context omitted one produced an entry
+        with no unique id at all — and a second setup of the same account then
+        created a duplicate entry polling the cloud twice (#198). The API adapter
+        now falls back to the account's hub id, so this normally has a value;
+        if it still does not, say so rather than creating an unkeyed entry
+        silently.
+        """
+        if account_id:
+            await self.async_set_unique_id(account_id)
+            self._abort_if_unique_id_configured()
+            return
+        _LOGGER.warning(
+            "Dimplex returned neither an account id nor a hub id, so this config "
+            "entry has no unique id and cannot be checked against an existing one"
         )
 
     # ── options ─────────────────────────────────────────────────
@@ -236,15 +257,16 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 self._errors["base"] = "invalid_auth"
             else:
                 try:
-                    token_data, _ = await validate_credentials(self.hass, username, password)
+                    token_data, account_id = await validate_credentials(self.hass, username, password)
                 except InvalidAuth:
                     self._errors["base"] = "invalid_auth"
                 except CannotConnect:
                     self._errors["base"] = "cannot_connect"
                 except Exception:
+                    _LOGGER.exception("Unexpected error re-authenticating Dimplex credentials")
                     self._errors["base"] = "unknown"
                 else:
-                    return await self._finish_reauth(token_data)
+                    return await self._finish_reauth(token_data, account_id)
 
         return self.async_show_form(
             step_id="reauth_credentials",
@@ -271,15 +293,16 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 self._errors["base"] = "invalid_auth"
             else:
                 try:
-                    token_data, _ = await validate_auth_code(self.hass, auth_code)
+                    token_data, account_id = await validate_auth_code(self.hass, auth_code)
                 except InvalidAuth:
                     self._errors["base"] = "invalid_auth"
                 except CannotConnect:
                     self._errors["base"] = "cannot_connect"
                 except Exception:
+                    _LOGGER.exception("Unexpected error re-authenticating with a Dimplex auth code")
                     self._errors["base"] = "unknown"
                 else:
-                    return await self._finish_reauth(token_data)
+                    return await self._finish_reauth(token_data, account_id)
 
         return self.async_show_form(
             step_id="reauth_auth_code",
@@ -288,12 +311,30 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             description_placeholders={"auth_url": auth_url},
         )
 
-    async def _finish_reauth(self, token_data: dict[str, Any]) -> ConfigFlowResult:
-        """Update the existing config entry with new tokens and re-load."""
+    async def _finish_reauth(self, token_data: dict[str, Any], account_id: str | None) -> ConfigFlowResult:
+        """Update the existing config entry with new tokens and re-load.
+
+        Reauth has to prove it is the *same* Dimplex account. Without that check
+        the flow accepted any working credentials and wrote them to the existing
+        entry, silently repointing it at another account's hub — every appliance
+        id in the entry then belonged to a hub this entry is not set up for, so
+        all its entities died with no actionable error (#198).
+        """
         entry_id = self.context["entry_id"]
         existing_entry = self.hass.config_entries.async_get_entry(entry_id)
         if existing_entry is None:
             return self.async_abort(reason="reauth_successful")
+
+        if existing_entry.unique_id and account_id and existing_entry.unique_id != account_id:
+            _LOGGER.warning(
+                "Re-authentication for entry %s was attempted with a different Dimplex "
+                "account (%s, expected %s) — refusing to repoint the entry",
+                entry_id,
+                account_id,
+                existing_entry.unique_id,
+            )
+            return self.async_abort(reason="reauth_account_mismatch")
+
         self.hass.config_entries.async_update_entry(
             existing_entry,
             data={

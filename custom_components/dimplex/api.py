@@ -153,9 +153,37 @@ class DimplexApiClient:
             if isinstance(exp, int | float):
                 return float(exp)
         except Exception:
+            # Not fatal: an opaque token has no readable exp, in which case 0
+            # means "unknown" and the caller falls back to a refresh. Logged so a
+            # token that *looks* like a JWT but will not parse is not invisible.
+            _LOGGER.debug("Access token is not a parseable JWT; no expiry available", exc_info=True)
             return 0
 
         return 0
+
+    async def _resolve_account_id(self) -> str | None:
+        """Return a stable identifier for the authenticated account.
+
+        ``get_user_context`` supplies the Dimplex account id, which is what the
+        config entry is keyed on. When it omits one, fall back to the account's
+        first hub id — still stable, and it keeps the entry from being created
+        with no unique id at all, which allowed a duplicate entry polling the
+        cloud twice (dimplex-controller-hass#198).
+        """
+        context = await self._client.get_user_context()
+        account_id = getattr(context, "Id", None)
+        if account_id:
+            return str(account_id)
+
+        for hub in await self._client.get_hubs():
+            hub_id = getattr(hub, "HubId", None)
+            if hub_id:
+                _LOGGER.warning(
+                    "Dimplex user context carried no account id; using hub %s as the config entry's unique id instead",
+                    hub_id,
+                )
+                return str(hub_id)
+        return None
 
     async def async_initialize(self) -> None:
         """Ensure the underlying library is authenticated."""
@@ -201,8 +229,7 @@ class DimplexApiClient:
         """Validate credentials/token and return token payload."""
         try:
             await self.async_initialize()
-            context = await self._client.get_user_context()
-            self._account_id = getattr(context, "Id", None)
+            self._account_id = await self._resolve_account_id()
         except DimplexAuthError as exception:
             raise InvalidAuth from exception
         except DimplexConnectionError as exception:
@@ -216,8 +243,7 @@ class DimplexApiClient:
         """Exchange auth code for tokens and validate the session."""
         try:
             await self._client.auth.exchange_code(code)
-            context = await self._client.get_user_context()
-            self._account_id = getattr(context, "Id", None)
+            self._account_id = await self._resolve_account_id()
         except DimplexAuthError as exception:
             raise InvalidAuth from exception
         except DimplexConnectionError as exception:
@@ -404,8 +430,9 @@ class DimplexApiClient:
 
         ``until`` is the "away until" moment the app sends. ``number_of_days`` is
         the simpler equivalent — the library converts it to a date. Away accepts
-        a target between 7 and 30 °C and defaults to the 7 °C anti-freeze floor,
-        so a low temperature here is by design, not a fault.
+        a target between 7 and 18 °C (its own bounds, below the 7–30 °C the other
+        mode carousels use) and defaults to the 7 °C anti-freeze floor, so a low
+        temperature here is by design, not a fault.
         """
         with _translated_errors():
             await self._client.set_away(
