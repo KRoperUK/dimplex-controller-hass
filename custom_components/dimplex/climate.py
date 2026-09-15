@@ -21,7 +21,17 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .api import CannotConnect, DimplexApiClient, InvalidAuth
 from .capabilities import capabilities_for_row
-from .const import CONF_BOOST_DURATION, DEFAULT_BOOST_DURATION, DOMAIN, sane_temperature
+from .const import (
+    AWAY_FLAG,
+    BOOST_FLAG,
+    CONF_BOOST_DURATION,
+    DEFAULT_BOOST_DURATION,
+    DOMAIN,
+    TIMER_FROST,
+    TIMER_OFF_LIKE,
+    TIMER_USER,
+    sane_temperature,
+)
 from .entity import DimplexEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,43 +44,54 @@ PRESET_ECO = "eco"
 DEFAULT_BOOST_TEMP = 25.0
 DEFAULT_BOOST_MINUTES = DEFAULT_BOOST_DURATION
 DEFAULT_AWAY_TEMP = 16.0
-_BOOST_FLAG = 16
-_AWAY_FLAG = 32
 
-# dimplex_controller.models.TimerMode — keep local ints so older library wheels still work.
-_TIMER_USER = 0
-_TIMER_MANUAL = 1
-_TIMER_FROST = 2
-_TIMER_OFF = 3
-_TIMER_OFF_LIKE = frozenset({_TIMER_FROST, _TIMER_OFF})
+
+def _mode_bit(status: Any, flag: int) -> bool | None:
+    """Return whether ``flag`` is engaged, or ``None`` if modes are unknown."""
+    modes = getattr(status, "ApplianceModes", None)
+    if modes is None:
+        return None
+    try:
+        return bool(int(modes) & flag)
+    except (TypeError, ValueError):
+        return None
 
 
 def _is_boost_active(status: Any) -> bool:
-    """Return True when boost appears active (model property or raw fields)."""
+    """Return True when boost appears active (model property or raw fields).
+
+    Prefers the library's property, then the Boost mode bit, and only falls back
+    to ``BoostDuration`` when the appliance reported no modes at all — a
+    configured duration can outlive the mode itself.
+    """
     if status is None:
         return False
     prop = getattr(type(status), "is_boost_active", None)
     if isinstance(prop, property):
         return bool(status.is_boost_active)
+    bit = _mode_bit(status, BOOST_FLAG)
+    if bit is not None:
+        return bit
     duration = getattr(status, "BoostDuration", None)
-    if duration is not None and duration > 0:
-        return True
-    modes = getattr(status, "ApplianceModes", None) or 0
-    return bool(modes & _BOOST_FLAG)
+    return duration is not None and duration > 0
 
 
 def _is_away_active(status: Any) -> bool:
-    """Return True when away appears active (model property or raw fields)."""
+    """Return True when away appears active (model property or raw fields).
+
+    As with boost, the Away mode bit wins over ``AwayDateTime``, which can hold
+    a stale away-until date after the mode has been cleared.
+    """
     if status is None:
         return False
     prop = getattr(type(status), "is_away_active", None)
     if isinstance(prop, property):
         return bool(status.is_away_active)
+    bit = _mode_bit(status, AWAY_FLAG)
+    if bit is not None:
+        return bit
     away_dt = getattr(status, "AwayDateTime", None)
-    if away_dt and away_dt not in ("", "0001-01-01T00:00:00"):
-        return True
-    modes = getattr(status, "ApplianceModes", None) or 0
-    return bool(modes & _AWAY_FLAG)
+    return bool(away_dt and away_dt not in ("", "0001-01-01T00:00:00"))
 
 
 def _timer_mode_from_schedule(schedule: Any) -> int | None:
@@ -88,7 +109,7 @@ def _timer_mode_from_schedule(schedule: Any) -> int | None:
 
 def _is_timer_off_like(timer_mode: int | None) -> bool:
     """True for frost protection / off timer modes (app 'off' for most heaters)."""
-    return timer_mode in _TIMER_OFF_LIKE
+    return timer_mode in TIMER_OFF_LIKE
 
 
 def _translate_control_errors(func: Any) -> Any:
@@ -304,12 +325,12 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
                     temperature=temp,
                     enable=False,
                 )
-            await self._api.async_set_timer_mode(hub_id, appliance_id, _TIMER_FROST)
+            await self._api.async_set_timer_mode(hub_id, appliance_id, TIMER_FROST)
             self._invalidate_schedules()
         elif hvac_mode == HVACMode.HEAT:
             if _is_timer_off_like(self._timer_mode):
                 # Resume schedule; MANUAL is available via timer APIs if needed later.
-                await self._api.async_set_timer_mode(hub_id, appliance_id, _TIMER_USER)
+                await self._api.async_set_timer_mode(hub_id, appliance_id, TIMER_USER)
                 self._invalidate_schedules()
 
         await self.coordinator.async_request_refresh()

@@ -3,6 +3,11 @@
 from datetime import timedelta
 from typing import Any
 
+from dimplex_controller import (
+    NO_SETPOINT_SENTINEL,
+    ApplianceModeFlag,
+    TimerMode,
+)
 from homeassistant.const import Platform
 
 # The Dimplex cloud reports 0xFF (255) for a temperature field when there is no
@@ -10,7 +15,29 @@ from homeassistant.const import Platform
 # idle, running EcoStart, or between schedule periods. Surfacing that verbatim
 # produced a nonsensical "255 °C" target temperature on the climate entity and
 # the target-temperature sensor. Treat 255 (and anything at/above it) as unset.
-SETPOINT_SENTINEL = 255.0
+SETPOINT_SENTINEL = float(NO_SETPOINT_SENTINEL)
+
+# --- Appliance mode bits ---------------------------------------------------
+# ``EApplianceModes`` values, sourced from the library rather than hard-coded.
+# Before dimplex-controller 0.13.0 this integration assumed boost was bit 16
+# and away bit 32; those are in fact Advance and FrostProtect (#163).
+BOOST_FLAG = int(ApplianceModeFlag.BOOST)
+AWAY_FLAG = int(ApplianceModeFlag.AWAY)
+ADVANCE_FLAG = int(ApplianceModeFlag.ADVANCE)
+FROST_FLAG = int(ApplianceModeFlag.FROST_PROTECT)
+
+# Modes that mean the appliance is being driven above its schedule, and so is
+# probably drawing power. Used to keep energy polling responsive and to
+# estimate live power.
+HEAT_DEMAND_FLAGS = BOOST_FLAG | ADVANCE_FLAG
+
+# --- Timer modes -----------------------------------------------------------
+TIMER_USER = int(TimerMode.USER_TIMER)
+TIMER_MANUAL = int(TimerMode.MANUAL)
+TIMER_FROST = int(TimerMode.FROST_PROTECTION)
+TIMER_OFF = int(TimerMode.OFF)
+# Timer modes the app presents as "off" for most heaters.
+TIMER_OFF_LIKE = frozenset({TIMER_FROST, TIMER_OFF})
 
 
 def sane_temperature(value: Any) -> float | None:
@@ -29,6 +56,19 @@ def sane_temperature(value: Any) -> float | None:
     if num >= SETPOINT_SENTINEL:
         return None
     return num
+
+
+def has_any_mode(status: Any, flags: int) -> bool:
+    """True when ``status.ApplianceModes`` has any bit in ``flags`` set."""
+    if status is None or not flags:
+        return False
+    modes = getattr(status, "ApplianceModes", None)
+    if modes is None:
+        return False
+    try:
+        return bool(int(modes) & flags)
+    except (TypeError, ValueError):
+        return False
 
 
 NAME = "Dimplex Hub"

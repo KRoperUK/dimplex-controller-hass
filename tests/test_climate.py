@@ -23,7 +23,17 @@ from custom_components.dimplex.climate import (
     _is_timer_off_like,
     _timer_mode_from_schedule,
 )
-from custom_components.dimplex.const import DOMAIN, sane_temperature
+from custom_components.dimplex.const import (
+    ADVANCE_FLAG,
+    AWAY_FLAG,
+    BOOST_FLAG,
+    DOMAIN,
+    HEAT_DEMAND_FLAGS,
+    TIMER_FROST,
+    TIMER_OFF,
+    has_any_mode,
+    sane_temperature,
+)
 
 from .const import MOCK_ENTRY_DATA
 
@@ -49,7 +59,7 @@ def _payload(*, boost=False, away=False, eco=False, room=21.5, target=20, timer_
         AwayTemperature=15.0,
         BoostDuration=30 if boost else 0,
         AwayDateTime="2026-07-01T00:00:00" if away else None,
-        ApplianceModes=(16 if boost else 0) | (32 if away else 0),
+        ApplianceModes=(BOOST_FLAG if boost else 0) | (AWAY_FLAG if away else 0),
         OpenWindowEnabled=False,
         SetbackEnabled=False,
     )
@@ -91,20 +101,37 @@ def _api_data(payload):
         yield
 
 
+def test_flag_values_match_the_library():
+    """Guard against regressing to the pre-0.13.0 bit assumptions."""
+    assert BOOST_FLAG == 2  # 16 is Advance
+    assert AWAY_FLAG == 4  # 32 is FrostProtect
+
+
 def test_boost_and_away_helpers():
     """Helper detection works for raw status namespaces and flag bits."""
     assert _is_boost_active(None) is False
     assert _is_away_active(None) is False
 
-    boost = SimpleNamespace(BoostDuration=10, ApplianceModes=0, AwayDateTime=None)
+    # No ApplianceModes reported at all: fall back to the duration / date.
+    boost = SimpleNamespace(BoostDuration=10, AwayDateTime=None)
     assert _is_boost_active(boost) is True
 
-    away = SimpleNamespace(BoostDuration=0, ApplianceModes=0, AwayDateTime="2026-01-01T00:00:00")
+    away = SimpleNamespace(BoostDuration=0, AwayDateTime="2026-01-01T00:00:00")
     assert _is_away_active(away) is True
 
-    flags = SimpleNamespace(BoostDuration=0, ApplianceModes=16 | 32, AwayDateTime=None)
+    flags = SimpleNamespace(BoostDuration=0, ApplianceModes=BOOST_FLAG | AWAY_FLAG, AwayDateTime=None)
     assert _is_boost_active(flags) is True
     assert _is_away_active(flags) is True
+
+    # Advance (16) and FrostProtect (32) are not Boost/Away — the #163 bug.
+    wrong = SimpleNamespace(BoostDuration=0, ApplianceModes=16 | 32, AwayDateTime=None)
+    assert _is_boost_active(wrong) is False
+    assert _is_away_active(wrong) is False
+
+    # The mode bit wins over a stale duration / away-until date.
+    stale = SimpleNamespace(BoostDuration=30, ApplianceModes=0, AwayDateTime="2026-01-01T00:00:00")
+    assert _is_boost_active(stale) is False
+    assert _is_away_active(stale) is False
 
     off = SimpleNamespace(BoostDuration=0, ApplianceModes=0, AwayDateTime="")
     assert _is_boost_active(off) is False
@@ -115,8 +142,8 @@ def test_timer_mode_helpers():
     """Frost protection and off timer modes map to HVAC off-like."""
     assert _timer_mode_from_schedule(None) is None
     assert _timer_mode_from_schedule(SimpleNamespace(TimerMode=2)) == 2
-    assert _is_timer_off_like(2) is True  # frost
-    assert _is_timer_off_like(3) is True  # off
+    assert _is_timer_off_like(TIMER_FROST) is True
+    assert _is_timer_off_like(TIMER_OFF) is True
     assert _is_timer_off_like(0) is False
     assert _is_timer_off_like(1) is False
 
@@ -336,6 +363,18 @@ def test_sane_temperature_drops_sentinel():
     assert sane_temperature(21.5) == 21.5
     assert sane_temperature(7) == 7.0
     assert sane_temperature("20") == 20.0
+
+
+def test_has_any_mode():
+    """Mode-bit helper tolerates missing / unparseable ApplianceModes."""
+    assert has_any_mode(SimpleNamespace(ApplianceModes=BOOST_FLAG), HEAT_DEMAND_FLAGS) is True
+    assert has_any_mode(SimpleNamespace(ApplianceModes=ADVANCE_FLAG), HEAT_DEMAND_FLAGS) is True
+    assert has_any_mode(SimpleNamespace(ApplianceModes=AWAY_FLAG), HEAT_DEMAND_FLAGS) is False
+    assert has_any_mode(SimpleNamespace(ApplianceModes=None), HEAT_DEMAND_FLAGS) is False
+    assert has_any_mode(SimpleNamespace(ApplianceModes="junk"), HEAT_DEMAND_FLAGS) is False
+    assert has_any_mode(SimpleNamespace(), HEAT_DEMAND_FLAGS) is False
+    assert has_any_mode(None, HEAT_DEMAND_FLAGS) is False
+    assert has_any_mode(SimpleNamespace(ApplianceModes=BOOST_FLAG), 0) is False
 
 
 @pytest.mark.asyncio
