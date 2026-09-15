@@ -20,7 +20,7 @@ set_boost:
       default: 25
       selector:
         number:
-          min: 5
+          min: 7
           max: 30
           step: 0.5
           unit_of_measurement: "°C"
@@ -53,14 +53,17 @@ clear_boost:
       default: 25
       selector:
         number:
-          min: 5
+          min: 7
           max: 30
           step: 0.5
           unit_of_measurement: "°C"
 
 set_away:
   name: Set away
-  description: Enable away mode for a Dimplex appliance.
+  description: >-
+    Enable away mode for a Dimplex appliance. Away holds a settable setback
+    target (7-30 °C) until the date you give it — unlike frost protection, which
+    is always 7 °C.
   fields:
     device_id:
       name: Device
@@ -74,13 +77,30 @@ set_away:
           integration: dimplex
     temperature:
       name: Temperature
+      description: Away setback target. Defaults to 16 °C; the cloud accepts 7-30 °C.
       default: 16
       selector:
         number:
-          min: 5
+          min: 7
           max: 30
           step: 0.5
           unit_of_measurement: "°C"
+    days:
+      name: Days
+      description: >-
+        How many days to stay away. Ignored when "Until" is given. Leave both
+        empty for an open-ended away.
+      selector:
+        number:
+          min: 1
+          max: 365
+          step: 1
+          unit_of_measurement: days
+    until:
+      name: Until
+      description: Exact moment to come back. Takes precedence over "Days".
+      selector:
+        datetime:
 
 clear_away:
   name: Clear away
@@ -101,7 +121,7 @@ clear_away:
       default: 16
       selector:
         number:
-          min: 5
+          min: 7
           max: 30
           step: 0.5
           unit_of_measurement: "°C"
