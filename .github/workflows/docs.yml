@@ -6,6 +6,8 @@ on:
     paths:
       - "zensical.toml"
       - "docs/**"
+      - "includes/**"
+      - "overrides/**"
       - ".github/workflows/docs.yml"
       - "CHANGELOG.md"
       - "custom_components/dimplex/manifest.json"

@@ -1,0 +1,128 @@
+/* ---------------------------------------------------------------------------
+ * Brand colours.
+ *
+ * #d62945 is sampled from the integration's own brand assets
+ * (custom_components/dimplex/brand/logo.png), so the docs match the icon Home
+ * Assistant shows for the integration. Light and dark variants are the same
+ * hue at different lightness: hsl(350, 68%, 72% / 34%).
+ *
+ * Requires palette.primary = "custom" and palette.accent = "custom" in
+ * zensical.toml, which is what tells the theme to read these variables.
+ * ------------------------------------------------------------------------- */
+
+:root > * {
+  --md-primary-fg-color: #d62945;
+  --md-primary-fg-color--light: #e88797;
+  --md-primary-fg-color--dark: #921c2f;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #ffffffb3;
+
+  --md-accent-fg-color: #921c2f;
+  --md-accent-fg-color--transparent: #921c2f1a;
+  --md-accent-bg-color: #ffffff;
+  --md-accent-bg-color--light: #ffffffb3;
+}
+
+/* Crimson on a slate background is hard to read, so lift the link colour in
+ * dark mode rather than reusing the light-mode primary. */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #e8546c;
+  --md-accent-fg-color: #f08fa0;
+  --md-accent-fg-color--transparent: #f08fa01a;
+  --md-typeset-a-color: #e8546c;
+}
+
+/* ---------------------------------------------------------------------------
+ * Logo per colour scheme.
+ *
+ * brand/logo.png is crimson artwork for light backgrounds; brand/dark_logo.png
+ * is the same wordmark in white. The theme only accepts one `logo` setting, so
+ * swap the source in CSS for the slate scheme.
+ * ------------------------------------------------------------------------- */
+
+[data-md-color-scheme="slate"] .md-header__button.md-logo img,
+[data-md-color-scheme="slate"] .md-nav__title .md-logo img {
+  content: url("../assets/brand/dark_logo.png");
+}
+
+/* The wordmark is 1264x256 — much wider than the square icon the theme sizes
+ * for — so give it room instead of letting it squash. */
+.md-header__button.md-logo img,
+.md-nav__title .md-logo img {
+  height: 1.4rem;
+  width: auto;
+}
+
+/* ---------------------------------------------------------------------------
+ * Layout.
+ * ------------------------------------------------------------------------- */
+
+/* The entity and action reference tables run to six columns with prose in the
+ * last one. At the stock content width they wrap to near-unreadable. */
+.md-grid {
+  max-width: 68rem;
+}
+
+/* Wide tables scroll rather than compress. */
+.md-typeset__table {
+  min-width: 100%;
+}
+
+.md-typeset table:not([class]) {
+  display: table;
+}
+
+/* ---------------------------------------------------------------------------
+ * Utility classes used in the content.
+ * ------------------------------------------------------------------------- */
+
+/* Support-status pills for the appliance matrix, so "untested" is impossible to
+ * skim past.
+ *
+ * Usage: `**Verified**{ .status-verified }` — attr_list attaches to an existing
+ * inline element, so the bare `[text]{.class}` form does not work. A raw
+ * `<span class="status-verified">` is the alternative. */
+.md-typeset .status-verified,
+.md-typeset .status-inferred,
+.md-typeset .status-untested {
+  border-radius: 0.6rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.45rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.md-typeset .status-verified {
+  background-color: #2e7d3222;
+  color: #2e7d32;
+}
+
+.md-typeset .status-inferred {
+  background-color: #ef6c0022;
+  color: #ef6c00;
+}
+
+.md-typeset .status-untested {
+  background-color: #c6282822;
+  color: #c62828;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .status-verified {
+  color: #81c784;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .status-inferred {
+  color: #ffb74d;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .status-untested {
+  color: #e57373;
+}
+
+/* Mermaid diagrams centre and never overflow the content column. */
+.md-typeset .mermaid {
+  margin: 1.2em auto;
+  text-align: center;
+}

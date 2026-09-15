@@ -118,6 +118,34 @@ uv pip install --python .venv -r requirements_test.txt
 If any of the tests fail, make the necessary changes to the tests as part of
 your changes to the integration.
 
+## Build the documentation locally
+
+The site at [dimplex-hass.kroper.uk](https://dimplex-hass.kroper.uk/) is built with
+[Zensical](https://zensical.org/) and deployed from `main` by
+[`.github/workflows/docs.yml`](./.github/workflows/docs.yml).
+
+```bash
+uv pip install --python .venv zensical
+
+.venv/bin/zensical serve    # live reload on http://localhost:8000
+.venv/bin/zensical build    # one-shot build into ./site
+```
+
+`zensical build` reports broken internal links and missing heading anchors, so run
+it before pushing documentation changes.
+
+Layout worth knowing:
+
+| Path                         | Contents                                          |
+| ---------------------------- | ------------------------------------------------- |
+| `docs/`                      | published pages — every `.md` here becomes a page |
+| `includes/glossary.md`       | abbreviation definitions appended to every page   |
+| `overrides/main.html`        | theme template override (Open Graph tags)         |
+| `docs/stylesheets/extra.css` | brand colours and layout tweaks                   |
+
+`includes/` and `overrides/` sit outside `docs/` deliberately: Zensical publishes
+every `.md` file in the docs root, and has no `exclude_docs` setting to opt out.
+
 ## Pre-commit
 
 You can use the [pre-commit](https://pre-commit.com/) settings included in the

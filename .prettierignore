@@ -3,3 +3,13 @@ CHANGELOG.md
 # release-please rewrites HA manifests with indent=2 multi-line arrays; prettier
 # would compact short arrays back to one line and fight every release PR.
 custom_components/**/manifest.json
+
+# Abbreviation definitions use `*[Term]: definition`. Prettier normalises `*`
+# emphasis markers to `_`, producing `_[Term]:` — which is not the abbr syntax,
+# so every definition silently stops resolving and no tooltips render.
+includes/glossary.md
+
+# Jinja templates. Prettier parses these as plain HTML, collapses the `{#- -#}`
+# comments into the surrounding markup and reflows `{% %}` tags mid-line, which
+# is both unreadable and easy to break.
+overrides/
