@@ -12,13 +12,45 @@ edit_uri = "edit/main/docs/"
 extra_css = ["stylesheets/extra.css"]
 
 nav = [
-  { "Overview" = "index.md" },
-  { "Getting started" = "getting-started.md" },
-  { "Configuration" = "configuration.md" },
-  { "Entities" = "entities.md" },
-  { "Advanced usage" = "advanced.md" },
-  { "Troubleshooting" = "troubleshooting.md" },
+  { "Home" = "index.md" },
+  { "Getting started" = [
+    "start/index.md",
+    { "Connect your account" = "start/connect.md" },
+  ] },
+  { "Using it" = [
+    { "Temperature & schedules" = "use/temperature.md" },
+    { "Energy monitoring" = "use/energy.md" },
+    { "Automations & blueprints" = "use/automations.md" },
+  ] },
+  { "Reference" = [
+    { "Entities" = "reference/entities.md" },
+    { "Actions" = "reference/actions.md" },
+    { "Options" = "reference/options.md" },
+  ] },
+  { "Help" = [
+    { "Troubleshooting" = "help/troubleshooting.md" },
+    { "Upgrading" = "help/upgrading.md" },
+  ] },
+  { "Internals" = [
+    { "Multi-account" = "internals/multi-account.md" },
+    { "Dev & pre-release builds" = "internals/dev-releases.md" },
+    { "Design specs" = [
+      "internals/specs/2026-07-13-dev-semver-pre-releases-design.md",
+    ] },
+  ] },
 ]
+
+# The 4.1.0 restructure moved every page. Without these, links from release
+# notes, issue comments and the HACS listing all 404. Redirects are page-level,
+# so a link to an old anchor lands at the top of the new page.
+[project.plugins.redirects.redirect_maps]
+"getting-started.md" = "start/index.md"
+"configuration.md" = "reference/options.md"
+"entities.md" = "reference/entities.md"
+"advanced.md" = "reference/actions.md"
+"troubleshooting.md" = "help/troubleshooting.md"
+"multi-config.md" = "internals/multi-account.md"
+"superpowers/specs/2026-07-13-dev-semver-pre-releases-design.md" = "internals/specs/2026-07-13-dev-semver-pre-releases-design.md"
 
 [project.theme]
 # Pinned explicitly: `docs.yml` installs zensical unpinned, and `variant` is a
@@ -45,6 +77,8 @@ features = [
   "navigation.instant.progress",
   "navigation.path",
   "navigation.sections",
+  "navigation.tabs",
+  "navigation.tabs.sticky",
   "navigation.top",
   "navigation.tracking",
   "search.highlight",
