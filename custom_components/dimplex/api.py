@@ -47,23 +47,57 @@ class CannotConnect(Exception):
     """Error to indicate we cannot connect."""
 
 
+class ControlRejected(CannotConnect):
+    """The cloud refused this control for this appliance, and a retry will not help.
+
+    Distinct from a plain :class:`CannotConnect` — which covers timeouts, dropped
+    connections and 5xx — because callers make destructive decisions on the
+    difference. ``climate.async_set_temperature`` falls back to rewriting the whole
+    timer schedule when the dedicated setpoint endpoint is refused; doing that for a
+    transient failure would silently overwrite every period of the user's schedule
+    (#197).
+
+    Subclasses ``CannotConnect`` so existing handlers keep working unchanged.
+    """
+
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+
+
 class InvalidAuth(Exception):
     """Error to indicate there is invalid auth."""
 
 
+# Statuses that mean "this appliance/endpoint will not do this", as opposed to
+# "the request did not get through". 403 is the documented Quantum case; 405 and
+# 501 are the same class of answer from a hub whose firmware lacks the endpoint.
+# Deliberately excludes 400 and 404: those usually mean our payload or ids are
+# wrong, and retrying the same value via a destructive path would not help.
+REJECTED_STATUSES = frozenset({403, 405, 501})
+
+
 @contextmanager
 def _translated_errors() -> Iterator[None]:
-    """Map library exceptions onto the adapter's config-flow error types.
+    """Map library exceptions onto the adapter's error types.
 
-    Every control call needs the same mapping, and a non-200 cloud response —
-    including the HTTP 403 some Quantum heaters return for writes they do not
-    support — arrives as :class:`DimplexApiError`.
+    Every control call needs the same mapping. A non-200 cloud response arrives as
+    :class:`DimplexApiError` carrying its HTTP status, which is split here: a
+    refusal (see :data:`REJECTED_STATUSES`, e.g. the HTTP 403 some Quantum heaters
+    return for writes they do not support) becomes :class:`ControlRejected`, while
+    everything else — 5xx, timeouts, dropped connections — stays
+    :class:`CannotConnect`.
     """
     try:
         yield
     except DimplexAuthError as exception:
         raise InvalidAuth from exception
-    except (DimplexConnectionError, DimplexApiError) as exception:
+    except DimplexApiError as exception:
+        status = getattr(exception, "status", None)
+        if status in REJECTED_STATUSES:
+            raise ControlRejected(str(exception), status=status) from exception
+        raise CannotConnect from exception
+    except DimplexConnectionError as exception:
         raise CannotConnect from exception
 
 
