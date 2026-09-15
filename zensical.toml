@@ -18,6 +18,7 @@ nav = [
     { "Connect your account" = "start/connect.md" },
   ] },
   { "Using it" = [
+    { "Modes & presets" = "use/modes.md" },
     { "Temperature & schedules" = "use/temperature.md" },
     { "Energy monitoring" = "use/energy.md" },
     { "Automations & blueprints" = "use/automations.md" },

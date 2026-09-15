@@ -21,7 +21,8 @@ working around any of it, stop.
   [why "off" reports 7 °C](../use/temperature.md#why-off-reports-7-c).
 - **Boost and away actually engage the right modes.** Earlier releases assumed boost was
   mode bit 16 and away bit 32; those are in fact Advance and FrostProtect. Asking for boost
-  engaged advance instead.
+  engaged advance instead. The corrected values are listed in
+  [Modes & presets](../use/modes.md#what-the-appliance-reports).
 - **Presets are mutually exclusive.** Selecting one now clears the others, so switching
   straight from `away` to `eco` works. Previously each preset only added its own state, and
   because the entity resolves boost before away before EcoStart, the change appeared to do

@@ -44,7 +44,14 @@ the appliance's engaged modes broken out so you can see what the heater is actua
 
   Email and password, or a browser auth code if that fails.
 
-- :material-thermostat: **[Temperature & schedules](use/temperature.md)**
+- :material-thermostat: **[Modes & presets](use/modes.md)**
+
+  ***
+
+  What boost, away, advance and frost protection actually do — and why one
+  Home Assistant preset cannot show all of them.
+
+- :material-tune-vertical: **[Temperature & schedules](use/temperature.md)**
 
   ***
 

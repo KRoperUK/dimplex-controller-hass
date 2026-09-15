@@ -112,6 +112,9 @@ EcoStart is a pre-heat _setting_, not an appliance mode: it learns how long the 
 to warm and starts early so the target is reached on time. The `eco` climate preset drives
 this same setting.
 
+It is **not** the cloud's separate Eco mode, which this integration does not use — see
+[the `eco` preset is not Eco mode](../use/modes.md#the-eco-preset-is-not-eco-mode).
+
 ## `dimplex.set_open_window_detection`
 
 | Field    | Type    | Default | Notes     |

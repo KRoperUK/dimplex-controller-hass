@@ -20,6 +20,8 @@ One climate entity per appliance.
 
 A preset is a single, mutually exclusive state: selecting one engages what that preset owns
 and clears the others, so switching straight from `away` to `eco` works as you would expect.
+Why a preset cannot always show what the appliance is doing:
+[Modes & presets](../use/modes.md#why-preset_mode-can-disagree-with-reality).
 
 | Preset    | Behaviour                                                                                                          |
 | --------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -98,7 +100,8 @@ precisely what hid the mode mismatch behind
 asked for Boost and the heater engaged Advance, with nothing on the dashboard to say so.
 
 Several bits can be set at once, so these four sensors can disagree with `preset_mode` —
-the sensors are the appliance's actual state and are the better thing to automate on. A
+the sensors are the appliance's actual state and are the better thing to automate on. See
+[Modes & presets](../use/modes.md) for the whole model. A
 [diagnostics download](../help/troubleshooting.md#log-analysis) also lists the engaged modes
 by name.
 

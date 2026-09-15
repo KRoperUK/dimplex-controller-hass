@@ -130,7 +130,8 @@ actions:
 ## React to the mode the heater is actually in
 
 The diagnostic mode sensors are more reliable to trigger on than `preset_mode`, because the
-appliance can hold several modes at once while the preset can only report one.
+appliance can hold several modes at once while the preset can only report one — see
+[Modes & presets](modes.md#why-preset_mode-can-disagree-with-reality).
 
 ```yaml
 alias: Warn if away mode is still on after we are back
