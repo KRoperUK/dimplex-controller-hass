@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import functools
 import logging
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
@@ -46,6 +46,17 @@ PRESET_ECO = "eco"
 DEFAULT_BOOST_TEMP = 25.0
 DEFAULT_BOOST_MINUTES = DEFAULT_BOOST_DURATION
 DEFAULT_AWAY_TEMP = 16.0
+
+# How many coordinator updates a just-written value is shown for before the
+# cloud's own state is accepted instead.
+#
+# ``async_request_refresh`` is debounced and the appliance takes time to reflect a
+# write, so the poll that follows a write usually still carries the *old* value:
+# the UI snapped back and then corrected itself a poll later, which is what "my
+# change didn't take" looked like (#198). Holding the written value removes the
+# flicker. The bound matters too — if the cloud silently reduced or ignored the
+# write, the entity must eventually show what the appliance actually reports.
+_OPTIMISTIC_UPDATES = 3
 
 # The appliance-side states each preset owns. Home Assistant treats a preset as a
 # single mutually-exclusive state, so selecting one engages exactly these and clears
@@ -211,6 +222,9 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
     ) -> None:
         super().__init__(coordinator, config_entry, appliance_row)
         self._api = api
+        # Values written to the appliance but not yet reflected by a poll.
+        self._optimistic: dict[str, Any] = {}
+        self._optimistic_updates_left = 0
 
     @property
     def _caps(self) -> Any:
@@ -256,6 +270,50 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         if callable(invalidate):
             invalidate()
 
+    # ── optimistic state ────────────────────────────────────────
+    def _hold_optimistic(self, **fields: Any) -> None:
+        """Show a just-written value immediately rather than after the next poll."""
+        self._optimistic.update(fields)
+        self._optimistic_updates_left = _OPTIMISTIC_UPDATES
+        self.async_write_ha_state()
+
+    @property
+    def _reported(self) -> dict[str, Any]:
+        """The values the last poll actually carries, by optimistic-state key."""
+        return {
+            "target_temperature": self._real_target_temperature,
+            "hvac_mode": self._real_hvac_mode,
+            "preset_mode": self._real_preset_mode,
+        }
+
+    def _optimistic_confirmed(self) -> bool:
+        """True when the cloud now reports every value written optimistically."""
+        reported = self._reported
+        for key, written in self._optimistic.items():
+            current = reported[key]
+            if key == "target_temperature":
+                if current is None or abs(current - written) > 0.01:
+                    return False
+            elif current != written:
+                return False
+        return True
+
+    def _handle_coordinator_update(self) -> None:
+        """Drop optimistic values once the poll agrees, or once they expire."""
+        if self._optimistic:
+            if self._optimistic_confirmed():
+                self._optimistic.clear()
+            else:
+                self._optimistic_updates_left -= 1
+                if self._optimistic_updates_left <= 0:
+                    _LOGGER.debug(
+                        "%s never confirmed the value written for %s; falling back to what it reports",
+                        self._appliance.FriendlyName,
+                        sorted(self._optimistic),
+                    )
+                    self._optimistic.clear()
+        super()._handle_coordinator_update()
+
     @property
     def current_temperature(self) -> float | None:
         """Return the room temperature, ignoring the cloud's 0xFF sentinel.
@@ -271,6 +329,13 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
 
     @property
     def target_temperature(self) -> float | None:
+        """Target, preferring a value written but not yet polled back."""
+        if "target_temperature" in self._optimistic:
+            return cast("float | None", self._optimistic["target_temperature"])
+        return self._real_target_temperature
+
+    @property
+    def _real_target_temperature(self) -> float | None:
         status = self._status
         if status is None:
             return None
@@ -289,6 +354,13 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
 
     @property
     def hvac_mode(self) -> HVACMode:
+        """Mode, preferring a value written but not yet polled back."""
+        if "hvac_mode" in self._optimistic:
+            return cast("HVACMode", self._optimistic["hvac_mode"])
+        return self._real_hvac_mode
+
+    @property
+    def _real_hvac_mode(self) -> HVACMode:
         status = self._status
         if status is None:
             return HVACMode.OFF
@@ -312,6 +384,13 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
 
     @property
     def preset_mode(self) -> str | None:
+        """Preset, preferring a value written but not yet polled back."""
+        if "preset_mode" in self._optimistic:
+            return cast("str | None", self._optimistic["preset_mode"])
+        return self._real_preset_mode
+
+    @property
+    def _real_preset_mode(self) -> str | None:
         status = self._status
         if status is None:
             return None
@@ -356,6 +435,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
                 temperature,
             )
             await self._api.async_set_target_temperature(hub_id, appliance_id, float(temperature))
+        self._hold_optimistic(target_temperature=float(temperature))
         await self.coordinator.async_request_refresh()
 
     @_translate_control_errors
@@ -392,6 +472,8 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
                     enable=False,
                 )
             await self._api.async_set_frost_protect(hub_id, appliance_id, enable=True)
+            # Off is expressed as the absence of a preset, so hold that too.
+            self._hold_optimistic(hvac_mode=HVACMode.OFF, preset_mode=None)
         elif hvac_mode == HVACMode.HEAT:
             if _is_frost_protect_active(status):
                 await self._api.async_set_frost_protect(hub_id, appliance_id, enable=False)
@@ -400,6 +482,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
                 # mode, so the schedule needs restoring as well.
                 await self._api.async_set_timer_mode(hub_id, appliance_id, TIMER_USER)
                 self._invalidate_schedules()
+            self._hold_optimistic(hvac_mode=HVACMode.HEAT)
 
         await self.coordinator.async_request_refresh()
 
@@ -473,6 +556,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
             elif state == _MODE_ECO_START:
                 await self._api.async_set_eco_start(hub_id, appliance_id, True)
 
+        self._hold_optimistic(preset_mode=preset_mode)
         await self.coordinator.async_request_refresh()
 
     async def async_turn_on(self) -> None:

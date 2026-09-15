@@ -815,3 +815,206 @@ async def test_climate_current_temperature_passes_real_readings(hass):
     state = hass.states.get(_climate_entity(hass))
     assert state is not None
     assert state.attributes.get("current_temperature") == 19.5
+
+
+# ── optimistic state (#198) ─────────────────────────────────────
+#
+# The cloud takes time to reflect a write and async_request_refresh is debounced,
+# so the poll immediately after a write still carries the old value. Without
+# optimistic state the UI reverted and corrected itself a poll later — the
+# "my change didn't take" report.
+
+
+async def _setup_climate(hass, payload):
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    return config_entry, _climate_entity(hass)
+
+
+def _coordinator(hass, config_entry):
+    return config_entry.runtime_data.status
+
+
+@pytest.mark.asyncio
+async def test_temperature_write_is_visible_before_the_cloud_confirms_it(hass):
+    """A written target shows immediately even though the poll still reports the old one."""
+    payload = _payload(target=20)
+    config_entry, entity_id = await _setup_climate(hass, payload)
+    assert hass.states.get(entity_id).attributes.get("temperature") == 20
+
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_appliance_setpoint",
+            new_callable=AsyncMock,
+        ),
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_TEMPERATURE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: 22.5},
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+    # The payload still reports 20 °C, so this is the optimistic value.
+    assert hass.states.get(entity_id).attributes.get("temperature") == 22.5
+    assert _coordinator(hass, config_entry).data is payload
+
+
+@pytest.mark.asyncio
+async def test_optimistic_target_is_released_once_the_cloud_agrees(hass):
+    """Once a poll reports the written value the entity defers to the poll again."""
+    payload = _payload(target=20)
+    config_entry, entity_id = await _setup_climate(hass, payload)
+    status = payload["appliances"][0]["status"]
+
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_appliance_setpoint",
+            new_callable=AsyncMock,
+        ),
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_TEMPERATURE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: 22.5},
+            blocking=True,
+        )
+
+    coordinator = _coordinator(hass, config_entry)
+
+    # The cloud catches up: the held value is confirmed and released.
+    status.ActiveSetPointTemperature = 22.5
+    status.NormalTemperature = 22.5
+    coordinator.async_set_updated_data(payload)
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id).attributes.get("temperature") == 22.5
+
+    # A later poll is now believed verbatim — proof the override is gone.
+    status.ActiveSetPointTemperature = 20
+    status.NormalTemperature = 20
+    coordinator.async_set_updated_data(payload)
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id).attributes.get("temperature") == 20
+
+
+@pytest.mark.asyncio
+async def test_optimistic_target_expires_when_it_is_never_confirmed(hass):
+    """A write the appliance never adopts must not be shown forever.
+
+    The cloud reduces an out-of-range Away target and can ignore a control
+    outright, so a held value needs a bound — after it, the entity reports what
+    the appliance actually says.
+    """
+    payload = _payload(target=20)
+    config_entry, entity_id = await _setup_climate(hass, payload)
+
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_appliance_setpoint",
+            new_callable=AsyncMock,
+        ),
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_TEMPERATURE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: 22.5},
+            blocking=True,
+        )
+
+    coordinator = _coordinator(hass, config_entry)
+    for _ in range(3):
+        coordinator.async_set_updated_data(payload)
+        await hass.async_block_till_done()
+
+    assert hass.states.get(entity_id).attributes.get("temperature") == 20
+
+
+@pytest.mark.asyncio
+async def test_preset_write_is_visible_before_the_cloud_confirms_it(hass):
+    """Selecting a preset shows at once rather than after the confirming poll."""
+    payload = _payload()  # comfort
+    _, entity_id = await _setup_climate(hass, payload)
+    assert hass.states.get(entity_id).attributes.get("preset_mode") == "comfort"
+
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_boost",
+            new_callable=AsyncMock,
+        ),
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_PRESET_MODE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_PRESET_MODE: "boost"},
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+    # The payload carries no boost bit yet, so this is the optimistic value.
+    assert hass.states.get(entity_id).attributes.get("preset_mode") == "boost"
+
+
+@pytest.mark.asyncio
+async def test_turn_off_is_visible_before_the_cloud_confirms_it(hass):
+    """Turning off shows as off at once, with no preset left showing."""
+    payload = _payload(timer_mode=1)  # heat
+    _, entity_id = await _setup_climate(hass, payload)
+    assert hass.states.get(entity_id).state == "heat"
+
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_frost_protect",
+            new_callable=AsyncMock,
+        ),
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_TURN_OFF,
+            {ATTR_ENTITY_ID: entity_id},
+            blocking=True,
+        )
+        await hass.async_block_till_done()
+
+    state = hass.states.get(entity_id)
+    assert state.state == "off"
+    assert state.attributes.get("preset_mode") is None
+
+
+@pytest.mark.asyncio
+async def test_no_optimistic_state_is_held_after_a_failed_write(hass):
+    """A write that raises must not leave an optimistic value behind."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex.api import CannotConnect
+
+    payload = _payload(target=20)
+    _, entity_id = await _setup_climate(hass, payload)
+
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_appliance_setpoint",
+            new_callable=AsyncMock,
+            side_effect=CannotConnect("timed out"),
+        ),
+        _api_data(payload),
+        pytest.raises(HomeAssistantError),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_TEMPERATURE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: 22.5},
+            blocking=True,
+        )
+
+    assert hass.states.get(entity_id).attributes.get("temperature") == 20
