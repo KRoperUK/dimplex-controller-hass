@@ -41,14 +41,21 @@ Changing options reloads the integration.
 
 ## Domain services
 
-Prefer these for scripts when climate presets are too coarse:
+Home Assistant calls these **actions** — the term replaced "service call" in 2024.8. Prefer
+them for scripts when climate presets are too coarse:
 
-| Service                                     | Purpose                                                     |
-| ------------------------------------------- | ----------------------------------------------------------- |
-| `dimplex.set_boost` / `dimplex.clear_boost` | Boost on/off (`temperature` 7-30 °C, `duration` minutes)    |
-| `dimplex.set_away` / `dimplex.clear_away`   | Away on/off (`temperature` 7-18 °C, plus `days` or `until`) |
-| `dimplex.set_eco_start`                     | EcoStart (`enable`)                                         |
-| `dimplex.set_open_window_detection`         | Open-window detection (`enable`)                            |
+| Service                                         | Purpose                                                                 |
+| ----------------------------------------------- | ----------------------------------------------------------------------- |
+| `dimplex.set_boost` / `dimplex.clear_boost`     | Boost on/off (`temperature` 7-30 °C, `duration` minutes)                |
+| `dimplex.set_away` / `dimplex.clear_away`       | Away on/off (`temperature` 7-18 °C, plus `days` or `until`)             |
+| `dimplex.set_advance` / `dimplex.clear_advance` | Skip to the next schedule period early / cancel it (`temperature` opt.) |
+| `dimplex.set_eco_start`                         | EcoStart (`enable`)                                                     |
+| `dimplex.set_open_window_detection`             | Open-window detection (`enable`)                                        |
+
+Advance brings the _next_ scheduled comfort period on early and then hands back to the
+schedule — it is not a fixed-duration override like boost. Leave `temperature` empty to
+use the schedule's own target for that period, which is what the official app does for
+Quantum and storage heaters.
 
 Away is a _settable_ setback, not frost protection: the cloud accepts **7-18 °C** for
 it and holds it until the moment you specify. Give it `days` for a simple count, or
@@ -84,16 +91,16 @@ Automation blueprints live under `blueprints/automation/dimplex/` in the reposit
 
 ```yaml
 alias: Boost if living room is cold
-trigger:
-  - platform: numeric_state
+triggers:
+  - trigger: numeric_state
     entity_id: sensor.living_room_room_temperature
     below: 17
-condition:
+conditions:
   - condition: time
     after: "06:00:00"
     before: "22:00:00"
-action:
-  - service: climate.set_preset_mode
+actions:
+  - action: climate.set_preset_mode
     target:
       entity_id: climate.living_room
     data:
@@ -104,12 +111,12 @@ action:
 
 ```yaml
 alias: Notify on open window
-trigger:
-  - platform: state
+triggers:
+  - trigger: state
     entity_id: binary_sensor.living_room_open_window
     to: "on"
-action:
-  - service: notify.notify
+actions:
+  - action: notify.notify
     data:
       message: "Open window detection active on {{ trigger.to_state.name }}"
 ```
@@ -118,11 +125,11 @@ action:
 
 ```yaml
 alias: Evening setpoint
-trigger:
-  - platform: time
+triggers:
+  - trigger: time
     at: "18:00:00"
-action:
-  - service: climate.set_temperature
+actions:
+  - action: climate.set_temperature
     target:
       entity_id: climate.living_room
     data:
@@ -159,4 +166,9 @@ Legacy tags of the form `dev-v…` may still appear until they age out of cleanu
 
 - Empty `GetApplianceOverview` is success when appliances are offline — entities go **unavailable**.
 - No reverse-engineered **live wattage** stream; energy is historical daily kWh.
-- Full weekly schedule UI is not exposed (setpoint writes rewrite timer periods).
+- Editing the **weekly schedule** is not exposed. Setting a target no longer touches it —
+  since 4.1.0 the dedicated `SetApplianceSetpointTemperature` endpoint applies the setpoint
+  and leaves the stored timer periods alone. Appliances that reject that endpoint (some
+  Quantum storage heaters answer 403) still fall back to the old schedule rewrite.
+- **Away** accepts only 7-18 °C, against 7-30 °C for a normal setpoint. Higher values are
+  clamped locally with a log warning rather than being silently reduced by the cloud.

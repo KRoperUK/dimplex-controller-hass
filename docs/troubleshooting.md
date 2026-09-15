@@ -83,7 +83,7 @@ This page helps you diagnose and resolve common issues with the Dimplex Hub inte
 
 ### Energy sensor shows `unavailable` in summer
 
-This is expected behaviour. See [Energy monitoring](index.md#energy-monitoring) in the main docs.
+This is expected behaviour. See [Energy Dashboard behaviour notes](advanced.md#behaviour-notes).
 
 Metered appliances only report energy data when they are actively consuming power. During warmer months, when heating is not running, the sensor is correctly reported as `unavailable` rather than `0`.
 

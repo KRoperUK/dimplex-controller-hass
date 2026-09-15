@@ -14,12 +14,15 @@ One climate entity per appliance.
 
 ### Presets
 
+A preset is a single, mutually exclusive state: selecting one engages what that preset owns
+and clears the others, so switching straight from `away` to `eco` works as you would expect.
+
 | Preset    | Behaviour                                                                                                          |
 | --------- | ------------------------------------------------------------------------------------------------------------------ |
-| `comfort` | Clears boost/away and turns EcoStart off when active.                                                              |
+| `comfort` | Clears boost, away and EcoStart — follow the schedule.                                                             |
 | `boost`   | Enables boost (default ~60 minutes, boost temperature when known).                                                 |
 | `away`    | Enables away mode at the appliance away temperature when known, clamped to the 7-18 °C the cloud accepts for Away. |
-| `eco`     | Enables EcoStart.                                                                                                  |
+| `eco`     | Enables EcoStart. This is the EcoStart pre-heat setting, **not** the cloud's separate Eco mode, which is unused.   |
 
 ### Services
 
@@ -113,12 +116,12 @@ Unique IDs are derived from the config entry id and the cloud appliance (or hub)
 
 ```yaml
 alias: Living room is too cold
-trigger:
-  - platform: numeric_state
+triggers:
+  - trigger: numeric_state
     entity_id: sensor.living_room_room_temperature
     below: 18
-action:
-  - service: notify.notify
+actions:
+  - action: notify.notify
     data:
       message: "Living room is {{ states('sensor.living_room_room_temperature') }} °C"
 ```
@@ -127,12 +130,12 @@ action:
 
 ```yaml
 alias: Boost living room
-trigger:
-  - platform: state
+triggers:
+  - trigger: state
     entity_id: input_boolean.boost_living_room
     to: "on"
-action:
-  - service: climate.set_preset_mode
+actions:
+  - action: climate.set_preset_mode
     target:
       entity_id: climate.living_room
     data:
@@ -143,12 +146,12 @@ action:
 
 ```yaml
 alias: Enable EcoStart when away
-trigger:
-  - platform: state
+triggers:
+  - trigger: state
     entity_id: person.yourself
     to: "not_home"
-action:
-  - service: switch.turn_on
+actions:
+  - action: switch.turn_on
     target:
       entity_id: switch.living_room_ecostart
 ```

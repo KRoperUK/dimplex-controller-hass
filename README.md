@@ -21,7 +21,7 @@
 
 ## What does this do?
 
-`dimplex-controller-hass` connects Home Assistant to the Dimplex cloud API. It discovers your Dimplex Hub, Zones and Appliances, and exposes them as native Home Assistant entities so you can monitor temperatures, track energy usage and control EcoStart — all from the Home Assistant dashboard.
+`dimplex-controller-hass` connects Home Assistant to the Dimplex cloud API. It discovers your Dimplex Hub, Zones and Appliances, and exposes them as native Home Assistant entities so you can monitor temperatures, control heating and track energy usage — all from the Home Assistant dashboard.
 
 It is distributed via [HACS](https://hacs.xyz) and built on top of the [`dimplex-controller-py`](https://github.com/KRoperUK/dimplex-controller-py) Python client.
 
@@ -39,10 +39,11 @@ It is distributed via [HACS](https://hacs.xyz) and built on top of the [`dimplex
 
 ## Features
 
+- **Climate control** — A thermostat per appliance: target temperature, heat/off, and boost / away / eco presets.
 - **Temperature monitoring** — View current room temperature and active target temperature setpoints for each Zone.
-- **Comfort status** — Monitor whether your heating is in Comfort mode.
-- **EcoStart control** — Toggle the EcoStart energy-saving feature from Home Assistant.
-- **Energy telemetry** — Monitor and log energy consumption for metered appliances directly in the Home Assistant Energy Dashboard.
+- **Mode visibility** — The appliance's engaged modes (boost, away, frost protection, advance) as diagnostic sensors, so you can see what the heater is actually doing.
+- **Energy telemetry** — Monitor and log energy consumption for metered appliances directly in the Home Assistant Energy Dashboard, with T1 and T2 tariffs kept separate.
+- **EcoStart and open-window detection** — Toggle both from Home Assistant.
 - **Automatic re-authentication** — The integration refreshes tokens automatically and prompts you to re-authenticate when necessary.
 
 ## Installation
@@ -102,21 +103,26 @@ If you choose the manual auth code method:
 
 ### Options flow
 
-After installation, you can adjust which platforms are enabled:
+After installation, you can adjust platforms and polling:
 
 1. Go to **Settings** > **Devices & Services**.
 2. Find **Dimplex Hub** and click **Configure**.
-3. Toggle `sensor`, `binary_sensor` and `switch` platforms on or off.
+3. Toggle the `climate`, `sensor`, `binary_sensor` and `switch` platforms, and set the status
+   poll interval, energy poll interval and default boost duration.
 
 ## Entities
 
-| Platform        | Description                                 | Example entity                     |
-| --------------- | ------------------------------------------- | ---------------------------------- |
-| `sensor`        | Room temperature per Zone.                  | `sensor.living_room_temperature`   |
-| `sensor`        | Cumulative energy used per Appliance (kWh). | `sensor.k radiator_energy`         |
-| `binary_sensor` | Comfort status per Appliance.               | `binary_sensor.k_radiator_comfort` |
-| `switch`        | EcoStart toggle per Appliance.              | `switch.k_radiator_ecostart`       |
+| Platform        | Description                                 | Example entity                          |
+| --------------- | ------------------------------------------- | --------------------------------------- |
+| `climate`       | Thermostat per Appliance.                   | `climate.k_radiator`                    |
+| `sensor`        | Room temperature per Zone.                  | `sensor.living_room_temperature`        |
+| `sensor`        | Cumulative energy used per Appliance (kWh). | `sensor.k_radiator_energy_lifetime`     |
+| `binary_sensor` | Comfort status per Appliance.               | `binary_sensor.k_radiator_comfort`      |
+| `binary_sensor` | Engaged appliance modes (diagnostic).       | `binary_sensor.k_radiator_boost_active` |
+| `switch`        | EcoStart toggle per Appliance.              | `switch.k_radiator_ecostart`            |
 
+> Around 20 entities per appliance in total, many disabled by default. See the
+> [entities reference](https://dimplex-hass.kroper.uk/entities/) for the full list.
 > Entity IDs are generated from your appliance names. You can rename them in Home Assistant as usual.
 
 ## Energy monitoring
@@ -141,10 +147,18 @@ A secondary register (**Energy T2**) is available as diagnostic entities when th
 Each appliance is exposed as a `climate` entity with:
 
 - current room temperature and target temperature
+- HVAC heat/off, where **off** engages frost protection at 7 °C — the appliance has no off
+  mode, and this is what the official app does
 - presets: `comfort`, `boost`, `away`, `eco` (EcoStart)
 - `climate.set_temperature` / `climate.set_preset_mode`
+- `dimplex.set_advance` / `dimplex.clear_advance` — skip to the next schedule period early
+- `dimplex.set_away` accepts `days` or `until` for a definite return time
 
 Setting a target uses the cloud's dedicated setpoint endpoint, so it applies immediately and leaves your timer schedule untouched. Editing the schedule itself is still limited by the cloud API.
+
+The appliance holds a **bitfield** of modes — several can be engaged at once — and Home
+Assistant's single `preset_mode` can only show one of them. Four diagnostic binary sensors
+(Boost active, Away active, Frost protection, Advance active) expose the rest.
 
 ## Upgrading to 3.0.0
 
@@ -175,8 +189,13 @@ This is a **major** release relative to 2.0.0. After updating via HACS, **restar
 
 ## Known limitations
 
-- Full weekly schedule UI is not exposed yet (setpoint writes update timer periods).
-- Away mode bitmasks are best-effort across appliance families.
+- Editing the **weekly schedule** is not exposed. Setting a target does not disturb it — the
+  integration uses the cloud's dedicated setpoint endpoint, and only falls back to a schedule
+  rewrite on appliances that reject it (some Quantum storage heaters answer 403).
+- **Away** accepts only 7-18 °C where a normal setpoint accepts 7-30 °C. Higher values are
+  clamped, with a warning in the log.
+- **Hot water cylinder** control exists in the underlying library but has never been run
+  against hardware, so it is not surfaced as entities or actions.
 
 ## Troubleshooting
 
