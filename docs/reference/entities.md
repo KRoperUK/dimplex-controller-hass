@@ -102,8 +102,7 @@ asked for Boost and the heater engaged Advance, with nothing on the dashboard to
 Several bits can be set at once, so these four sensors can disagree with `preset_mode` —
 the sensors are the appliance's actual state and are the better thing to automate on. See
 [Modes & presets](../use/modes.md) for the whole model. A
-[diagnostics download](../help/troubleshooting.md#log-analysis) also lists the engaged modes
-by name.
+[diagnostics download](../help/diagnostics.md) also lists the engaged modes by name.
 
 ## Switches
 

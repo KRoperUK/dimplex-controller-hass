@@ -218,7 +218,7 @@ Three ways, in increasing detail:
    by default; enable them in the entity registry.
 2. **A diagnostics download** — decodes `ApplianceModes` into mode names, so you do not have
    to do the arithmetic. See
-   [log analysis](../help/troubleshooting.md#log-analysis).
+   [diagnostics & bug reports](../help/diagnostics.md#active_modes-is-the-useful-bit).
 3. **The raw value** — `ApplianceModes` appears in diagnostics as an integer. `8198` is
    `BOOST | AWAY | NORMAL` (2 + 4 + 8192)… which is exactly the sort of sum nobody should
    have to do by hand, hence the decoding above.

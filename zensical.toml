@@ -27,9 +27,11 @@ nav = [
     { "Entities" = "reference/entities.md" },
     { "Actions" = "reference/actions.md" },
     { "Options" = "reference/options.md" },
+    { "Appliance support" = "reference/appliances.md" },
   ] },
   { "Help" = [
     { "Troubleshooting" = "help/troubleshooting.md" },
+    { "Diagnostics & bug reports" = "help/diagnostics.md" },
     { "Upgrading" = "help/upgrading.md" },
   ] },
   { "Internals" = [

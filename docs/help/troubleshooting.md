@@ -167,7 +167,11 @@ that is worth reporting.
 
 ## Still stuck?
 
-If you cannot resolve your issue, please [open a GitHub issue](https://github.com/kroperuk/dimplex-controller-hass/issues) with:
+First read [diagnostics & bug reports](diagnostics.md) — attaching a diagnostics download
+is the single fastest route to an answer, because it decodes the appliance's engaged modes by
+name.
+
+Then [open a GitHub issue](https://github.com/kroperuk/dimplex-controller-hass/issues) with:
 
 1. Your Home Assistant version.
 2. The integration version (found in `manifest.json` or HACS).
