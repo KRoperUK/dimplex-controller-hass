@@ -261,7 +261,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor platform."""
-    runtime = hass.data[DOMAIN][entry.entry_id]
+    runtime = entry.runtime_data
     status = runtime.status
     energy = runtime.energy
     devices: list[SensorEntity] = []
@@ -395,7 +395,18 @@ class DimplexZoneSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]
 
     @property
     def available(self) -> bool:
-        return self.coordinator.last_update_success
+        """Unavailable once the zone stops appearing in the appliance snapshot.
+
+        The anchor used to keep reporting after its zone was removed or renamed in
+        the Dimplex app, leaving a permanently stale entity behind that could
+        never go away by itself (#198).
+        """
+        if not self.coordinator.last_update_success:
+            return False
+        zone_ids = {
+            getattr(row.get("zone"), "ZoneId", None) for row in (self.coordinator.data or {}).get("appliances", [])
+        }
+        return self._zone.ZoneId in zone_ids
 
     @property
     def native_value(self) -> str | None:
