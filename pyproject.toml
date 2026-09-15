@@ -1,5 +1,12 @@
 [tool.ruff]
-target-version = "py314"
+# The oldest Python we must stay loadable on, NOT the newest we develop against.
+# hacs.json declares a floor of Home Assistant 2025.1.0, which runs on Python
+# 3.12 (2025.2 raised the requirement to 3.13). ruff's formatter rewrites syntax to
+# suit target-version: at py314 it unparenthesises `except (TypeError, ValueError)`
+# per PEP 758, which is a SyntaxError on 3.12/3.13 and would stop the integration
+# loading on every HA release we claim to support. Raise this only together with
+# the hacs.json floor.
+target-version = "py312"
 line-length = 120
 
 [tool.ruff.lint]
@@ -20,6 +27,9 @@ known-first-party = ["custom_components", "tests"]
 
 [tool.mypy]
 # Strict typing for the integration package; CI runs `mypy` on this path.
+# Deliberately NOT the ruff target-version above: mypy has to parse the installed
+# Home Assistant, and HA 2026.9 uses PEP 758 `except` syntax, so anything below
+# 3.14 fails to parse homeassistant itself before it reaches our code.
 python_version = "3.14"
 strict = true
 ignore_missing_imports = true
