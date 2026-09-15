@@ -285,3 +285,66 @@ async def test_window_sensors_carry_no_state_class():
         assert description.state_class == SensorStateClass.TOTAL, (
             f"{description.key} must stay TOTAL so its midnight last_reset is honoured"
         )
+
+
+async def test_energy_summary_is_memoised_across_property_reads(hass):
+    """summarise_energy must run once per update, not once per property read (#198).
+
+    The memo keys on the energy coordinator's ``last_update_success_time``. That
+    attribute only exists on ``TimestampDataUpdateCoordinator``; while the
+    coordinator was a plain ``DataUpdateCoordinator`` the key was always ``None``,
+    the guard never matched, and the summary was recomputed for ``available``,
+    ``native_value``, ``last_reset`` and ``extra_state_attributes`` on every single
+    state write — thousands of telemetry points each time.
+    """
+    from custom_components.dimplex import DimplexEnergyCoordinator
+    from custom_components.dimplex.sensor import summarise_energy
+
+    status_payload, energy_payload = _row(
+        t1=[
+            (dt_util.now() - timedelta(days=2), 0.15),
+            (dt_util.now(), 0.2),
+        ]
+    )
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
+            return_value=status_payload,
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value=energy_payload,
+        ),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    runtime = hass.data[DOMAIN][config_entry.entry_id]
+    # Must be the timestamp variant, or the memo below cannot work at all.
+    assert isinstance(runtime.energy, DimplexEnergyCoordinator)
+    assert runtime.energy.last_update_success_time is not None
+
+    component = hass.data["entity_components"]["sensor"]
+    entity = next(
+        candidate
+        for candidate in component.entities
+        if getattr(candidate.entity_description, "mode", None) == "lifetime"
+        and getattr(candidate.entity_description, "register", None) == "t1"
+    )
+
+    with patch("custom_components.dimplex.sensor.summarise_energy", wraps=summarise_energy) as summarise:
+        # Four reads that each recomputed the whole series before the fix. At most one
+        # computation may happen here — zero if the cache is still warm from the state
+        # write during setup, which is the normal case.
+        assert entity.available is True
+        _ = entity.native_value
+        _ = entity.last_reset
+        _ = entity.extra_state_attributes
+        assert summarise.call_count <= 1, (
+            f"summarise_energy ran {summarise.call_count} times for four reads of one "
+            "update cycle — the memo is not holding"
+        )

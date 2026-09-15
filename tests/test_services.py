@@ -320,3 +320,61 @@ async def test_advance_services(hass: HomeAssistant) -> None:
     )
     assert runtime.api.async_set_advance.await_args.kwargs["enable"] is False
     assert runtime.status.async_request_refresh.await_count == 3
+
+
+@pytest.mark.parametrize(
+    ("adapter_error", "expected_message"),
+    [
+        ("ControlRejected", "rejected this control"),
+        ("CannotConnect", "Could not reach the Dimplex cloud"),
+        ("InvalidAuth", "authentication failed"),
+    ],
+)
+async def test_action_failures_surface_a_readable_error(
+    hass: HomeAssistant, adapter_error: str, expected_message: str
+) -> None:
+    """Every dimplex.* action must translate adapter failures (#198).
+
+    The handlers called the API bare, so an appliance that refuses boost surfaced a
+    raw adapter exception — the "unknown error" of #149, which only the climate
+    entity had ever translated. The message names the action, because an action can
+    target an entity, a device or an area and so has no single appliance name.
+    """
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex import api as api_module
+
+    error_cls = getattr(api_module, adapter_error)
+
+    runtime = _make_runtime()
+    runtime.api.async_set_boost = AsyncMock(side_effect=error_cls("nope"))
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with pytest.raises(HomeAssistantError, match=expected_message):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_BOOST,
+            {"device_id": device_id},
+            blocking=True,
+        )
+
+
+async def test_action_error_message_names_the_action(hass: HomeAssistant) -> None:
+    """The translated message must identify which action failed."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex.api import ControlRejected
+
+    runtime = _make_runtime()
+    runtime.api.async_set_boost = AsyncMock(side_effect=ControlRejected("Forbidden", status=403))
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with pytest.raises(HomeAssistantError, match=r"dimplex\.set_boost"):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_BOOST,
+            {"device_id": device_id},
+            blocking=True,
+        )
