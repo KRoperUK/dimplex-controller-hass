@@ -12,6 +12,15 @@ the entries between your current version and the one you are moving to.
 Behaviour fixes, no configuration changes. Everything here is a correction — if you were
 working around any of it, stop.
 
+!!! warning "The declared Home Assistant floor is now 2026.9"
+
+    Earlier releases claimed 2025.1 in `hacs.json`. That was wrong, not conservative: since
+    the appliance-to-hub device links moved to the device-registry APIs introduced in
+    Home Assistant 2026.8 (`via_device_id` and `async_get_device_by_identifier`), setting up
+    the integration on an older release creates **no entities at all**. HACS will now hold
+    the update back on Home Assistant below 2026.9 instead of offering an install that
+    cannot work.
+
 - **Setting a target no longer rewrites your schedule.** Writes go through the cloud's
   dedicated setpoint endpoint, with the old schedule rewrite kept only as a fallback for
   appliances that reject it. See
@@ -77,7 +86,7 @@ A major release relative to 2.0.0.
 
 Any recent version needs:
 
-- Home Assistant **2025.1** or later.
+- Home Assistant **2026.9** or later.
 - [`dimplex-controller>=0.13.0`](https://pypi.org/project/dimplex-controller/), installed
   automatically from the integration requirements.
 

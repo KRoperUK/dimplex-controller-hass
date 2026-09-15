@@ -13,7 +13,10 @@ description: Install the Dimplex Hub integration for Home Assistant via HACS or 
 
 ## Before you start
 
-- Home Assistant **2025.1** or later — the floor this integration declares in `hacs.json`.
+- Home Assistant **2026.9** or later — the floor this integration declares in `hacs.json`.
+  Earlier releases are not merely untested: the integration links each appliance to its hub
+  with the device-registry APIs introduced in 2026.8 (`via_device_id` and
+  `async_get_device_by_identifier`), so on an older version no entities are created at all.
 - A Dimplex cloud account with at least one registered appliance, working in the official
   Dimplex Control app.
 - Internet access from your Home Assistant instance. This is a cloud-polling integration;

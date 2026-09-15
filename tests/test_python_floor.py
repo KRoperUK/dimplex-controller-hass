@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import tomllib
 from pathlib import Path
 
@@ -30,12 +31,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 COMPONENT = REPO_ROOT / "custom_components" / "dimplex"
 
 # Minimum Python for each Home Assistant floor we have actually verified.
-# 2025.1.0 is the last HA release that ran on Python 3.12 (its sdist declares
-# ``Requires-Python >=3.12``); 2025.2 raised the requirement to 3.13. Extend
-# this deliberately — a wrong entry here re-opens exactly the hole the module
-# docstring describes.
+# 2026.9.0 and 2026.8.0 both declare ``Requires-Python >=3.14.2`` on PyPI.
+# 2025.1.0 is kept because it was the previous floor and documents the boundary
+# that made this test necessary: it was the last HA release running on Python
+# 3.12, and 2025.2 raised the requirement to 3.13. Extend this deliberately — a
+# wrong entry here re-opens exactly the hole the module docstring describes.
 HA_FLOOR_TO_PYTHON: dict[str, tuple[int, int]] = {
     "2025.1.0": (3, 12),
+    "2026.8.0": (3, 14),
+    "2026.9.0": (3, 14),
 }
 
 
@@ -55,16 +59,25 @@ def _minimum_python() -> tuple[int, int]:
     return HA_FLOOR_TO_PYTHON[floor]
 
 
-def test_ruff_target_version_matches_ha_floor() -> None:
-    """ruff must format for the oldest Python our declared HA floor runs on."""
+def test_ruff_target_version_is_not_newer_than_ha_floor() -> None:
+    """ruff must never format for a newer Python than our declared HA floor runs on.
+
+    Equality is not required. Targeting *older* than the floor only forgoes some
+    pyupgrade rewrites, and pyproject.toml explains why py312 is kept
+    deliberately; targeting *newer* is the bug this guards, because the formatter
+    then emits syntax the oldest supported Home Assistant cannot parse.
+    """
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     target = pyproject["tool"]["ruff"]["target-version"]
-    major, minor = _minimum_python()
-    expected = f"py{major}{minor}"
-    assert target == expected, (
-        f"[tool.ruff] target-version is {target} but hacs.json declares Home Assistant "
-        f"{_ha_floor()}, which runs on Python {major}.{minor} ({expected}). Raise the "
-        "hacs.json floor first if newer syntax is genuinely wanted."
+    match = re.fullmatch(r"py(\d)(\d+)", target)
+    assert match, f"unrecognised [tool.ruff] target-version {target!r}"
+    target_version = (int(match.group(1)), int(match.group(2)))
+    floor_version = _minimum_python()
+    assert target_version <= floor_version, (
+        f"[tool.ruff] target-version is {target} (Python {target_version[0]}.{target_version[1]}) but "
+        f"hacs.json declares Home Assistant {_ha_floor()}, which runs on Python "
+        f"{floor_version[0]}.{floor_version[1]}. Raise the hacs.json floor first if newer "
+        "syntax is genuinely wanted."
     )
 
 
