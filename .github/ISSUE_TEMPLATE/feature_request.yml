@@ -23,10 +23,30 @@ body:
       description: Hub model, appliance models, zones — anything relevant.
     validations:
       required: false
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics (optional but valuable)
+      description: >-
+        If the request involves an appliance or a capability, a diagnostics download shows
+        exactly what the cloud reports for your hardware — often the difference between a
+        guess and an implementation. Several appliance families are supported only on paper;
+        see [appliance
+        support](https://dimplex-hass.kroper.uk/reference/appliances/).
+
+
+        **Settings → Devices & services → Dimplex Hub → ⋮ → Download diagnostics**. Tokens
+        and personal details are redacted automatically.
+      placeholder: Attach the JSON file, or paste its contents.
+    validations:
+      required: false
   - type: checkboxes
     id: contribution
     attributes:
       label: Contribution
       options:
         - label: I am willing to help test an implementation.
+        - label: >-
+            I have hardware in an untested family (hot water cylinder, heat pump) and can
+            try things against it.
         - label: I am willing to submit a pull request.

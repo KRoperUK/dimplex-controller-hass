@@ -1,10 +1,21 @@
 name: Bug report
-description: Report a problem with the Dimplex Controller integration
+description: Report a problem with the Dimplex Hub integration
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
-      value: Thanks for taking the time to file a bug report! Please search existing issues first.
+      value: >-
+        Thanks for taking the time to file a bug report. Please search existing issues first.
+
+
+        Two things make a report answerable in one reply rather than five: a **diagnostics
+        download**, which decodes the appliance's engaged modes by name, and whether the
+        **official Dimplex app** behaves the same way. There are fields for both below.
+
+
+        This is an unofficial, reverse-engineered integration and is not supported by
+        Dimplex — see
+        [about](https://dimplex-hass.kroper.uk/#trademarks-and-attribution).
   - type: checkboxes
     id: preflight
     attributes:
@@ -14,12 +25,17 @@ body:
           required: true
         - label: I am running the latest released version of this integration.
           required: true
+        - label: >-
+            I have read the [troubleshooting
+            page](https://dimplex-hass.kroper.uk/help/troubleshooting/) — several
+            long-standing mode bugs were fixed in 4.1.0.
+          required: true
   - type: input
     id: integration_version
     attributes:
       label: Integration version
-      description: See `custom_components/dimplex/const.py` or HACS.
-      placeholder: "e.g. 1.0.0"
+      description: HACS, or `custom_components/dimplex/const.py`.
+      placeholder: "e.g. 4.1.0"
     validations:
       required: true
   - type: input
@@ -29,11 +45,30 @@ body:
       placeholder: "e.g. 2026.5.0"
     validations:
       required: true
+  - type: dropdown
+    id: appliance_family
+    attributes:
+      label: Appliance family
+      description: >-
+        Behaviour differs a lot between families — a charge-based storage heater does
+        nothing with a new target until it holds charge, which looks identical to a failed
+        write. See [appliance
+        support](https://dimplex-hass.kroper.uk/reference/appliances/).
+      multiple: true
+      options:
+        - Panel heater / PLX / other simple room heater
+        - QRAD
+        - Quantum storage heater
+        - Hot water cylinder
+        - Air-source heat pump (ASHW)
+        - Not sure
+    validations:
+      required: true
   - type: textarea
     id: description
     attributes:
       label: Describe the bug
-      description: A clear description of the problem and what you expected to happen.
+      description: What happened, and what you expected to happen instead.
     validations:
       required: true
   - type: textarea
@@ -45,13 +80,51 @@ body:
         2. ...
     validations:
       required: true
+  - type: dropdown
+    id: official_app
+    attributes:
+      label: Does the official Dimplex app do the same thing?
+      description: >-
+        The single most useful line in a report. If the official app behaves identically,
+        the cloud or the appliance is doing this and the integration is reporting it
+        faithfully.
+      options:
+        - "No — the official app behaves correctly"
+        - "Yes — the official app does the same"
+        - "Not checked"
+        - "Cannot check (the app cannot reach this appliance either)"
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: >-
+        **Settings → Devices & services → Dimplex Hub → ⋮ → Download diagnostics**, then
+        drag the file in here. Tokens, passwords and your email are redacted
+        automatically. See [diagnostics & bug
+        reports](https://dimplex-hass.kroper.uk/help/diagnostics/).
+      placeholder: Attach the JSON file, or paste its contents.
+    validations:
+      required: false
   - type: textarea
     id: logs
     attributes:
       label: Debug log
-      description: >
-        Enable debug logging (`custom_components.dimplex: debug`), reproduce, and paste
-        the relevant lines. Redact any credentials or tokens.
+      description: >-
+        Enable debug logging for `custom_components.dimplex` and `dimplex_controller`,
+        reproduce, then paste the relevant lines. Unlike diagnostics, the log is **not**
+        redacted — check it for tokens and email addresses first.
       render: text
+    validations:
+      required: false
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does it happen?
+      options:
+        - Every time
+        - Intermittently
+        - Happened once
     validations:
       required: false
