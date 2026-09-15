@@ -837,7 +837,7 @@ async def _setup_climate(hass, payload):
 
 
 def _coordinator(hass, config_entry):
-    return hass.data[DOMAIN][config_entry.entry_id].status
+    return config_entry.runtime_data.status
 
 
 @pytest.mark.asyncio
