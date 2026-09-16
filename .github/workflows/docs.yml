@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "zensical.toml"
+      - "requirements_docs.txt"
       - "docs/**"
       - "includes/**"
       - "overrides/**"
@@ -36,7 +37,7 @@ jobs:
       - name: Install Zensical
         run: |
           python -m pip install --upgrade pip
-          pip install zensical
+          pip install -r requirements_docs.txt
 
       - name: Build documentation
         run: zensical build

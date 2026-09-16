@@ -1,11 +1,17 @@
-name: HACS release asset
+name: HACS release asset repair
 
-# release-please (and any other process) publishes GitHub Releases without a
-# HACS zip asset. Attach dimplex.zip so HACS zip_release installs work.
+# Repair tool, not automation. release-please builds and verifies dimplex.zip
+# inline (release-please.yaml), so every published release already carries the
+# asset HACS zip_release installs from.
+#
+# It used to trigger on `release: [published]`, which never fired: GitHub does not
+# raise workflow events for releases created with the automatic `github.token`,
+# and release-please creates them with exactly that. The last run was v4.0.1
+# (2026-07-17) while v4.0.2 and every September RC published with no run at all.
+# The trigger is gone rather than duplicated, so a missing asset is attached
+# deliberately by hand (dimplex-controller-hass#201).
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -25,9 +31,8 @@ jobs:
         id: tag
         env:
           INPUT_TAG: ${{ github.event.inputs.tag }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          TAG="${INPUT_TAG:-$RELEASE_TAG}"
+          TAG="${INPUT_TAG}"
           if [ -z "$TAG" ]; then
             echo "No release tag" >&2
             exit 1
