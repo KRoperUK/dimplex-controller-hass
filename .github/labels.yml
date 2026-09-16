@@ -1,5 +1,16 @@
 # Managed by .github/workflows/sync-labels.yml (EndBug/label-sync).
 # CI status labels are applied/removed by .github/workflows/pr-status-labels.yml.
+#
+# Only labels something actually applies belong here. The stock `duplicate`,
+# `good first issue`, `help wanted`, `invalid` and `wontfix` were removed: nothing
+# set them, a maintainer triaging a one-maintainer repository can label by hand,
+# and they crowded the picker on every new issue (#202). `question` is kept
+# deliberately — Discussions is off, so it is the only way to mark a
+# question-shaped issue as such.
+#
+# Note that sync-labels.yml runs with `delete-other-labels: false`, so removing a
+# label here does not delete it from the repository. Deleting these five is a
+# separate one-off `gh label delete`.
 
 # --- Conventional issue / PR labels ---
 - name: bug
@@ -8,27 +19,12 @@
 - name: documentation
   color: "0075ca"
   description: Improvements or additions to documentation
-- name: duplicate
-  color: "cfd3d7"
-  description: This issue or pull request already exists
 - name: enhancement
   color: "a2eeef"
   description: New feature or request
-- name: good first issue
-  color: "7057ff"
-  description: Good for newcomers
-- name: help wanted
-  color: "008672"
-  description: Extra attention is needed
-- name: invalid
-  color: "e4e669"
-  description: This doesn't seem right
 - name: question
   color: "d876e3"
   description: Further information is requested
-- name: wontfix
-  color: "ffffff"
-  description: This will not be worked on
 - name: dependencies
   color: "0366d6"
   description: Pull requests that update a dependency file
