@@ -34,8 +34,12 @@ Pull requests are the best way to propose changes to the codebase.
      (`custom_components/*/manifest.json` is formatted with `scripts/format_manifest.py`
      — indent 2, multi-line arrays — so release-please version bumps do not fight
      Prettier. Do not run Prettier on that file.)
-     The pre-push mypy/pytest hooks use your active environment, so activate the
-     test venv (`uv pip install -r requirements_test.txt`) before pushing.
+     The ruff, mypy and pytest hooks all run from your active environment
+     (`language: system`) rather than pre-commit's own copies, so activate the
+     test venv (`uv pip install -r requirements_test.txt`) before committing —
+     not just before pushing. That keeps one pin for ruff, in
+     `requirements_test.txt`; a missing `ruff` fails the hook rather than
+     silently skipping the check.
 4. Add or update tests for your change and make sure `pytest` passes
    (`uv pip install -r requirements_test.txt && pytest`).
 5. Use a [Conventional Commit](https://www.conventionalcommits.org/) PR title

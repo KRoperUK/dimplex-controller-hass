@@ -153,14 +153,10 @@ jobs:
           cache-dependency-path: .github/workflows/ci.yml
 
       - name: Install ruff
-        # Pin to the same ruff as the test env (requirements_test.txt) so lint and
-        # format can't drift between the two jobs.
+        # Single source of truth for the ruff version. The lint job, the
+        # pre-commit job and contributors all resolve it from here, so the
+        # linter and formatter cannot disagree about what "correct" output is.
         run: pip install "$(grep -E '^ruff==' requirements_test.txt)"
-
-      - name: Verify ruff pin parity
-        # Fails fast if requirements_test.txt and .pre-commit-config.yaml disagree
-        # on the ruff version — they must stay in sync.
-        run: bash scripts/check-ruff-pin.sh
 
       - name: Lint with ruff
         # --output-format=github emits ::error annotations inline on the offending
@@ -193,11 +189,10 @@ jobs:
       - name: Type check with mypy
         run: mypy
 
-  # Run the full pre-commit suite to catch drift between ruff-as-pre-commit
-  # (pinned in .pre-commit-config.yaml) and ruff-as-CI (pinned in
-  # requirements_test.txt). The two pins must stay in sync; the
-  # `Install ruff` step above uses the same version as the local install
-  # but the pre-commit hooks are a separate pinned mirror.
+  # Run the full pre-commit suite. The ruff hooks use the environment's ruff
+  # (`language: system`), so the version installed here is the same one the lint
+  # job and every contributor's dev venv use — one pin in requirements_test.txt
+  # rather than a separate pre-commit mirror that could drift (#201).
   pre-commit:
     needs: changes
     if: needs.changes.outputs.component == 'true'
@@ -215,6 +210,10 @@ jobs:
 
       - name: Install pre-commit
         run: pip install pre-commit
+
+      - name: Install ruff
+        # The ruff hooks run `ruff` from PATH.
+        run: pip install "$(grep -E '^ruff==' requirements_test.txt)"
 
       - name: Run pre-commit on all files
         run: pre-commit run --all-files --show-diff-on-failure --color=always

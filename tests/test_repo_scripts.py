@@ -27,13 +27,6 @@ def _run(script: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_check_ruff_pin_passes() -> None:
-    """The pinned ruff version in requirements_test.txt must match .pre-commit-config.yaml."""
-    result = _run("check-ruff-pin.sh")
-    assert result.returncode == 0, f"ruff pin drift:\nstdout: {result.stdout}\nstderr: {result.stderr}"
-    assert "consistent" in result.stdout
-
-
 def test_check_translation_parity_runs() -> None:
     """Parity script must run and either pass or fail with a clear message.
 
@@ -63,7 +56,7 @@ def test_check_md_alerts_passes() -> None:
     assert "✓" in result.stdout
 
 
-@pytest.mark.parametrize("script", ["check-ruff-pin.sh", "check-translation-parity.sh", "check-md-alerts.sh"])
+@pytest.mark.parametrize("script", ["check-translation-parity.sh", "check-md-alerts.sh"])
 def test_scripts_are_executable(script: str) -> None:
     """Maintenance scripts must have the executable bit set so CI can run them."""
     path = REPO_ROOT / "scripts" / script
