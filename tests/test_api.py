@@ -168,6 +168,9 @@ async def test_async_get_data_maps_appliances(hass):
 
     with (
         patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        # The catalogue is fetched once per client to feed capability derivation
+        # (#199); an account with none is the normal case for these fixtures.
+        patch.object(api._client, "get_product_models", new=AsyncMock(return_value=[])),
         patch.object(
             api._client,
             "get_hub_zones",
@@ -217,6 +220,9 @@ async def test_async_get_data_maps_st_telemetry(hass):
 
     with (
         patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        # The catalogue is fetched once per client to feed capability derivation
+        # (#199); an account with none is the normal case for these fixtures.
+        patch.object(api._client, "get_product_models", new=AsyncMock(return_value=[])),
         patch.object(
             api._client,
             "get_hub_zones",
@@ -262,6 +268,9 @@ async def test_async_get_data_overview_fallback(hass):
 
     with (
         patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        # The catalogue is fetched once per client to feed capability derivation
+        # (#199); an account with none is the normal case for these fixtures.
+        patch.object(api._client, "get_product_models", new=AsyncMock(return_value=[])),
         patch.object(api._client, "get_hub_zones", new=AsyncMock(return_value=[zone])),
         patch.object(api._client, "get_appliance_overview", new=mock_overview),
         patch.object(
@@ -292,6 +301,9 @@ async def test_async_get_data_energy_report_api_error_is_skipped(hass):
 
     with (
         patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        # The catalogue is fetched once per client to feed capability derivation
+        # (#199); an account with none is the normal case for these fixtures.
+        patch.object(api._client, "get_product_models", new=AsyncMock(return_value=[])),
         patch.object(api._client, "get_hub_zones", new=AsyncMock(return_value=[zone])),
         patch.object(
             api._client,
@@ -703,3 +715,99 @@ async def test_advance_helper_delegates_to_library(hass):
     assert first.args == ("h", ["a"])
     assert first.kwargs == {"enable": True, "temperature": None}
     assert second.kwargs == {"enable": False, "temperature": 19.0}
+
+
+async def test_product_catalogue_is_fetched_once_and_matched_to_rows(hass):
+    """The catalogue is static per account, and joins a row to its product (#199)."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    hub = SimpleNamespace(HubId="hub-1")
+    appliance = SimpleNamespace(ApplianceId="a-1", ApplianceModel="QM100RF", ApplianceType="Quantum")
+    zone = SimpleNamespace(ZoneName="Living Room", Appliances=[appliance])
+    product = SimpleNamespace(ProductModelName="QM100RF", ProductTypeName="Quantum")
+
+    with (
+        patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        patch.object(api._client, "get_hub_zones", new=AsyncMock(return_value=[zone])),
+        patch.object(api._client, "get_appliance_overview", new=AsyncMock(return_value=[])),
+        patch.object(api._client, "get_product_models", new=AsyncMock(return_value=[product])) as catalogue,
+    ):
+        first = await api.async_get_status_data()
+        second = await api.async_get_status_data()
+
+    assert first["appliances"][0]["product"] is product
+    assert second["appliances"][0]["product"] is product
+    catalogue.assert_awaited_once()
+
+
+async def test_product_catalogue_failure_is_survivable_and_retried(hass):
+    """A missing catalogue must not fail the poll, and must be retried later."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    hub = SimpleNamespace(HubId="hub-1")
+    appliance = SimpleNamespace(ApplianceId="a-1", ApplianceModel="QM100RF", ApplianceType="Quantum")
+    zone = SimpleNamespace(ZoneName="Living Room", Appliances=[appliance])
+
+    with (
+        patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        patch.object(api._client, "get_hub_zones", new=AsyncMock(return_value=[zone])),
+        patch.object(api._client, "get_appliance_overview", new=AsyncMock(return_value=[])),
+        patch.object(
+            api._client,
+            "get_product_models",
+            new=AsyncMock(side_effect=DimplexConnectionError("catalogue unavailable")),
+        ) as catalogue,
+    ):
+        data = await api.async_get_status_data()
+
+    assert data["appliances"][0]["product"] is None
+    # Not cached, so the next poll tries again rather than degrading forever.
+    assert catalogue.await_count == 1
+    with (
+        patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        patch.object(api._client, "get_hub_zones", new=AsyncMock(return_value=[zone])),
+        patch.object(api._client, "get_appliance_overview", new=AsyncMock(return_value=[])),
+        patch.object(api._client, "get_product_models", new=AsyncMock(return_value=[])),
+    ):
+        await api.async_get_status_data()
+
+
+async def test_schedule_write_helpers_delegate_to_library(hass):
+    """Schedule writes pass through to the library with the cloud's own shapes."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    with (
+        patch.object(api._client, "copy_schedule_to_appliances", new=AsyncMock()) as copy,
+        patch.object(api._client, "set_period_setpoint", new=AsyncMock(return_value="settings")) as period,
+    ):
+        await api.async_copy_schedule("h", "a1", ["a2"], timer_mode=2)
+        result = await api.async_set_period_setpoint("h", "a1", day_of_week=1, start_time="06:00:00", temperature=21.0)
+
+    assert copy.await_args.args == ("h", "a1", ["a2"])
+    assert copy.await_args.kwargs == {"timer_mode": 2}
+    assert period.await_args.kwargs == {
+        "day_of_week": 1,
+        "start_time": "06:00:00",
+        "temperature": 21.0,
+        "end_time": None,
+    }
+    assert result == "settings"
+
+
+async def test_set_period_setpoint_does_not_swallow_a_missing_period(hass):
+    """The library signals "no such period" with ValueError; callers must see it.
+
+    The adapter's error translation covers the cloud's failures, not the library's
+    own argument checks — the services layer turns this one into a readable message.
+    """
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    with (
+        patch.object(
+            api._client,
+            "set_period_setpoint",
+            new=AsyncMock(side_effect=ValueError("No timer period")),
+        ),
+        pytest.raises(ValueError, match="No timer period"),
+    ):
+        await api.async_set_period_setpoint("h", "a1", day_of_week=1, start_time="06:00:00", temperature=21.0)

@@ -23,6 +23,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
+from .capabilities import capabilities_for_row
 from .const import DOMAIN, ENERGY_REPORT_DAYS, HEAT_DEMAND_FLAGS, has_any_mode, sane_temperature
 from .entity import DimplexEntity, resolve_via_device_id
 
@@ -36,6 +37,9 @@ class DimplexSensorEntityDescription(SensorEntityDescription):
 
     available_when_no_status: bool = False
     """If True, entity can be available without live overview (provisioning / last telem)."""
+
+    capability: str | None = None
+    """Capability flag that must be true for the entity to be created, if any."""
 
 
 def _status_attr(attr: str) -> Callable[[Any, Any], Any]:
@@ -196,6 +200,22 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_estimated_power_kw,
     ),
+    # The only hot-water value the cloud reports back. Deliberately a diagnostic,
+    # disabled-by-default sensor with no unit or device class: the field is a bare
+    # number and nothing in the app or the API reference says what it measures —
+    # °C and litres are both plausible. Shipping it as a temperature entity would be
+    # inventing a unit; shipping it unitless and off by default lets a cylinder owner
+    # turn it on and report what it shows (#199).
+    DimplexSensorEntityDescription(
+        key="hot_water_available",
+        translation_key="hot_water_available",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        # Capability-gated, so an appliance the library says has no hot water does
+        # not get a permanently unknown hot-water sensor (#199).
+        capability="hot_water",
+        value_fn=_status_attr("AvailableHotWater"),
+    ),
 )
 
 
@@ -267,7 +287,14 @@ async def async_setup_entry(
     devices: list[SensorEntity] = []
     seen_zones: set[str] = set()
     for appliance_row in (status.data or {}).get("appliances", []):
-        devices.extend(DimplexSensor(status, entry, appliance_row, description) for description in STATUS_SENSORS)
+        caps = capabilities_for_row(
+            appliance_row["appliance"], appliance_row.get("status"), appliance_row.get("product")
+        )
+        devices.extend(
+            DimplexSensor(status, entry, appliance_row, description)
+            for description in STATUS_SENSORS
+            if description.capability is None or getattr(caps, description.capability, False)
+        )
         devices.extend(DimplexEnergySensor(energy, entry, appliance_row, description) for description in ENERGY_SENSORS)
         devices.append(DimplexScheduleSensor(status, entry, appliance_row))
         zone = appliance_row.get("zone")

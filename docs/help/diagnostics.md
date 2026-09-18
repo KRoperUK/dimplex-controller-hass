@@ -18,16 +18,25 @@ Home Assistant saves a JSON file. Attach it to your issue.
 
 ## What it contains
 
-| Section                     | Contents                                                                 |
-| --------------------------- | ------------------------------------------------------------------------ |
-| `entry`                     | Title, version, your options, and the entry data with secrets redacted   |
-| `versions`                  | Integration version and the resolved `dimplex-controller` version        |
-| `hubs`                      | Hub ID, name, connection state, firmware, hub type                       |
-| `appliances`                | Per appliance: ID, friendly name, model, type, firmware, zone            |
-| `appliances[].status`       | The full status snapshot the cloud returned                              |
-| `appliances[].active_modes` | **The mode bitfield decoded into names**                                 |
-| `appliances[].provisioning` | Rated power and charge capacity, where reported                          |
-| `energy`                    | Point counts and time windows per register — not the readings themselves |
+| Section                      | Contents                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `entry`                      | Title, version, your options, and the entry data with secrets redacted   |
+| `versions`                   | Integration version and the resolved `dimplex-controller` version        |
+| `hubs`                       | Hub ID, name, connection state, firmware, hub type                       |
+| `appliances`                 | Per appliance: ID, friendly name, model, type, firmware, zone            |
+| `appliances[].status`        | The full status snapshot the cloud returned                              |
+| `appliances[].active_modes`  | **The mode bitfield decoded into names**                                 |
+| `appliances[].provisioning`  | Rated power and charge capacity, where reported                          |
+| `appliances[].capabilities`  | **Every resolved capability flag the controls are gated on**             |
+| `appliances[].product_model` | The catalogue row this appliance was matched to, if any                  |
+| `energy`                     | Point counts and time windows per register — not the readings themselves |
+
+### `capabilities` is the useful bit when something is missing
+
+An appliance that has no thermostat, no setback write or no hot water control is one the
+library's capability matrix said does not support it. The resolved flags are listed per
+appliance, so the reason a control is absent is visible rather than guessed at. See
+[Appliance support](../reference/appliances.md#how-capabilities-are-decided).
 
 ### `active_modes` is the useful bit
 

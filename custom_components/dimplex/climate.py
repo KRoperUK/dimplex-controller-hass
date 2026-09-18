@@ -28,6 +28,7 @@ from .const import (
     CONF_BOOST_DURATION,
     DEFAULT_BOOST_DURATION,
     FROST_FLAG,
+    OPTIMISTIC_UPDATES,
     TIMER_OFF_LIKE,
     TIMER_USER,
     sane_temperature,
@@ -45,17 +46,6 @@ PRESET_ECO = "eco"
 DEFAULT_BOOST_TEMP = 25.0
 DEFAULT_BOOST_MINUTES = DEFAULT_BOOST_DURATION
 DEFAULT_AWAY_TEMP = 16.0
-
-# How many coordinator updates a just-written value is shown for before the
-# cloud's own state is accepted instead.
-#
-# ``async_request_refresh`` is debounced and the appliance takes time to reflect a
-# write, so the poll that follows a write usually still carries the *old* value:
-# the UI snapped back and then corrected itself a poll later, which is what "my
-# change didn't take" looked like (#198). Holding the written value removes the
-# flicker. The bound matters too — if the cloud silently reduced or ignored the
-# write, the entity must eventually show what the appliance actually reports.
-_OPTIMISTIC_UPDATES = 3
 
 # The appliance-side states each preset owns. Home Assistant treats a preset as a
 # single mutually-exclusive state, so selecting one engages exactly these and clears
@@ -182,7 +172,7 @@ async def async_setup_entry(
     runtime = entry.runtime_data
     entities = []
     for row in (runtime.status.data or {}).get("appliances", []):
-        caps = capabilities_for_row(row["appliance"], row.get("status"))
+        caps = capabilities_for_row(row["appliance"], row.get("status"), row.get("product"))
         if not caps.climate:
             _LOGGER.debug(
                 "Skipping climate for non-room appliance %s",
@@ -227,7 +217,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
 
     @property
     def _caps(self) -> Any:
-        return capabilities_for_row(self._appliance, self._status)
+        return capabilities_for_row(self._appliance, self._status, self._product)
 
     @property
     def min_temp(self) -> float:
@@ -273,7 +263,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
     def _hold_optimistic(self, **fields: Any) -> None:
         """Show a just-written value immediately rather than after the next poll."""
         self._optimistic.update(fields)
-        self._optimistic_updates_left = _OPTIMISTIC_UPDATES
+        self._optimistic_updates_left = OPTIMISTIC_UPDATES
         self.async_write_ha_state()
 
     @property
@@ -419,21 +409,32 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
             return
         hub_id = self._hub.HubId
         appliance_id = self._appliance.ApplianceId
-        try:
-            await self._api.async_set_appliance_setpoint(hub_id, appliance_id, float(temperature))
-        except ControlRejected as err:
-            # Only a refusal (403/405/501) earns the destructive path. A timeout or
-            # 5xx raises plain CannotConnect and propagates, because rewriting every
-            # timer period over a dropped connection would silently destroy the
-            # user's schedule (#197).
-            _LOGGER.warning(
-                "%s refused the dedicated setpoint endpoint (%s); rewriting its timer "
-                "schedule to %s °C instead, which overwrites every period",
+        if not self._caps.setpoint_write:
+            # The library says this appliance has no dedicated setpoint endpoint, so
+            # the schedule rewrite is the only path. Trying anyway would spend a
+            # request on a guaranteed refusal, and the refusal path then rewrites
+            # every period anyway (#199).
+            _LOGGER.debug(
+                "%s reports no setpoint write support; using the schedule rewrite directly",
                 self._appliance.FriendlyName,
-                getattr(err, "status", None) or "rejected",
-                temperature,
             )
             await self._api.async_set_target_temperature(hub_id, appliance_id, float(temperature))
+        else:
+            try:
+                await self._api.async_set_appliance_setpoint(hub_id, appliance_id, float(temperature))
+            except ControlRejected as err:
+                # Only a refusal (403/405/501) earns the destructive path. A timeout or
+                # 5xx raises plain CannotConnect and propagates, because rewriting every
+                # timer period over a dropped connection would silently destroy the
+                # user's schedule (#197).
+                _LOGGER.warning(
+                    "%s refused the dedicated setpoint endpoint (%s); rewriting its timer "
+                    "schedule to %s °C instead, which overwrites every period",
+                    self._appliance.FriendlyName,
+                    getattr(err, "status", None) or "rejected",
+                    temperature,
+                )
+                await self._api.async_set_target_temperature(hub_id, appliance_id, float(temperature))
         self._hold_optimistic(target_temperature=float(temperature))
         await self.coordinator.async_request_refresh()
 

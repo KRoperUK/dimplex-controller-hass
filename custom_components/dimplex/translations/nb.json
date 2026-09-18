@@ -64,6 +64,7 @@
         "data": {
           "binary_sensor": "Binær sensor aktivert",
           "climate": "Klima aktivert",
+          "number": "Tall aktivert",
           "sensor": "Sensor aktivert",
           "switch": "Bryter aktivert",
           "status_interval": "Statusintervall (sekunder)",
@@ -107,6 +108,9 @@
       },
       "estimated_power": {
         "name": "Estimert effekt"
+      },
+      "hot_water_available": {
+        "name": "Varmtvann tilgjengelig"
       },
       "energy_lifetime": {
         "name": "Energi siste 30 dager"
@@ -159,6 +163,11 @@
       },
       "open_window_detection": {
         "name": "Deteksjon av åpent vindu"
+      }
+    },
+    "number": {
+      "setback_target": {
+        "name": "Senketemperatur mål"
       }
     }
   },

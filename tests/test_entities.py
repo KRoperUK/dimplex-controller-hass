@@ -218,3 +218,52 @@ async def test_zone_devices_link_to_the_hub_without_deprecated_via_device(hass, 
     assert hub_device.via_device_id is None
 
     assert "via_device" not in caplog.text, "deprecated via_device parameter is back"
+
+
+def _hot_water_keys(hass) -> set[str]:
+    from homeassistant.helpers import entity_registry as er
+
+    return {
+        str(entry.unique_id)
+        for entry in er.async_get(hass).entities.values()
+        if str(entry.unique_id).endswith("_hot_water_available")
+    }
+
+
+async def _setup_payload(hass, payload) -> None:
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch("custom_components.dimplex.DimplexApiClient.async_get_status_data", return_value=payload),
+        patch("custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs", return_value={"energy": {}}),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+
+async def test_a_panel_heater_gets_no_hot_water_sensor(hass):
+    """Capability-gated, so a room heater gets no permanently unknown hot-water sensor."""
+    await _setup_payload(hass, _mock_coordinator_payload())
+
+    assert _hot_water_keys(hass) == set()
+
+
+async def test_a_cylinder_gets_a_diagnostic_hot_water_sensor(hass):
+    """A reported hot-water value is the only read the cloud gives for a cylinder.
+
+    It is registered as a diagnostic sensor and disabled by default, so this checks the
+    entity registry rather than live states.
+    """
+    from custom_components.dimplex.capabilities import capabilities_for_row
+
+    payload = _mock_coordinator_payload()
+    row = payload["appliances"][0]
+    row["appliance"].ApplianceType = "Hot Water Cylinder"
+    row["appliance"].FriendlyName = "Cylinder"
+    row["status"].AvailableHotWater = 45.0
+    assert capabilities_for_row(row["appliance"], row["status"]).hot_water is True
+
+    await _setup_payload(hass, payload)
+
+    assert _hot_water_keys(hass) == {"test_appliance-1_hot_water_available"}

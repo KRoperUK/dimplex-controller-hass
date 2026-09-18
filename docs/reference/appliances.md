@@ -54,29 +54,45 @@ against what a panel heater would do.
 
 The library implements the hot water surface — read state, set target, schedules, hygiene —
 and every endpoint is confirmed from the official app. **None of it has been run against
-hardware**, so:
+hardware**, so this is what the integration does with it:
 
-- No hot water entities are created by this integration.
+- A **Hot water available** diagnostic sensor, disabled by default, reading the cloud's
+  `AvailableHotWater`. It has no unit: that field is a bare number and nothing in the app or
+  the API reference says whether it is °C, litres or a percentage. Turn it on and tell us what
+  it shows.
+- Two actions, [`dimplex.set_hot_water_temperature`](actions.md#dimplexset_hot_water_temperature)
+  and [`dimplex.set_hot_water_hygiene`](actions.md#dimplexset_hot_water_hygiene), gated on the
+  `hot_water` and `hygiene` flags.
+- **No number or select entity**, deliberately. Nothing reads the normal, boost or hygiene
+  values back, so such an entity could be set and could never show what it was actually set
+  to — worse than no entity.
 - The capability matrix marks cylinder-only appliances as `climate: false`, so they get no
   thermostat and no advance (there is no "next comfort period" to jump to).
 - Library callers can reach the endpoints directly and are warned in every docstring.
 
 ## How capabilities are decided
 
-There is no product database. The matrix guesses from three sources, in increasing
-specificity:
+The matrix resolves the flags from four sources, in increasing specificity:
 
 ```mermaid
 flowchart TB
     T["Type / model / name tokens<br/>quantum · storage · qrad · charge<br/>cylinder · dhw · hotwater<br/>ashw · heatpump"]
-    P["AUTOMATIC_PROVISIONING<br/>charge_capacity · rated_power"]
+    P["Product catalogue row<br/>GET /Appliances/GetProductModels"]
+    A["AUTOMATIC_PROVISIONING<br/>charge_capacity · rated_power"]
     S["Live status fields<br/>BoostTemperature · AwayDateTime<br/>AvailableHotWater · RoomTemperature"]
     C["Capability flags"]
 
     T --> C
     P --> C
+    A --> C
     S --> C
 ```
+
+The catalogue is fetched once per account and matched to each appliance on its model, then its
+type. It carries the `AUTOMATIC_PROVISIONING` metadata — and it is the only place `storage`,
+`energy_meter`, `hot_water` and `heat_pump` come from, which is why the integration calls it
+rather than guessing from the appliance's own name. An account whose catalogue cannot be read
+falls back to the type tokens and is retried on the next poll.
 
 - `charge_capacity > 0`, or a storage-ish token → **storage**
 - `rated_power > 0`, or a storage-ish token → **energy meter**
@@ -95,12 +111,20 @@ Your appliance's resolved flags are in a
 
 ## Confirmed but deliberately not exposed
 
-| Endpoint                                                      | Why not                                                                                            |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `SetSetbackTemperature`                                       | **Inferred**{ .status-inferred } from the app, never validated live. Available to library callers. |
-| Schedule writes                                               | No Home Assistant UI shape for a weekly heater programme, and the write path is unproven.          |
-| `ECO` mode (bit 64)                                           | Behaviour on real hardware unknown. See [modes](../use/modes.md#the-eco-preset-is-not-eco-mode).   |
-| `HOLIDAY`, `MANUAL`, `HYGIENE`, `STANDBY` and other mode bits | Read into diagnostics, never written.                                                              |
+| Endpoint                                                      | Why not                                                                                          |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `ECO` mode (bit 64)                                           | Behaviour on real hardware unknown. See [modes](../use/modes.md#the-eco-preset-is-not-eco-mode). |
+| `HOLIDAY`, `MANUAL`, `HYGIENE`, `STANDBY` and other mode bits | Read into diagnostics, never written.                                                            |
+
+`SetSetbackTemperature` used to be on this list. It is now written by the
+[setback target](entities.md#numbers) number entity, gated on the capability matrix's
+`setback_write` — treated as **inferred** from the app until someone confirms it against a real
+appliance.
+
+Schedule writes are exposed as two actions rather than a full editor —
+[copy a schedule](actions.md#dimplexcopy_schedule) and
+[edit one period](actions.md#dimplexset_period_setpoint). Creating, deleting or reordering
+periods still needs the official app.
 
 ## Temperature ranges
 

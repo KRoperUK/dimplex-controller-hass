@@ -17,10 +17,13 @@ from dimplex_controller import (
     DimplexAuthError,
     DimplexConnectionError,
     DimplexControl,
+    HygieneFrequency,
+    SetbackStatus,
     TokenBundle,
     parse_telemetry_points,
 )
 
+from .capabilities import product_for_appliance, product_lookup
 from .const import ENERGY_REPORT_DAYS, ENERGY_REPORT_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
@@ -118,6 +121,7 @@ class DimplexApiClient:
         self._username = username
         self._password = password
         self._account_id: str | None = None
+        self._product_models: list[Any] | None = None
         self._client = DimplexControl(
             session=session,
             token_bundle=TokenBundle(
@@ -257,10 +261,33 @@ class DimplexApiClient:
         """Return the browser auth URL for manual token generation."""
         return self._client.auth.get_login_url()
 
+    async def async_get_product_models(self) -> list[Any]:
+        """Fetch the account's product catalogue, caching it once it succeeds.
+
+        The catalogue is account-wide and static, but it is the only source of the
+        ``AUTOMATIC_PROVISIONING`` metadata behind the ``storage``, ``energy_meter``,
+        ``hot_water`` and ``heat_pump`` capability flags — the integration never
+        called it, so those flags could not be derived at all (#199).
+
+        Best-effort: a failure leaves the cache empty and is retried on the next
+        poll, and capability derivation falls back to the appliance's own type
+        tokens. It deliberately does not fail the status poll.
+        """
+        if self._product_models is not None:
+            return self._product_models
+        try:
+            models = list(await self._client.get_product_models())
+        except (DimplexAuthError, DimplexConnectionError, DimplexApiError) as exception:
+            _LOGGER.debug("Product catalogue unavailable; capability flags fall back to type tokens: %s", exception)
+            return []
+        self._product_models = models
+        return models
+
     async def async_get_status_data(self) -> dict[str, Any]:
         """Fetch hubs, zones, and appliance overview (no energy)."""
         try:
             hubs = await self._client.get_hubs()
+            products = product_lookup(await self.async_get_product_models())
             appliance_rows: list[dict[str, Any]] = []
 
             for hub in hubs:
@@ -298,6 +325,10 @@ class DimplexApiClient:
                                 "zone": zone,
                                 "appliance": appliance,
                                 "status": overview_by_id.get(appliance.ApplianceId),
+                                # Catalogue row for this appliance, or None. Carried
+                                # on the row so capability derivation does not need
+                                # the client (#199).
+                                "product": product_for_appliance(products, appliance),
                             }
                         )
 
@@ -354,12 +385,146 @@ class DimplexApiClient:
         with _translated_errors():
             await self._client.set_target_temperature(hub_id, appliance_id, temperature)
 
+    async def async_set_setback_temperature(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        temperature: float,
+        status: int | SetbackStatus = SetbackStatus.ACTIVE,
+    ) -> None:
+        """Write the setback (reduced) target temperature.
+
+        Setback was read-only: the cloud exposes ``SetSetbackTemperature`` and the
+        official app drives it, but nothing in the integration called it, so users
+        could see the setback temperature and not change it (#199).
+
+        ``status`` is the ``EStatus`` byte the endpoint carries. It defaults to
+        ACTIVE, which is what "set my setback temperature" means — the cloud's other
+        values describe the appliance being driven by its own schedule or by a
+        demand-side-response signal, not a user choice.
+        """
+        with _translated_errors():
+            await self._client.set_setback_temperature(
+                hub_id,
+                [appliance_id],
+                temperature=temperature,
+                status=status,
+            )
+
     async def async_get_schedule(self, hub_id: str, appliance_id: str) -> Any:
         """Return timer mode settings for an appliance (read-only schedule)."""
         with _translated_errors():
             if hasattr(self._client, "get_schedule"):
                 return await self._client.get_schedule(hub_id, appliance_id)
             return await self._client.get_appliance_features(hub_id, appliance_id)
+
+    async def async_set_hot_water_temperature(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        *,
+        mode: str,
+        temperature: float,
+        enable: bool = True,
+    ) -> None:
+        """Set a cylinder's Normal or Boost temperature.
+
+        ``mode`` is ``"normal"`` or ``"boost"``. Unlike the mode and hygiene writes
+        there is no ASHW-specific variant of these two endpoints, so no heat-pump
+        flag is needed.
+
+        .. warning:: Untested — the endpoints are confirmed from the decompiled app
+           and have never been run against a real cylinder (#199).
+        """
+        with _translated_errors():
+            if mode == "boost":
+                await self._client.set_hot_water_boost_temperature(
+                    hub_id,
+                    [appliance_id],
+                    temperature,
+                    enable=enable,
+                )
+            else:
+                await self._client.set_hot_water_normal_temperature(
+                    hub_id,
+                    [appliance_id],
+                    temperature,
+                    enable=enable,
+                )
+
+    async def async_set_hot_water_hygiene(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        *,
+        temperature: float,
+        frequency: int | HygieneFrequency = HygieneFrequency.WEEKLY,
+        enable: bool = True,
+        heat_pump: bool = False,
+    ) -> None:
+        """Configure the cylinder's anti-legionella (hygiene) cycle.
+
+        .. warning:: Untested — APK-confirmed only, and the likeliest of these
+           endpoints to be refused by a given hub (#199).
+        """
+        with _translated_errors():
+            await self._client.set_hot_water_hygiene(
+                hub_id,
+                [appliance_id],
+                temperature=temperature,
+                frequency=frequency,
+                enable=enable,
+                heat_pump=heat_pump,
+            )
+
+    async def async_copy_schedule(
+        self,
+        hub_id: str,
+        from_appliance_id: str,
+        appliance_ids: list[str],
+        *,
+        timer_mode: int = 0,
+    ) -> None:
+        """Apply one appliance's weekly programme to other appliances.
+
+        ``CopyScheduleToAppliances`` maps neatly onto "make these heaters follow the
+        same schedule as that one", and until now had no caller — the integration
+        could read a schedule and not propagate it (#199).
+        """
+        with _translated_errors():
+            await self._client.copy_schedule_to_appliances(
+                hub_id,
+                from_appliance_id,
+                appliance_ids,
+                timer_mode=timer_mode,
+            )
+
+    async def async_set_period_setpoint(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        *,
+        day_of_week: int,
+        start_time: str,
+        temperature: float,
+        end_time: str | None = None,
+    ) -> Any:
+        """Update one timer period's setpoint without rewriting the rest.
+
+        Periods are matched on ``DayOfWeek`` + ``StartTime``, so the caller has to
+        name an existing period — the library raises ``ValueError`` for one that does
+        not exist, which callers should turn into a readable error rather than a
+        traceback. Returns the updated ``TimerModeSettings``.
+        """
+        with _translated_errors():
+            return await self._client.set_period_setpoint(
+                hub_id,
+                appliance_id,
+                day_of_week=day_of_week,
+                start_time=start_time,
+                temperature=temperature,
+                end_time=end_time,
+            )
 
     async def async_set_timer_mode(self, hub_id: str, appliance_id: str, mode: int) -> None:
         """Set the appliance timer / operation mode (manual, frost, off, …).

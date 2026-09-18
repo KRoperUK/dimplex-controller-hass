@@ -101,8 +101,12 @@ done <<<"$service_consts"
 # --- 2. Entity translation keys ------------------------------------------
 # Matches both `translation_key="x"` and `_attr_translation_key = "x"`.
 # repairs.py is excluded: its keys are repair issue ids, not entities.
+# Every platform module that creates entities must be listed here, or a new
+# platform's entities would be invisible to this check — which is how the number
+# platform would have shipped undocumented.
 keys=$(grep -rhoE '_?_?attr_?_?translation_key *= *"[a-z0-9_]+"|translation_key="[a-z0-9_]+"' \
   "$component"/binary_sensor.py "$component"/sensor.py "$component"/switch.py "$component"/climate.py \
+  "$component"/number.py \
   2>/dev/null | grep -oE '"[a-z0-9_]+"' | tr -d '"' | sort -u)
 if [[ -z "$keys" ]]; then
   echo "::error file=$component::found no entity translation keys — has the format changed?"

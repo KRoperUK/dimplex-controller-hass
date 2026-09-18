@@ -60,6 +60,7 @@ Full field reference: [Actions](actions.md).
 | Error code             | —         | —            | Appliance error code (_disabled by default_).                                                                                                                                          |
 | Warning code           | —         | —            | Appliance warning code (_disabled by default_).                                                                                                                                        |
 | Last telemetry         | timestamp | timestamp    | Last cloud telemetry time (_disabled by default_).                                                                                                                                     |
+| Hot water available    | —         | —            | The cloud's `AvailableHotWater` reading, for cylinders only (_diagnostic, disabled by default; unit unconfirmed_).                                                                     |
 
 ### Energy attributes
 
@@ -112,13 +113,29 @@ the sensors are the appliance's actual state and are the better thing to automat
 | EcoStart              | Toggle EcoStart energy-saving mode.                                           |
 | Open window detection | Enable/disable open-window detection (control; pairs with the binary sensor). |
 
-## Schedule (read-only)
+## Numbers
+
+| Name           | Description                                                                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Setback target | The reduced ("setback") temperature the appliance falls back to when setback mode is active. Writing it also marks the setback ACTIVE, which is what the official app's setback control does. Translation key `setback_target`. |
+
+Created only for appliances whose capability matrix says both `setback_read` and `setback_write` —
+a write that could never be read back would leave the entity showing a stale number forever. The
+Setback **binary sensor** reports whether setback is currently engaged, and the Setback
+**temperature** sensor reports the same value read-only.
+
+The range offered is the capability matrix's own 7-30 °C. That range is **inferred** from the
+app rather than measured — see [appliance support](appliances.md#temperature-ranges).
+
+## Schedule
 
 Diagnostic **Schedule** sensor per appliance. Its state is the timer mode — `manual`,
 `user_timer`, `frost_protection` or `off` — and its `periods` attribute lists the programme
 as day / start / end / temperature.
 
-Read-only: see [editing the weekly schedule](../use/temperature.md#editing-the-weekly-schedule).
+The sensor is read-only. The programme can be copied to other appliances, and one period's
+target edited, through actions — see
+[edit the weekly schedule](../use/temperature.md#editing-the-weekly-schedule).
 
 ## Zones
 
