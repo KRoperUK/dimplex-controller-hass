@@ -123,6 +123,9 @@
       "estimated_power": {
         "name": "Estimated power"
       },
+      "hot_water_available": {
+        "name": "Hot water available"
+      },
       "energy_lifetime": {
         "name": "Energy last 30 days"
       },

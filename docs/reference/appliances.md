@@ -54,9 +54,18 @@ against what a panel heater would do.
 
 The library implements the hot water surface — read state, set target, schedules, hygiene —
 and every endpoint is confirmed from the official app. **None of it has been run against
-hardware**, so:
+hardware**, so this is what the integration does with it:
 
-- No hot water entities are created by this integration.
+- A **Hot water available** diagnostic sensor, disabled by default, reading the cloud's
+  `AvailableHotWater`. It has no unit: that field is a bare number and nothing in the app or
+  the API reference says whether it is °C, litres or a percentage. Turn it on and tell us what
+  it shows.
+- Two actions, [`dimplex.set_hot_water_temperature`](actions.md#dimplexset_hot_water_temperature)
+  and [`dimplex.set_hot_water_hygiene`](actions.md#dimplexset_hot_water_hygiene), gated on the
+  `hot_water` and `hygiene` flags.
+- **No number or select entity**, deliberately. Nothing reads the normal, boost or hygiene
+  values back, so such an entity could be set and could never show what it was actually set
+  to — worse than no entity.
 - The capability matrix marks cylinder-only appliances as `climate: false`, so they get no
   thermostat and no advance (there is no "next comfort period" to jump to).
 - Library callers can reach the endpoints directly and are warned in every docstring.

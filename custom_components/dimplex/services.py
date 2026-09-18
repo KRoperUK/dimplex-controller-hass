@@ -7,12 +7,14 @@ import logging
 from typing import Any
 
 import voluptuous as vol
+from dimplex_controller import HygieneFrequency
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
+from .capabilities import capabilities_for_row
 from .const import AWAY_TEMP_MAX, AWAY_TEMP_MIN, DOMAIN, SETPOINT_TEMP_MAX, SETPOINT_TEMP_MIN, TIMER_USER
 from .errors import control_errors
 
@@ -29,6 +31,8 @@ ATTR_DAY = "day"
 ATTR_START_TIME = "start_time"
 ATTR_END_TIME = "end_time"
 ATTR_TARGET_DEVICE_IDS = "target_device_ids"
+ATTR_MODE = "mode"
+ATTR_FREQUENCY = "frequency"
 
 SERVICE_SET_BOOST = "set_boost"
 SERVICE_CLEAR_BOOST = "clear_boost"
@@ -40,6 +44,19 @@ SERVICE_SET_ECO_START = "set_eco_start"
 SERVICE_SET_OPEN_WINDOW = "set_open_window_detection"
 SERVICE_COPY_SCHEDULE = "copy_schedule"
 SERVICE_SET_PERIOD_SETPOINT = "set_period_setpoint"
+SERVICE_SET_HOT_WATER_TEMPERATURE = "set_hot_water_temperature"
+SERVICE_SET_HOT_WATER_HYGIENE = "set_hot_water_hygiene"
+
+# Hot-water cylinder modes the temperature action writes, and the hygiene cycle
+# frequencies. Both are names rather than the wire values because neither the
+# endpoint nor the enum is anything a user should have to look up.
+HOT_WATER_MODES: tuple[str, ...] = ("normal", "boost")
+HYGIENE_FREQUENCIES: dict[str, int] = {
+    "off": int(HygieneFrequency.OFF),
+    "daily": int(HygieneFrequency.DAILY),
+    "weekly": int(HygieneFrequency.WEEKLY),
+    "monthly": int(HygieneFrequency.MONTHLY),
+}
 
 # ``DayOfWeek`` is 0 = Sunday … 6 = Saturday. The service accepts the day name so
 # nobody has to remember that, or guess whether the week starts on Sunday.
@@ -153,6 +170,17 @@ def _appliance_name(hass: HomeAssistant, config_entry_id: str, appliance_id: str
     return appliance_id
 
 
+def _capabilities_for(hass: HomeAssistant, config_entry_id: str, appliance_id: str) -> Any | None:
+    """Return the resolved capability matrix for one appliance, or None."""
+    runtime = _runtime_for(hass, config_entry_id)
+    if runtime is None:
+        return None
+    for row in (runtime.status.data or {}).get("appliances", []):
+        if row["appliance"].ApplianceId == appliance_id:
+            return capabilities_for_row(row["appliance"], row.get("status"), row.get("product"))
+    return None
+
+
 def _resolve_appliance_id(
     hass: HomeAssistant,
     config_entry_id: str,
@@ -256,6 +284,29 @@ def _source_timer_mode(hass: HomeAssistant, config_entry_id: str, appliance_id: 
         return int(mode)
     except (TypeError, ValueError):
         return TIMER_USER
+
+
+def _require_capability(
+    hass: HomeAssistant,
+    config_entry_id: str,
+    appliance_id: str,
+    capability: str,
+    target: str,
+) -> Any:
+    """Return the capability matrix, refusing the action if the flag is false.
+
+    Checked before the write rather than letting the cloud answer, because for the
+    hot-water endpoints a wrong guess is not harmless: an appliance that has no
+    cylinder would be sent a cylinder write, and the failure mode of these untested
+    endpoints is unknown (#199).
+    """
+    caps = _capabilities_for(hass, config_entry_id, appliance_id)
+    if caps is not None and not getattr(caps, capability, False):
+        raise HomeAssistantError(
+            f"{_appliance_name(hass, config_entry_id, appliance_id)} does not support this "
+            f"control ({capability} is false for it), so {target} was not sent."
+        )
+    return caps
 
 
 def _normalise_clock(value: Any) -> str:
@@ -544,6 +595,68 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         ),
     )
 
+    @_translated
+    async def handle_hot_water_temperature(call: ServiceCall) -> None:
+        resolved = await _resolve_appliance(hass, call)
+        if resolved is None:
+            return
+        entry_id, hub_id, appliance_id, api = resolved
+        _require_capability(hass, entry_id, appliance_id, "hot_water", f"{DOMAIN}.{call.service}")
+        # The temperature endpoints have no ASHW variant, so unlike the mode and
+        # hygiene writes this one needs no heat-pump flag.
+        await api.async_set_hot_water_temperature(
+            hub_id,
+            appliance_id,
+            mode=str(call.data[ATTR_MODE]),
+            temperature=float(call.data[ATTR_TEMPERATURE]),
+            enable=bool(call.data.get(ATTR_ENABLE, True)),
+        )
+        await _refresh_status(hass, entry_id)
+
+    @_translated
+    async def handle_hot_water_hygiene(call: ServiceCall) -> None:
+        resolved = await _resolve_appliance(hass, call)
+        if resolved is None:
+            return
+        entry_id, hub_id, appliance_id, api = resolved
+        caps = _require_capability(hass, entry_id, appliance_id, "hygiene", f"{DOMAIN}.{call.service}")
+        # Endpoint selection, not a user choice: SetHygieneSettingsHwc and
+        # SetHygieneSettingsHeatPumpHwc are not interchangeable.
+        await api.async_set_hot_water_hygiene(
+            hub_id,
+            appliance_id,
+            temperature=float(call.data[ATTR_TEMPERATURE]),
+            frequency=HYGIENE_FREQUENCIES[str(call.data[ATTR_FREQUENCY])],
+            enable=bool(call.data.get(ATTR_ENABLE, True)),
+            heat_pump=bool(getattr(caps, "heat_pump", False)),
+        )
+        await _refresh_status(hass, entry_id)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_HOT_WATER_TEMPERATURE,
+        handle_hot_water_temperature,
+        schema=_target_schema().extend(
+            {
+                vol.Required(ATTR_MODE): vol.In(list(HOT_WATER_MODES)),
+                vol.Required(ATTR_TEMPERATURE): vol.Coerce(float),
+                vol.Optional(ATTR_ENABLE, default=True): cv.boolean,
+            }
+        ),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_HOT_WATER_HYGIENE,
+        handle_hot_water_hygiene,
+        schema=_target_schema().extend(
+            {
+                vol.Required(ATTR_TEMPERATURE): vol.Coerce(float),
+                vol.Required(ATTR_FREQUENCY): vol.In(list(HYGIENE_FREQUENCIES)),
+                vol.Optional(ATTR_ENABLE, default=True): cv.boolean,
+            }
+        ),
+    )
+
 
 async def async_unload_services(hass: HomeAssistant, unloading_entry_id: str | None = None) -> None:
     """Remove domain services once the last config entry has unloaded.
@@ -573,6 +686,8 @@ async def async_unload_services(hass: HomeAssistant, unloading_entry_id: str | N
         SERVICE_SET_OPEN_WINDOW,
         SERVICE_COPY_SCHEDULE,
         SERVICE_SET_PERIOD_SETPOINT,
+        SERVICE_SET_HOT_WATER_TEMPERATURE,
+        SERVICE_SET_HOT_WATER_HYGIENE,
     ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)

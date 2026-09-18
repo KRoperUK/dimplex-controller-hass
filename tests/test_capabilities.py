@@ -141,3 +141,46 @@ def test_as_dict_covers_every_flag():
     for field in caps_mod._BOOL_FIELDS:  # noqa: SLF001
         assert field in payload
     assert payload["climate_presets"] == ["comfort", "boost", "away", "eco"]
+
+
+def test_the_token_fallback_still_identifies_a_family():
+    """The fallback runs whenever the library is unavailable or rejects a row, so it
+    has to derive the same family flags the library would — otherwise a cylinder
+    would be treated as a room heater and offered controls it cannot take (#199).
+    """
+    cylinder = SimpleNamespace(ApplianceType="Hot Water Cylinder", ApplianceModel="HWC 200", FriendlyName="Cylinder")
+    caps = capabilities_for_row(cylinder)
+    assert caps.hot_water is True
+    assert caps.hygiene is True
+    assert caps.climate is False
+    assert caps.advance is False
+
+    heat_pump = SimpleNamespace(ApplianceType="ASHW Heat Pump", ApplianceModel="X", FriendlyName="HP")
+    caps = capabilities_for_row(heat_pump)
+    assert caps.heat_pump is True
+    assert caps.hot_water is True
+
+    storage = SimpleNamespace(ApplianceType="Quantum", ApplianceModel="QM100RF", FriendlyName="Hall")
+    caps = capabilities_for_row(storage)
+    assert caps.storage is True
+    assert caps.energy_meter is True
+
+
+def test_available_hot_water_marks_a_cylinder():
+    """A reported hot-water value is proof of a cylinder, whatever the name says."""
+    appliance = SimpleNamespace(ApplianceType="Model X", ApplianceModel="X", FriendlyName="Tank")
+    caps = capabilities_for_row(appliance, SimpleNamespace(AvailableHotWater=45.0))
+
+    assert caps.hot_water is True
+
+
+def test_a_cylinder_that_also_reports_a_room_temperature_is_still_climate():
+    """Some cylinders heat the room too, so the room-temperature check wins."""
+    appliance = SimpleNamespace(ApplianceType="Hot Water Cylinder", ApplianceModel="X", FriendlyName="Tank")
+    status = SimpleNamespace(RoomTemperature=19.5, ActiveSetPointTemperature=None)
+    caps = capabilities_for_row(appliance, status)
+
+    assert caps.hot_water is True
+    assert caps.climate is True
+    # Climate means advance is meaningful again.
+    assert caps.advance is True

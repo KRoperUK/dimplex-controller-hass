@@ -17,6 +17,7 @@ from dimplex_controller import (
     DimplexAuthError,
     DimplexConnectionError,
     DimplexControl,
+    HygieneFrequency,
     SetbackStatus,
     TokenBundle,
     parse_telemetry_points,
@@ -416,6 +417,74 @@ class DimplexApiClient:
             if hasattr(self._client, "get_schedule"):
                 return await self._client.get_schedule(hub_id, appliance_id)
             return await self._client.get_appliance_features(hub_id, appliance_id)
+
+    async def async_set_hot_water_temperature(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        *,
+        mode: str,
+        temperature: float,
+        enable: bool = True,
+    ) -> None:
+        """Set a cylinder's Normal or Boost temperature.
+
+        ``mode`` is ``"normal"`` or ``"boost"``. Unlike the mode and hygiene writes
+        there is no ASHW-specific variant of these two endpoints, so no heat-pump
+        flag is needed.
+
+        .. warning:: Untested — the endpoints are confirmed from the decompiled app
+           and have never been run against a real cylinder (#199).
+        """
+        with _translated_errors():
+            if mode == "boost":
+                await self._client.set_hot_water_boost_temperature(
+                    hub_id,
+                    [appliance_id],
+                    temperature,
+                    enable=enable,
+                )
+            else:
+                await self._client.set_hot_water_normal_temperature(
+                    hub_id,
+                    [appliance_id],
+                    temperature,
+                    enable=enable,
+                )
+
+    async def async_set_hot_water_hygiene(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        *,
+        temperature: float,
+        frequency: int | HygieneFrequency = HygieneFrequency.WEEKLY,
+        enable: bool = True,
+        heat_pump: bool = False,
+    ) -> None:
+        """Configure the cylinder's anti-legionella (hygiene) cycle.
+
+        .. warning:: Untested — APK-confirmed only, and the likeliest of these
+           endpoints to be refused by a given hub (#199).
+        """
+        with _translated_errors():
+            await self._client.set_hot_water_hygiene(
+                hub_id,
+                [appliance_id],
+                temperature=temperature,
+                frequency=frequency,
+                enable=enable,
+                heat_pump=heat_pump,
+            )
+
+    async def async_get_hot_water_schedule(self, hub_id: str, appliance_id: str) -> Any:
+        """Read a heat-pump cylinder's schedule.
+
+        Only ASHW cylinders expose a hot-water schedule; a plain cylinder has no
+        equivalent read endpoint.
+        """
+        with _translated_errors():
+            return await self._client.get_heat_pump_hot_water_schedule(hub_id, appliance_id)
 
     async def async_copy_schedule(
         self,

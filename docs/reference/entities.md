@@ -60,6 +60,7 @@ Full field reference: [Actions](actions.md).
 | Error code             | —         | —            | Appliance error code (_disabled by default_).                                                                                                                                          |
 | Warning code           | —         | —            | Appliance warning code (_disabled by default_).                                                                                                                                        |
 | Last telemetry         | timestamp | timestamp    | Last cloud telemetry time (_disabled by default_).                                                                                                                                     |
+| Hot water available    | —         | —            | The cloud's `AvailableHotWater` reading, for cylinders only (_diagnostic, disabled by default; unit unconfirmed_).                                                                     |
 
 ### Energy attributes
 

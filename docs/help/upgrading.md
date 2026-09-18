@@ -18,6 +18,10 @@ New control surface, no configuration changes.
   `dimplex.copy_schedule` applies one appliance's programme to others, and
   `dimplex.set_period_setpoint` changes one period's target. See
   [Actions](../reference/actions.md#dimplexcopy_schedule).
+- **Hot water cylinders have a control surface for the first time.** Two actions,
+  `dimplex.set_hot_water_temperature` and `dimplex.set_hot_water_hygiene`, plus a
+  disabled-by-default diagnostic sensor. All of it is untested against real hardware —
+  see [appliance support](../reference/appliances.md#hot-water-cylinders).
 - **Controls are gated on the cloud's own capability matrix.** The integration now fetches
   the account's product catalogue, so an appliance the library says cannot take a control
   no longer offers it — and the hot-water / heat-pump flags are derivable for the first

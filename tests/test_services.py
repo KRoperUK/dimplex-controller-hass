@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -15,6 +15,8 @@ from custom_components.dimplex.services import (
     SERVICE_SET_ADVANCE,
     SERVICE_SET_AWAY,
     SERVICE_SET_BOOST,
+    SERVICE_SET_HOT_WATER_HYGIENE,
+    SERVICE_SET_HOT_WATER_TEMPERATURE,
     SERVICE_SET_PERIOD_SETPOINT,
     _appliance_id_from_unique_id,
     async_setup_services,
@@ -544,3 +546,126 @@ async def test_set_period_setpoint_reports_a_missing_period_readably(hass: HomeA
             {"device_id": device_id, "day": "monday", "start_time": "06:00:00", "temperature": 21},
             blocking=True,
         )
+
+
+def _make_hot_water_runtime():
+    """Runtime whose one appliance can be given cylinder capabilities by patching."""
+    runtime = _make_runtime()
+    runtime.api.async_set_hot_water_temperature = AsyncMock()
+    runtime.api.async_set_hot_water_hygiene = AsyncMock()
+    return runtime
+
+
+async def test_hot_water_temperature_writes_the_requested_mode(hass: HomeAssistant) -> None:
+    """``mode`` picks between the normal and boost endpoints."""
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    runtime = _make_hot_water_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with patch(
+        "custom_components.dimplex.services.capabilities_for_row",
+        return_value=LocalCapabilities(hot_water=True),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_HOT_WATER_TEMPERATURE,
+            {"device_id": device_id, "mode": "boost", "temperature": 60},
+            blocking=True,
+        )
+
+    runtime.api.async_set_hot_water_temperature.assert_awaited_once()
+    assert runtime.api.async_set_hot_water_temperature.await_args.kwargs == {
+        "mode": "boost",
+        "temperature": 60.0,
+        "enable": True,
+    }
+    runtime.status.async_request_refresh.assert_awaited_once()
+
+
+async def test_hot_water_actions_refuse_an_appliance_that_is_not_a_cylinder(hass: HomeAssistant) -> None:
+    """A cylinder write must not be sent to a panel heater at all.
+
+    These endpoints are untested, so their failure mode on the wrong appliance is
+    unknown — refusing locally is the only safe answer (#199).
+    """
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    runtime = _make_hot_water_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with (
+        patch(
+            "custom_components.dimplex.services.capabilities_for_row",
+            return_value=LocalCapabilities(hot_water=False),
+        ),
+        pytest.raises(HomeAssistantError, match="does not support this control"),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_HOT_WATER_TEMPERATURE,
+            {"device_id": device_id, "mode": "normal", "temperature": 50},
+            blocking=True,
+        )
+
+    runtime.api.async_set_hot_water_temperature.assert_not_awaited()
+
+
+async def test_hot_water_hygiene_picks_the_heat_pump_endpoint(hass: HomeAssistant) -> None:
+    """The ASHW endpoint variant is chosen from the capability matrix, not the user."""
+    from dimplex_controller import HygieneFrequency
+
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    runtime = _make_hot_water_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with patch(
+        "custom_components.dimplex.services.capabilities_for_row",
+        return_value=LocalCapabilities(hot_water=True, heat_pump=True, hygiene=True),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_HOT_WATER_HYGIENE,
+            {"device_id": device_id, "temperature": 60, "frequency": "weekly"},
+            blocking=True,
+        )
+
+    assert runtime.api.async_set_hot_water_hygiene.await_args.kwargs == {
+        "temperature": 60.0,
+        "frequency": HygieneFrequency.WEEKLY,
+        "enable": True,
+        "heat_pump": True,
+    }
+
+
+async def test_hot_water_hygiene_refuses_an_appliance_without_hygiene(hass: HomeAssistant) -> None:
+    """Hygiene is its own capability flag, not implied by being a cylinder."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    runtime = _make_hot_water_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with (
+        patch(
+            "custom_components.dimplex.services.capabilities_for_row",
+            return_value=LocalCapabilities(hot_water=True, hygiene=False),
+        ),
+        pytest.raises(HomeAssistantError, match="does not support this control"),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_HOT_WATER_HYGIENE,
+            {"device_id": device_id, "temperature": 60, "frequency": "monthly"},
+            blocking=True,
+        )
+
+    runtime.api.async_set_hot_water_hygiene.assert_not_awaited()

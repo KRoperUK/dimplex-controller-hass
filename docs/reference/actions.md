@@ -25,6 +25,8 @@ to that appliance.
 | `dimplex.set_open_window_detection` | Enable or disable open-window detection         |
 | `dimplex.copy_schedule`             | Apply one appliance's schedule to others        |
 | `dimplex.set_period_setpoint`       | Change one schedule period's target temperature |
+| `dimplex.set_hot_water_temperature` | Set a cylinder's normal or boost target         |
+| `dimplex.set_hot_water_hygiene`     | Configure a cylinder's anti-legionella cycle    |
 
 ## `dimplex.set_boost`
 
@@ -180,6 +182,53 @@ rather than silently doing nothing.
 Schedule writes are limited to copying a programme and editing one of its periods. There is no
 action to create a period, delete one, or rewrite a whole week — see
 [editing the weekly schedule](../use/temperature.md#editing-the-weekly-schedule).
+
+## Hot water
+
+!!! warning "Untested against hardware"
+
+    Every cylinder endpoint below is confirmed from the official app and none of it has
+    been run against a real cylinder. If you own one, what you report back is the point —
+    see [appliance support](appliances.md#hot-water-cylinders).
+
+Both actions refuse an appliance the capability matrix does not identify as a cylinder
+(`hot_water`, or `hygiene` for the hygiene action), naming the appliance and the flag, rather
+than sending a cylinder write somewhere it was never meant to go.
+
+### `dimplex.set_hot_water_temperature`
+
+| Field         | Type    | Default | Notes                                     |
+| ------------- | ------- | ------- | ----------------------------------------- |
+| `mode`        | string  | —       | `normal` or `boost` — which target to set |
+| `temperature` | number  | —       | Target temperature (°C)                   |
+| `enable`      | boolean | `true`  | Engage the mode as well as writing it     |
+
+```yaml
+action: dimplex.set_hot_water_temperature
+target:
+  entity_id: sensor.hot_water_cylinder_hot_water_available
+data:
+  mode: normal
+  temperature: 50
+```
+
+There is no **number** entity for these targets, deliberately: nothing reads them back. The
+cloud's only hot-water reading is `AvailableHotWater`, so a number entity could be set and
+could never show what it is actually set to — see
+[appliance support](appliances.md#hot-water-cylinders).
+
+### `dimplex.set_hot_water_hygiene`
+
+| Field         | Type    | Default | Notes                                          |
+| ------------- | ------- | ------- | ---------------------------------------------- |
+| `temperature` | number  | —       | Temperature the anti-legionella cycle heats to |
+| `frequency`   | string  | —       | `off`, `daily`, `weekly` or `monthly`          |
+| `enable`      | boolean | `true`  | Engage hygiene mode as well as writing it      |
+
+The endpoint variant follows the appliance: an ASHW heat pump gets
+`SetHygieneSettingsHeatPumpHwc`, a plain cylinder `SetHygieneSettingsHwc`. That is derived from
+the capability matrix rather than asked of you, because the two endpoints are not
+interchangeable. This is the hot-water call most likely to be refused outright by a hub.
 
 ## Next
 

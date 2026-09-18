@@ -109,6 +109,9 @@
       "estimated_power": {
         "name": "Estimert effekt"
       },
+      "hot_water_available": {
+        "name": "Varmtvann tilgjengelig"
+      },
       "energy_lifetime": {
         "name": "Energi siste 30 dager"
       },

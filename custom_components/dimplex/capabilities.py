@@ -195,5 +195,30 @@ def capabilities_for_row(appliance: Any, status: Any = None, product: Any = None
     tokens = " ".join(
         str(getattr(appliance, attr, "") or "") for attr in ("ApplianceType", "ApplianceModel", "FriendlyName")
     ).lower()
-    climate = not any(k in tokens for k in ("hot water", "hotwater", "cylinder", "dhw"))
-    return LocalCapabilities(climate=climate)
+    hot_water = any(k in tokens for k in ("hot water", "hotwater", "cylinder", "dhw", "waterheater"))
+    heat_pump = any(k in tokens for k in ("ashw", "heat pump", "heatpump"))
+    if heat_pump:
+        hot_water = True
+    storage = any(k in tokens for k in ("quantum", "storage", "qrad", "charge"))
+    if status is not None and getattr(status, "AvailableHotWater", None) is not None:
+        hot_water = True
+
+    # Mirrors the library's own derivation for the parts that need no catalogue:
+    # a cylinder is not room climate unless it also reports a room temperature, and
+    # a cylinder with no "next comfort period" cannot advance.
+    climate = not hot_water
+    if status is not None and (
+        getattr(status, "RoomTemperature", None) is not None
+        or getattr(status, "ActiveSetPointTemperature", None) is not None
+    ):
+        climate = True
+
+    return LocalCapabilities(
+        climate=climate,
+        advance=not (hot_water and not climate),
+        hot_water=hot_water,
+        heat_pump=heat_pump,
+        hygiene=hot_water,
+        storage=storage,
+        energy_meter=storage,
+    )
