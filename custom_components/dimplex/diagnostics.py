@@ -11,6 +11,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
+from .capabilities import capabilities_for_row
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_PASSWORD,
@@ -162,6 +163,7 @@ async def async_get_config_entry_diagnostics(
         zone = row.get("zone")
         status = row.get("status")
         hub = row.get("hub")
+        product = row.get("product")
         prov = None
         if appliance is not None:
             prop = getattr(type(appliance), "automatic_provisioning", None)
@@ -182,6 +184,11 @@ async def async_get_config_entry_diagnostics(
                 "status": _model_snapshot(status),
                 "active_modes": _active_modes(status),
                 "provisioning": _model_snapshot(prov),
+                # The flags every control path is gated on, resolved for this
+                # appliance. Docs point at this key (#199).
+                "capabilities": capabilities_for_row(appliance, status, product).as_dict(),
+                "product_model": getattr(product, "ProductModelName", None),
+                "product_type": getattr(product, "ProductTypeName", None),
             }
         )
 

@@ -63,20 +63,27 @@ hardware**, so:
 
 ## How capabilities are decided
 
-There is no product database. The matrix guesses from three sources, in increasing
-specificity:
+The matrix resolves the flags from four sources, in increasing specificity:
 
 ```mermaid
 flowchart TB
     T["Type / model / name tokens<br/>quantum · storage · qrad · charge<br/>cylinder · dhw · hotwater<br/>ashw · heatpump"]
-    P["AUTOMATIC_PROVISIONING<br/>charge_capacity · rated_power"]
+    P["Product catalogue row<br/>GET /Appliances/GetProductModels"]
+    A["AUTOMATIC_PROVISIONING<br/>charge_capacity · rated_power"]
     S["Live status fields<br/>BoostTemperature · AwayDateTime<br/>AvailableHotWater · RoomTemperature"]
     C["Capability flags"]
 
     T --> C
     P --> C
+    A --> C
     S --> C
 ```
+
+The catalogue is fetched once per account and matched to each appliance on its model, then its
+type. It carries the `AUTOMATIC_PROVISIONING` metadata — and it is the only place `storage`,
+`energy_meter`, `hot_water` and `heat_pump` come from, which is why the integration calls it
+rather than guessing from the appliance's own name. An account whose catalogue cannot be read
+falls back to the type tokens and is retried on the next poll.
 
 - `charge_capacity > 0`, or a storage-ish token → **storage**
 - `rated_power > 0`, or a storage-ish token → **energy meter**

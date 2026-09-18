@@ -21,6 +21,7 @@ from dimplex_controller import (
     parse_telemetry_points,
 )
 
+from .capabilities import product_for_appliance, product_lookup
 from .const import ENERGY_REPORT_DAYS, ENERGY_REPORT_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
@@ -118,6 +119,7 @@ class DimplexApiClient:
         self._username = username
         self._password = password
         self._account_id: str | None = None
+        self._product_models: list[Any] | None = None
         self._client = DimplexControl(
             session=session,
             token_bundle=TokenBundle(
@@ -257,10 +259,33 @@ class DimplexApiClient:
         """Return the browser auth URL for manual token generation."""
         return self._client.auth.get_login_url()
 
+    async def async_get_product_models(self) -> list[Any]:
+        """Fetch the account's product catalogue, caching it once it succeeds.
+
+        The catalogue is account-wide and static, but it is the only source of the
+        ``AUTOMATIC_PROVISIONING`` metadata behind the ``storage``, ``energy_meter``,
+        ``hot_water`` and ``heat_pump`` capability flags — the integration never
+        called it, so those flags could not be derived at all (#199).
+
+        Best-effort: a failure leaves the cache empty and is retried on the next
+        poll, and capability derivation falls back to the appliance's own type
+        tokens. It deliberately does not fail the status poll.
+        """
+        if self._product_models is not None:
+            return self._product_models
+        try:
+            models = list(await self._client.get_product_models())
+        except (DimplexAuthError, DimplexConnectionError, DimplexApiError) as exception:
+            _LOGGER.debug("Product catalogue unavailable; capability flags fall back to type tokens: %s", exception)
+            return []
+        self._product_models = models
+        return models
+
     async def async_get_status_data(self) -> dict[str, Any]:
         """Fetch hubs, zones, and appliance overview (no energy)."""
         try:
             hubs = await self._client.get_hubs()
+            products = product_lookup(await self.async_get_product_models())
             appliance_rows: list[dict[str, Any]] = []
 
             for hub in hubs:
@@ -298,6 +323,10 @@ class DimplexApiClient:
                                 "zone": zone,
                                 "appliance": appliance,
                                 "status": overview_by_id.get(appliance.ApplianceId),
+                                # Catalogue row for this appliance, or None. Carried
+                                # on the row so capability derivation does not need
+                                # the client (#199).
+                                "product": product_for_appliance(products, appliance),
                             }
                         )
 
