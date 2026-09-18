@@ -8,9 +8,10 @@
 # deliberately — Discussions is off, so it is the only way to mark a
 # question-shaped issue as such.
 #
-# Note that sync-labels.yml runs with `delete-other-labels: false`, so removing a
-# label here does not delete it from the repository. Deleting these five is a
-# separate one-off `gh label delete`.
+# Note that sync-labels.yml runs with `delete-other-labels: true`, so a label removed
+# here is removed from the repository on the next sync. That is how the five stock
+# labels above actually went away — with it false, pruning this file left them on
+# every issue and PR picker until someone deleted them by hand (dimplex-controller-hass#202).
 
 # --- Conventional issue / PR labels ---
 - name: bug
