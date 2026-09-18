@@ -126,13 +126,15 @@ Setback **binary sensor** reports whether setback is currently engaged, and the 
 The range offered is the capability matrix's own 7-30 °C. That range is **inferred** from the
 app rather than measured — see [appliance support](appliances.md#temperature-ranges).
 
-## Schedule (read-only)
+## Schedule
 
 Diagnostic **Schedule** sensor per appliance. Its state is the timer mode — `manual`,
 `user_timer`, `frost_protection` or `off` — and its `periods` attribute lists the programme
 as day / start / end / temperature.
 
-Read-only: see [editing the weekly schedule](../use/temperature.md#editing-the-weekly-schedule).
+The sensor is read-only. The programme can be copied to other appliances, and one period's
+target edited, through actions — see
+[edit the weekly schedule](../use/temperature.md#editing-the-weekly-schedule).
 
 ## Zones
 

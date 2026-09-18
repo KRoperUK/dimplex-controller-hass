@@ -417,6 +417,55 @@ class DimplexApiClient:
                 return await self._client.get_schedule(hub_id, appliance_id)
             return await self._client.get_appliance_features(hub_id, appliance_id)
 
+    async def async_copy_schedule(
+        self,
+        hub_id: str,
+        from_appliance_id: str,
+        appliance_ids: list[str],
+        *,
+        timer_mode: int = 0,
+    ) -> None:
+        """Apply one appliance's weekly programme to other appliances.
+
+        ``CopyScheduleToAppliances`` maps neatly onto "make these heaters follow the
+        same schedule as that one", and until now had no caller — the integration
+        could read a schedule and not propagate it (#199).
+        """
+        with _translated_errors():
+            await self._client.copy_schedule_to_appliances(
+                hub_id,
+                from_appliance_id,
+                appliance_ids,
+                timer_mode=timer_mode,
+            )
+
+    async def async_set_period_setpoint(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        *,
+        day_of_week: int,
+        start_time: str,
+        temperature: float,
+        end_time: str | None = None,
+    ) -> Any:
+        """Update one timer period's setpoint without rewriting the rest.
+
+        Periods are matched on ``DayOfWeek`` + ``StartTime``, so the caller has to
+        name an existing period — the library raises ``ValueError`` for one that does
+        not exist, which callers should turn into a readable error rather than a
+        traceback. Returns the updated ``TimerModeSettings``.
+        """
+        with _translated_errors():
+            return await self._client.set_period_setpoint(
+                hub_id,
+                appliance_id,
+                day_of_week=day_of_week,
+                start_time=start_time,
+                temperature=temperature,
+                end_time=end_time,
+            )
+
     async def async_set_timer_mode(self, hub_id: str, appliance_id: str, mode: int) -> None:
         """Set the appliance timer / operation mode (manual, frost, off, …).
 

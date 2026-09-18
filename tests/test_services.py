@@ -11,9 +11,11 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.dimplex.const import AWAY_TEMP_MAX, DOMAIN
 from custom_components.dimplex.services import (
     SERVICE_CLEAR_ADVANCE,
+    SERVICE_COPY_SCHEDULE,
     SERVICE_SET_ADVANCE,
     SERVICE_SET_AWAY,
     SERVICE_SET_BOOST,
+    SERVICE_SET_PERIOD_SETPOINT,
     _appliance_id_from_unique_id,
     async_setup_services,
 )
@@ -376,5 +378,169 @@ async def test_action_error_message_names_the_action(hass: HomeAssistant) -> Non
             DOMAIN,
             SERVICE_SET_BOOST,
             {"device_id": device_id},
+            blocking=True,
+        )
+
+
+def _make_schedule_runtime(*, hub_id: str = "hub-1", timer_mode=1):
+    """Runtime with two appliances on one hub and a cached schedule for the first."""
+    api = MagicMock()
+    api.async_copy_schedule = AsyncMock()
+    api.async_set_period_setpoint = AsyncMock()
+    hub = SimpleNamespace(HubId=hub_id)
+    zone = SimpleNamespace(ZoneName="Z")
+    source = SimpleNamespace(ApplianceId="app-1", FriendlyName="Hallway Heater")
+    target = SimpleNamespace(ApplianceId="app-2", FriendlyName="Lounge Heater")
+    status_coord = MagicMock()
+    status_coord.async_request_refresh = AsyncMock()
+    status_coord.data = {
+        "appliances": [
+            {"hub": hub, "zone": zone, "appliance": source, "status": None},
+            {"hub": hub, "zone": zone, "appliance": target, "status": None},
+        ],
+        "schedules": {"app-1": SimpleNamespace(TimerMode=timer_mode)},
+    }
+    return SimpleNamespace(api=api, status=status_coord)
+
+
+async def test_copy_schedule_copies_the_periods_and_the_source_mode(hass: HomeAssistant) -> None:
+    """The source's timer mode travels with the programme, or the copy is not a copy."""
+    runtime = _make_schedule_runtime(timer_mode=1)
+    entry = await _register_entry(hass, runtime)
+    source_device_id = await _device_id(hass, entry, "app-1")
+    target_device_id = await _device_id(hass, entry, "app-2")
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_COPY_SCHEDULE,
+        {"device_id": source_device_id, "target_device_ids": [target_device_id]},
+        blocking=True,
+    )
+
+    runtime.api.async_copy_schedule.assert_awaited_once()
+    args, kwargs = runtime.api.async_copy_schedule.await_args
+    assert args == ("hub-1", "app-1", ["app-2"])
+    assert kwargs["timer_mode"] == 1
+    # Schedules are cached for 15 minutes, so the write has to invalidate them.
+    runtime.status.invalidate_schedules.assert_called_once()
+    runtime.status.async_request_refresh.assert_awaited_once()
+
+
+async def test_copy_schedule_uses_user_timer_when_no_schedule_is_cached(hass: HomeAssistant) -> None:
+    """An unknown source mode must not send a nonsense timer mode."""
+    runtime = _make_schedule_runtime()
+    runtime.status.data["schedules"] = {}
+    entry = await _register_entry(hass, runtime)
+    source_device_id = await _device_id(hass, entry, "app-1")
+    target_device_id = await _device_id(hass, entry, "app-2")
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_COPY_SCHEDULE,
+        {"device_id": source_device_id, "target_device_ids": [target_device_id]},
+        blocking=True,
+    )
+
+    assert runtime.api.async_copy_schedule.await_args.kwargs["timer_mode"] == 0
+
+
+async def test_copy_schedule_ignores_the_source_in_its_own_target_list(hass: HomeAssistant) -> None:
+    """Listing the source as a target is a no-op, not an error."""
+    runtime = _make_schedule_runtime()
+    entry = await _register_entry(hass, runtime)
+    source_device_id = await _device_id(hass, entry, "app-1")
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_COPY_SCHEDULE,
+        {"device_id": source_device_id, "target_device_ids": [source_device_id]},
+        blocking=True,
+    )
+
+    runtime.api.async_copy_schedule.assert_not_awaited()
+
+
+async def test_copy_schedule_refuses_to_copy_to_only_some_targets(hass: HomeAssistant) -> None:
+    """An unresolvable target aborts the whole action rather than copying partially."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    runtime = _make_schedule_runtime()
+    entry = await _register_entry(hass, runtime)
+    source_device_id = await _device_id(hass, entry, "app-1")
+    good_target = await _device_id(hass, entry, "app-2")
+
+    with pytest.raises(HomeAssistantError, match="no schedule was copied"):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_COPY_SCHEDULE,
+            {"device_id": source_device_id, "target_device_ids": [good_target, "not-a-device"]},
+            blocking=True,
+        )
+
+    runtime.api.async_copy_schedule.assert_not_awaited()
+
+
+async def test_copy_schedule_refuses_a_target_on_another_hub(hass: HomeAssistant) -> None:
+    """One API call carries one hub id, so a cross-hub target cannot work."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    runtime = _make_schedule_runtime()
+    entry = await _register_entry(hass, runtime)
+    source_device_id = await _device_id(hass, entry, "app-1")
+
+    other_runtime = _make_schedule_runtime(hub_id="hub-2")
+    other_entry = await _register_entry(hass, other_runtime, entry_id="svc-entry-2")
+    remote_device_id = await _device_id(hass, other_entry, "app-2")
+
+    with pytest.raises(HomeAssistantError, match="same hub"):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_COPY_SCHEDULE,
+            {"device_id": source_device_id, "target_device_ids": [remote_device_id]},
+            blocking=True,
+        )
+
+    runtime.api.async_copy_schedule.assert_not_awaited()
+
+
+async def test_set_period_setpoint_maps_the_day_and_normalises_the_clock(hass: HomeAssistant) -> None:
+    """``06:00`` in YAML has to match the cloud's ``06:00:00`` period strings."""
+    runtime = _make_schedule_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_PERIOD_SETPOINT,
+        {"device_id": device_id, "day": "monday", "start_time": "06:00", "temperature": 21},
+        blocking=True,
+    )
+
+    runtime.api.async_set_period_setpoint.assert_awaited_once()
+    kwargs = runtime.api.async_set_period_setpoint.await_args.kwargs
+    assert kwargs["day_of_week"] == 1  # 0 = Sunday, so Monday is 1
+    assert kwargs["start_time"] == "06:00:00"
+    assert kwargs["temperature"] == 21.0
+    assert kwargs["end_time"] is None
+    runtime.status.invalidate_schedules.assert_called_once()
+    runtime.status.async_request_refresh.assert_awaited_once()
+
+
+async def test_set_period_setpoint_reports_a_missing_period_readably(hass: HomeAssistant) -> None:
+    """A day/time with no matching period must name what to check, not traceback."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    runtime = _make_schedule_runtime()
+    runtime.api.async_set_period_setpoint = AsyncMock(
+        side_effect=ValueError("No timer period for day=1 start='06:00:00' on appliance app-1")
+    )
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with pytest.raises(HomeAssistantError, match="Hallway Heater has no schedule period starting 06:00:00 on monday"):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_PERIOD_SETPOINT,
+            {"device_id": device_id, "day": "monday", "start_time": "06:00:00", "temperature": 21},
             blocking=True,
         )

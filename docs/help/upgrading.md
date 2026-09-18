@@ -14,6 +14,10 @@ New control surface, no configuration changes.
 - **Setback is writable.** A new **Setback target** number entity per capable appliance
   writes the reduced temperature instead of only reporting it. See
   [Entities](../reference/entities.md#numbers).
+- **The weekly schedule can be edited from Home Assistant**, through two actions:
+  `dimplex.copy_schedule` applies one appliance's programme to others, and
+  `dimplex.set_period_setpoint` changes one period's target. See
+  [Actions](../reference/actions.md#dimplexcopy_schedule).
 - **Controls are gated on the cloud's own capability matrix.** The integration now fetches
   the account's product catalogue, so an appliance the library says cannot take a control
   no longer offers it — and the hot-water / heat-pump flags are derivable for the first

@@ -211,3 +211,84 @@ set_open_window_detection:
       default: true
       selector:
         boolean:
+
+copy_schedule:
+  name: Copy schedule
+  description: >-
+    Apply one appliance's weekly programme to other appliances on the same hub. The
+    source appliance's timer mode is copied with it, so the targets end up in the
+    same mode rather than only holding the same periods.
+  fields:
+    device_id:
+      name: Source device
+      description: The appliance whose schedule is copied.
+      selector:
+        device:
+          integration: dimplex
+    entity_id:
+      name: Source entity
+      description: Any entity belonging to the appliance whose schedule is copied.
+      selector:
+        entity:
+          integration: dimplex
+    target_device_ids:
+      name: Target devices
+      description: Appliances to receive the schedule. Must be on the same hub as the source.
+      required: true
+      selector:
+        device:
+          integration: dimplex
+          multiple: true
+
+set_period_setpoint:
+  name: Set schedule period setpoint
+  description: >-
+    Change one existing schedule period's target temperature, without rewriting the
+    rest of the programme. Matches on day and start time, so the period has to
+    already exist — see the appliance's Schedule sensor for its periods.
+  fields:
+    device_id:
+      name: Device
+      selector:
+        device:
+          integration: dimplex
+    entity_id:
+      name: Entity
+      selector:
+        entity:
+          integration: dimplex
+    day:
+      name: Day
+      description: Day of the week the period belongs to.
+      required: true
+      selector:
+        select:
+          options:
+            - sunday
+            - monday
+            - tuesday
+            - wednesday
+            - thursday
+            - friday
+            - saturday
+    start_time:
+      name: Start time
+      description: Start time of the period to edit, exactly as the Schedule sensor lists it.
+      required: true
+      selector:
+        time:
+    temperature:
+      name: Temperature
+      description: New target temperature for that period (°C).
+      required: true
+      selector:
+        number:
+          min: 7
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+    end_time:
+      name: End time
+      description: Optional new end time for the period.
+      selector:
+        time:

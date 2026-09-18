@@ -104,7 +104,6 @@ Your appliance's resolved flags are in a
 
 | Endpoint                                                      | Why not                                                                                          |
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Schedule writes                                               | No Home Assistant UI shape for a weekly heater programme, and the write path is unproven.        |
 | `ECO` mode (bit 64)                                           | Behaviour on real hardware unknown. See [modes](../use/modes.md#the-eco-preset-is-not-eco-mode). |
 | `HOLIDAY`, `MANUAL`, `HYGIENE`, `STANDBY` and other mode bits | Read into diagnostics, never written.                                                            |
 
@@ -112,6 +111,11 @@ Your appliance's resolved flags are in a
 [setback target](entities.md#numbers) number entity, gated on the capability matrix's
 `setback_write` — treated as **inferred** from the app until someone confirms it against a real
 appliance.
+
+Schedule writes are exposed as two actions rather than a full editor —
+[copy a schedule](actions.md#dimplexcopy_schedule) and
+[edit one period](actions.md#dimplexset_period_setpoint). Creating, deleting or reordering
+periods still needs the official app.
 
 ## Temperature ranges
 
