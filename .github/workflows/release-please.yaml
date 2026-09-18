@@ -24,7 +24,27 @@ jobs:
         id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          token: ${{ github.token }}
+          # Prefer a PAT / GitHub App token when one is configured, and fall back to
+          # the workflow token so this still works unconfigured.
+          #
+          # Why it is worth configuring: commits authored by `github-actions[bot]`
+          # put their workflow runs into `action_required` with zero jobs created.
+          # Because `ci` is a required status check, the release PR then sits BLOCKED
+          # with "no checks reported" until someone approves the runs by hand — it had
+          # to be done four times for one release PR, once after every force-push onto
+          # a new main. A token that is not the Actions bot makes the runs start
+          # normally. `gh pr update-branch` unblocks a PR accidentally for the same
+          # reason: its merge commit is human-authored
+          # (dimplex-controller-hass#200).
+          #
+          # Releases created with `github.token` also raise no `release` event, which
+          # is why the release-asset workflow had not fired since v4.0.1. The zip is
+          # built inline below instead, so that is covered either way.
+          #
+          # Create a fine-grained PAT with `Contents: read/write` and
+          # `Pull requests: read/write` on this repository, add it as the
+          # `RELEASE_PLEASE_TOKEN` repository secret, and nothing else has to change.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
@@ -42,7 +62,9 @@ jobs:
       - name: Upload HACS zip asset
         if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Same identity that created the release, so an upload can never be
+          # refused for being a different actor than the one that owns it.
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           TAG: ${{ steps.release.outputs.tag_name }}
         run: |
           set -euo pipefail
@@ -53,7 +75,9 @@ jobs:
       - name: Verify HACS zip asset is attached
         if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Same identity that created the release, so an upload can never be
+          # refused for being a different actor than the one that owns it.
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           TAG: ${{ steps.release.outputs.tag_name }}
         run: |
           set -euo pipefail
@@ -71,7 +95,9 @@ jobs:
       - name: Prune all dev pre-releases on a real release
         if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Same identity that created the release, so an upload can never be
+          # refused for being a different actor than the one that owns it.
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           echo "Release created; deleting all dev pre-releases (rc / pr / legacy dev-*)."

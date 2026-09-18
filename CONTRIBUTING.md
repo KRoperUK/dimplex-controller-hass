@@ -72,6 +72,23 @@ Re-apply branch protection / rulesets with:
 scripts/setup-branch-protection.sh
 ```
 
+The script's `general` ruleset carries `required_signatures` but deliberately not `deletion`:
+a deletion rule on `~ALL` overrides `delete_branch_on_merge`, so every merged PR left its
+branch on the remote and deleting one by hand was refused. `main` is protected from deletion by
+its own ruleset, which is the branch that needs it.
+
+### Release automation needs one repository secret
+
+Define **`RELEASE_PLEASE_TOKEN`** — a fine-grained PAT with `Contents: read/write` and
+`Pull requests: read/write` on this repository — or the release PRs stall.
+
+Without it, release-please runs as `github-actions[bot]`, and bot-authored commits put their
+workflow runs into `action_required` with no jobs created. `ci` is a required status check, so
+the release PR sits `BLOCKED` on "no checks reported" until someone approves the runs by hand,
+once per force-push onto a new `main`. A non-bot token makes the runs start normally. The
+workflow falls back to the default token when the secret is absent, so this is an improvement
+to make rather than a switch to flip — nothing breaks either way.
+
 ## Any contributions you make will be under the MIT Software License
 
 In short, when you submit code changes, your submissions are understood to be under the same [MIT License](http://choosealicense.com/licenses/mit/) that covers the project. Feel free to contact the maintainers if that's a concern.
