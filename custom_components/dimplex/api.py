@@ -17,6 +17,7 @@ from dimplex_controller import (
     DimplexAuthError,
     DimplexConnectionError,
     DimplexControl,
+    SetbackStatus,
     TokenBundle,
     parse_telemetry_points,
 )
@@ -382,6 +383,32 @@ class DimplexApiClient:
         """
         with _translated_errors():
             await self._client.set_target_temperature(hub_id, appliance_id, temperature)
+
+    async def async_set_setback_temperature(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        temperature: float,
+        status: int | SetbackStatus = SetbackStatus.ACTIVE,
+    ) -> None:
+        """Write the setback (reduced) target temperature.
+
+        Setback was read-only: the cloud exposes ``SetSetbackTemperature`` and the
+        official app drives it, but nothing in the integration called it, so users
+        could see the setback temperature and not change it (#199).
+
+        ``status`` is the ``EStatus`` byte the endpoint carries. It defaults to
+        ACTIVE, which is what "set my setback temperature" means — the cloud's other
+        values describe the appliance being driven by its own schedule or by a
+        demand-side-response signal, not a user choice.
+        """
+        with _translated_errors():
+            await self._client.set_setback_temperature(
+                hub_id,
+                [appliance_id],
+                temperature=temperature,
+                status=status,
+            )
 
     async def async_get_schedule(self, hub_id: str, appliance_id: str) -> Any:
         """Return timer mode settings for an appliance (read-only schedule)."""

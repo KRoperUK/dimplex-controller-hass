@@ -64,6 +64,7 @@
         "data": {
           "binary_sensor": "Binær sensor aktivert",
           "climate": "Klima aktivert",
+          "number": "Tall aktivert",
           "sensor": "Sensor aktivert",
           "switch": "Bryter aktivert",
           "status_interval": "Statusintervall (sekunder)",
@@ -159,6 +160,11 @@
       },
       "open_window_detection": {
         "name": "Deteksjon av åpent vindu"
+      }
+    },
+    "number": {
+      "setback_target": {
+        "name": "Senketemperatur mål"
       }
     }
   },

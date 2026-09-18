@@ -112,6 +112,20 @@ the sensors are the appliance's actual state and are the better thing to automat
 | EcoStart              | Toggle EcoStart energy-saving mode.                                           |
 | Open window detection | Enable/disable open-window detection (control; pairs with the binary sensor). |
 
+## Numbers
+
+| Name           | Description                                                                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Setback target | The reduced ("setback") temperature the appliance falls back to when setback mode is active. Writing it also marks the setback ACTIVE, which is what the official app's setback control does. Translation key `setback_target`. |
+
+Created only for appliances whose capability matrix says both `setback_read` and `setback_write` —
+a write that could never be read back would leave the entity showing a stale number forever. The
+Setback **binary sensor** reports whether setback is currently engaged, and the Setback
+**temperature** sensor reports the same value read-only.
+
+The range offered is the capability matrix's own 7-30 °C. That range is **inferred** from the
+app rather than measured — see [appliance support](appliances.md#temperature-ranges).
+
 ## Schedule (read-only)
 
 Diagnostic **Schedule** sensor per appliance. Its state is the timer mode — `manual`,

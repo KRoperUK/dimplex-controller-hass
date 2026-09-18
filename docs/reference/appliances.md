@@ -102,12 +102,16 @@ Your appliance's resolved flags are in a
 
 ## Confirmed but deliberately not exposed
 
-| Endpoint                                                      | Why not                                                                                            |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `SetSetbackTemperature`                                       | **Inferred**{ .status-inferred } from the app, never validated live. Available to library callers. |
-| Schedule writes                                               | No Home Assistant UI shape for a weekly heater programme, and the write path is unproven.          |
-| `ECO` mode (bit 64)                                           | Behaviour on real hardware unknown. See [modes](../use/modes.md#the-eco-preset-is-not-eco-mode).   |
-| `HOLIDAY`, `MANUAL`, `HYGIENE`, `STANDBY` and other mode bits | Read into diagnostics, never written.                                                              |
+| Endpoint                                                      | Why not                                                                                          |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Schedule writes                                               | No Home Assistant UI shape for a weekly heater programme, and the write path is unproven.        |
+| `ECO` mode (bit 64)                                           | Behaviour on real hardware unknown. See [modes](../use/modes.md#the-eco-preset-is-not-eco-mode). |
+| `HOLIDAY`, `MANUAL`, `HYGIENE`, `STANDBY` and other mode bits | Read into diagnostics, never written.                                                            |
+
+`SetSetbackTemperature` used to be on this list. It is now written by the
+[setback target](entities.md#numbers) number entity, gated on the capability matrix's
+`setback_write` — treated as **inferred** from the app until someone confirms it against a real
+appliance.
 
 ## Temperature ranges
 
