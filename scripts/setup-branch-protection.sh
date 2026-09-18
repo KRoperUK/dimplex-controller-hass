@@ -220,3 +220,11 @@ MAIN_RULESET_ID=$(
 )
 gh api "repos/${REPO}/rulesets/${MAIN_RULESET_ID}" \
   --jq '{name, rules: [.rules[].type]}'
+
+# Printed so its absence is observable: `deletion` must not appear below, on `~ALL`.
+# If it does, `delete_branch_on_merge` is being overridden again and merged branches
+# will start accumulating.
+echo
+echo "General ruleset detail (must NOT list 'deletion'):"
+gh api "repos/${REPO}/rulesets/${GENERAL_RULESET_ID}" \
+  --jq '{name, include: .conditions.ref_name.include, rules: [.rules[].type]}'
