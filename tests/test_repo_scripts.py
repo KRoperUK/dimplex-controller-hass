@@ -56,7 +56,15 @@ def test_check_md_alerts_passes() -> None:
     assert "✓" in result.stdout
 
 
-@pytest.mark.parametrize("script", ["check-translation-parity.sh", "check-md-alerts.sh", "setup-repo-metadata.sh"])
+@pytest.mark.parametrize(
+    "script",
+    [
+        "check-translation-parity.sh",
+        "check-md-alerts.sh",
+        "setup-repo-metadata.sh",
+        "test-hacs-zip.sh",
+    ],
+)
 def test_scripts_are_executable(script: str) -> None:
     """Maintenance scripts must have the executable bit set so CI can run them."""
     path = REPO_ROOT / "scripts" / script

@@ -301,6 +301,22 @@ jobs:
           fi
           exit "$status"
 
+  # Structural check on the HACS release asset. The dev-release jobs below package and
+  # upload `dimplex.zip` on every component PR and every main push, but uploading a
+  # malformed zip succeeds silently — HACS is the only thing that would complain, and
+  # only when somebody tried to install the release. This asserts the shape instead:
+  # manifest.json at the zip root, no nested custom_components/ path.
+  hacs_zip_smoke:
+    needs: changes
+    if: needs.changes.outputs.component == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Package the integration and check the asset is installable
+        run: bash scripts/test-hacs-zip.sh
+
   # Stable required status check for the `main` branch ruleset / protection.
   # - Component changes: fails unless translations, lint, mypy, pre-commit, test,
   #   hacs_validate, and scripts all succeed
@@ -313,7 +329,20 @@ jobs:
   # bad component changes.
   ci:
     name: ci
-    needs: [changes, conventional_commits, docs, translations, lint, mypy, pre-commit, test, hacs_validate, scripts]
+    needs:
+      [
+        changes,
+        conventional_commits,
+        docs,
+        translations,
+        lint,
+        mypy,
+        pre-commit,
+        test,
+        hacs_validate,
+        scripts,
+        hacs_zip_smoke
+      ]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -336,6 +365,7 @@ jobs:
           echo "test: ${{ needs.test.result }}"
           echo "hacs_validate: ${{ needs.hacs_validate.result }}"
           echo "scripts: ${{ needs.scripts.result }}"
+          echo "hacs_zip_smoke: ${{ needs.hacs_zip_smoke.result }}"
 
           failed=0
 
@@ -365,7 +395,8 @@ jobs:
             "pre-commit:${{ needs.pre-commit.result }}" \
             "test:${{ needs.test.result }}" \
             "hacs_validate:${{ needs.hacs_validate.result }}" \
-            "scripts:${{ needs.scripts.result }}"
+            "scripts:${{ needs.scripts.result }}" \
+            "hacs_zip_smoke:${{ needs.hacs_zip_smoke.result }}"
           do
             name="${pair%%:*}"
             result="${pair#*:}"
@@ -390,7 +421,7 @@ jobs:
   # itself use always(). Gating on `ci` therefore silently stopped these builds from
   # ever running on main. See the note on dev-release-main.
   dev-release:
-    needs: [changes, translations, lint, mypy, pre-commit, test, hacs_validate, scripts]
+    needs: [changes, translations, lint, mypy, pre-commit, test, hacs_validate, scripts, hacs_zip_smoke]
     if: >-
       needs.changes.outputs.component == 'true' &&
       github.event_name == 'pull_request' &&
@@ -606,7 +637,7 @@ jobs:
   #    merely mentions the release-commit prefix — including a commit describing
   #    this very guard, which is how it was found.
   dev-release-main:
-    needs: [changes, translations, lint, mypy, pre-commit, test, hacs_validate, scripts]
+    needs: [changes, translations, lint, mypy, pre-commit, test, hacs_validate, scripts, hacs_zip_smoke]
     if: >-
       needs.changes.outputs.component == 'true' &&
       github.event_name == 'push' &&
