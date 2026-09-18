@@ -26,6 +26,14 @@ jobs:
         uses: EndBug/label-sync@52074158190acb45f3077f9099fea818aa43f97a # v2.3.3
         with:
           config-file: .github/labels.yml
-          # Keep labels that are not listed (e.g. release-please / third-party).
-          delete-other-labels: false
+          # labels.yml is the source of truth, so labels it no longer lists are
+          # removed. With this false — as it was — pruning the file did nothing:
+          # the five stock labels dropped in #202 are still on the repository, and
+          # every future removal would have needed a manual `gh label delete`.
+          #
+          # Every label the workflows apply is declared in labels.yml
+          # (pr-status-labels.yml's set, dev-release-cut, and release-please's
+          # `autorelease:` pair), so nothing in use is at risk. `gh label create`
+          # calls elsewhere are idempotent fallbacks, not separate definitions.
+          delete-other-labels: true
           token: ${{ secrets.GITHUB_TOKEN }}
