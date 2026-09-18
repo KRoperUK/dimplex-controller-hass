@@ -58,5 +58,10 @@ Coverage threshold (`fail_under`) lives in `pyproject.toml`; keep it green.
   requires translations, lint, mypy, pre-commit, pytest, hacs_validate, and shell
   script syntax; on PRs it also requires conventional_commits. Docs-only PRs still
   get a green `ci`. Re-apply rules with `scripts/setup-branch-protection.sh`.
+- Repository settings that have no file to hold them are applied from scripts, so a
+  change to them can be reviewed: `scripts/setup-branch-protection.sh` for rulesets and
+  `scripts/setup-repo-metadata.sh` for the description, homepage and topics of this
+  repository and the `dimplex-controller-py` library. Neither runs in CI; they are
+  re-run deliberately when those settings change.
 - Releases are automated by `release-please` (a release PR is opened and tags on
   merge). Dependabot PRs (minor/patch) auto-merge once CI passes.
