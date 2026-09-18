@@ -80,19 +80,27 @@ its own — see [Modes & presets](modes.md).
 
 ## Editing the weekly schedule
 
-Not supported. The integration reads the schedule and exposes it as a diagnostic
-**Schedule** sensor — timer mode plus the day/start/end/temperature periods as attributes —
-but there is no write path, and Home Assistant has no native UI shape for a heater's
-weekly programme.
+Partly supported, through actions rather than a UI. Home Assistant has no native shape for a
+heater's weekly programme, so there is no schedule editor — but two writes are available:
 
-Change the programme in the official Dimplex app. Home Assistant will pick it up on the
-next schedule poll (every 15 minutes).
+- **`dimplex.set_period_setpoint`** changes one existing period's target temperature, matched
+  on day and start time. The rest of the programme is untouched.
+- **`dimplex.copy_schedule`** applies one appliance's whole schedule to other appliances on the
+  same hub, timer mode included — the "make these three match that one" case.
+
+Both are documented in the [actions reference](../reference/actions.md). Creating a period,
+deleting one, or rewriting a week still needs the official Dimplex app; Home Assistant picks
+up changes made there on the next schedule poll (every 15 minutes).
+
+Read an appliance's periods from its diagnostic **Schedule** sensor first — its `periods`
+attribute is the day / start / end / temperature of each, and `set_period_setpoint` only edits
+a period that is already there.
 
 ## What the cloud will not let you do
 
 - **No live wattage.** There is no power stream to read. Energy is
   [daily kWh history](energy.md), not a meter.
-- **No schedule writes**, as above.
+- **No schedule editor**, as above — only the two writes listed there.
 - **Away tops out at 18 °C**, not the 7–30 °C a normal setpoint accepts. The official app's
   Away picker stops at 18 too, and the cloud silently reduces anything higher — so the
   integration clamps it locally and logs a warning, rather than letting your 21 °C become

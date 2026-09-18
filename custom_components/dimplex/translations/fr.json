@@ -64,6 +64,7 @@
         "data": {
           "binary_sensor": "Capteur binaire activé",
           "climate": "Climatisation activée",
+          "number": "Nombre activé",
           "sensor": "Capteur activé",
           "switch": "Interrupteur activé",
           "status_interval": "Intervalle de statut (secondes)",
@@ -107,6 +108,9 @@
       },
       "estimated_power": {
         "name": "Puissance estimée"
+      },
+      "hot_water_available": {
+        "name": "Eau chaude disponible"
       },
       "energy_lifetime": {
         "name": "Énergie 30 derniers jours"
@@ -159,6 +163,11 @@
       },
       "open_window_detection": {
         "name": "Détection fenêtre ouverte"
+      }
+    },
+    "number": {
+      "setback_target": {
+        "name": "Consigne réduite"
       }
     }
   },

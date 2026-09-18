@@ -668,6 +668,54 @@ async def test_climate_temperature_limits_come_from_capabilities(hass):
 
 
 @pytest.mark.asyncio
+async def test_a_setpoint_incapable_appliance_skips_the_dedicated_endpoint(hass):
+    """An appliance the library marks ``setpoint_write=False`` gets no wasted request.
+
+    The dedicated endpoint is guaranteed to be refused for these, and the refusal
+    path rewrites every timer period anyway — so asking first costs a round trip and
+    produces a misleading "refused" warning in the log (#199).
+    """
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload()
+    no_setpoint = LocalCapabilities(setpoint_write=False)
+
+    with (
+        _api_data(payload),
+        patch("custom_components.dimplex.climate.capabilities_for_row", return_value=no_setpoint),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    assert entity_id is not None
+
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_appliance_setpoint",
+            new_callable=AsyncMock,
+        ) as set_point,
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_target_temperature",
+            new_callable=AsyncMock,
+        ) as rewrite_schedule,
+        patch("custom_components.dimplex.climate.capabilities_for_row", return_value=no_setpoint),
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_TEMPERATURE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: 19.0},
+            blocking=True,
+        )
+
+    set_point.assert_not_awaited()
+    rewrite_schedule.assert_awaited_once_with("hub-1", "appliance-1", 19.0)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("payload_kwargs", "preset", "expect_boost_enable", "expect_away_enable", "expect_eco"),
     [

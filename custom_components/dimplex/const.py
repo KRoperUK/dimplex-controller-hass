@@ -98,6 +98,7 @@ ISSUE_URL = "https://github.com/kroperuk/dimplex-controller-hass/issues"
 PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.CLIMATE,
+    Platform.NUMBER,
     Platform.SENSOR,
     Platform.SWITCH,
 ]
@@ -113,6 +114,17 @@ CONF_STATUS_INTERVAL = "status_interval"
 CONF_ENERGY_INTERVAL = "energy_interval"
 CONF_BOOST_DURATION = "boost_duration"
 DEFAULT_BOOST_DURATION = 60
+
+# How many coordinator updates a just-written value keeps being shown for before the
+# cloud's own state is accepted instead.
+#
+# ``async_request_refresh`` is debounced and the appliance takes time to reflect a
+# write, so the poll that follows a write usually still carries the *old* value: the
+# UI snapped back and then corrected itself a poll later, which is what "my change
+# didn't take" looked like (#198, #210). The bound matters too — if the cloud
+# silently reduced or ignored the write, the entity must eventually show what the
+# appliance actually reports.
+OPTIMISTIC_UPDATES = 3
 
 # Status (temps, modes) — cloud polling, relatively light.
 DEFAULT_STATUS_INTERVAL = timedelta(seconds=30)

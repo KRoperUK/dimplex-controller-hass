@@ -23,6 +23,10 @@ to that appliance.
 | `dimplex.clear_advance`             | Cancel advance and return to the schedule       |
 | `dimplex.set_eco_start`             | Enable or disable EcoStart                      |
 | `dimplex.set_open_window_detection` | Enable or disable open-window detection         |
+| `dimplex.copy_schedule`             | Apply one appliance's schedule to others        |
+| `dimplex.set_period_setpoint`       | Change one schedule period's target temperature |
+| `dimplex.set_hot_water_temperature` | Set a cylinder's normal or boost target         |
+| `dimplex.set_hot_water_hygiene`     | Configure a cylinder's anti-legionella cycle    |
 
 ## `dimplex.set_boost`
 
@@ -123,14 +127,108 @@ It is **not** the cloud's separate Eco mode, which this integration does not use
 
 Equivalent to the **Open window detection** switch entity.
 
+## `dimplex.copy_schedule`
+
+Applies the schedule of the appliance you target to other appliances **on the same hub**. The
+source's timer mode travels with it, so the targets end up in the same mode rather than only
+holding the same periods.
+
+| Field               | Type               | Default | Notes                                                    |
+| ------------------- | ------------------ | ------- | -------------------------------------------------------- |
+| `target_device_ids` | list of device ids | —       | Required. One or more appliances to receive the schedule |
+
+```yaml
+action: dimplex.copy_schedule
+target:
+  entity_id: climate.hallway_heater
+data:
+  target_device_ids:
+    - 1f2c… # the device id of each heater to update
+```
+
+Every target is checked before anything is written: an unresolvable device, or one on a
+different hub, aborts the whole action rather than copying to some of them. If a target is the
+source appliance it is skipped.
+
+## `dimplex.set_period_setpoint`
+
+Changes **one existing** schedule period's target temperature, leaving the rest of the
+programme alone. Periods are matched on day and start time, so the period has to exist already
+— this edits a programme, it does not create one. List an appliance's periods with its
+**Schedule** sensor, whose `periods` attribute is the day / start / end / temperature of each.
+
+| Field         | Type   | Default | Notes                                                        |
+| ------------- | ------ | ------- | ------------------------------------------------------------ |
+| `day`         | string | —       | `sunday` … `saturday` (the cloud numbers Sunday as 0)        |
+| `start_time`  | time   | —       | Start of the period to edit, as the Schedule sensor lists it |
+| `temperature` | number | —       | New target for that period                                   |
+| `end_time`    | time   | —       | Optional new end time for the period                         |
+
+```yaml
+action: dimplex.set_period_setpoint
+target:
+  entity_id: climate.hallway_heater
+data:
+  day: monday
+  start_time: "06:00:00"
+  temperature: 21
+```
+
+A day and start time that match no period raises an error naming the appliance and the time,
+rather than silently doing nothing.
+
 ## Not exposed as an action
 
-`SetSetbackTemperature` exists in the underlying library and is confirmed from the official
-app, but has never been validated against hardware — so it is deliberately not surfaced
-here. Library callers can still reach it.
-
-Schedule writes are not exposed at all; see
+Schedule writes are limited to copying a programme and editing one of its periods. There is no
+action to create a period, delete one, or rewrite a whole week — see
 [editing the weekly schedule](../use/temperature.md#editing-the-weekly-schedule).
+
+## Hot water
+
+!!! warning "Untested against hardware"
+
+    Every cylinder endpoint below is confirmed from the official app and none of it has
+    been run against a real cylinder. If you own one, what you report back is the point —
+    see [appliance support](appliances.md#hot-water-cylinders).
+
+Both actions refuse an appliance the capability matrix does not identify as a cylinder
+(`hot_water`, or `hygiene` for the hygiene action), naming the appliance and the flag, rather
+than sending a cylinder write somewhere it was never meant to go.
+
+### `dimplex.set_hot_water_temperature`
+
+| Field         | Type    | Default | Notes                                     |
+| ------------- | ------- | ------- | ----------------------------------------- |
+| `mode`        | string  | —       | `normal` or `boost` — which target to set |
+| `temperature` | number  | —       | Target temperature (°C)                   |
+| `enable`      | boolean | `true`  | Engage the mode as well as writing it     |
+
+```yaml
+action: dimplex.set_hot_water_temperature
+target:
+  entity_id: sensor.hot_water_cylinder_hot_water_available
+data:
+  mode: normal
+  temperature: 50
+```
+
+There is no **number** entity for these targets, deliberately: nothing reads them back. The
+cloud's only hot-water reading is `AvailableHotWater`, so a number entity could be set and
+could never show what it is actually set to — see
+[appliance support](appliances.md#hot-water-cylinders).
+
+### `dimplex.set_hot_water_hygiene`
+
+| Field         | Type    | Default | Notes                                          |
+| ------------- | ------- | ------- | ---------------------------------------------- |
+| `temperature` | number  | —       | Temperature the anti-legionella cycle heats to |
+| `frequency`   | string  | —       | `off`, `daily`, `weekly` or `monthly`          |
+| `enable`      | boolean | `true`  | Engage hygiene mode as well as writing it      |
+
+The endpoint variant follows the appliance: an ASHW heat pump gets
+`SetHygieneSettingsHeatPumpHwc`, a plain cylinder `SetHygieneSettingsHwc`. That is derived from
+the capability matrix rather than asked of you, because the two endpoints are not
+interchangeable. This is the hot-water call most likely to be refused outright by a hub.
 
 ## Next
 

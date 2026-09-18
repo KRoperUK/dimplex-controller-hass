@@ -56,6 +56,9 @@ class DimplexEntity(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]):
         self._appliance = appliance_row["appliance"]
         self._hub = appliance_row["hub"]
         self._zone = appliance_row["zone"]
+        # Catalogue row for this appliance, when the account-wide product list
+        # could be matched to it. Feeds capability derivation (#199).
+        self._product = appliance_row.get("product")
         if description is not None:
             self.entity_description = description
             suffix = unique_id_suffix if unique_id_suffix is not None else description.key
