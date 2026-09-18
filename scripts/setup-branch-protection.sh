@@ -145,6 +145,12 @@ else
 JSON
 fi
 
+# The `general` ruleset exists for `required_signatures` on every branch. It
+# deliberately does NOT carry `deletion`: a deletion rule on `~ALL` overrides
+# `delete_branch_on_merge`, so every squash-merged PR left its branch behind and a
+# manual `git push origin --delete` was refused with "push declined due to
+# repository rule violations". `main` is protected from deletion by its own ruleset
+# above, which is the branch that actually needs it (dimplex-controller-hass#200).
 if [ -z "${GENERAL_RULESET_ID}" ]; then
   echo "Creating ruleset 'general'..."
   gh api \
@@ -163,7 +169,6 @@ if [ -z "${GENERAL_RULESET_ID}" ]; then
     }
   },
   "rules": [
-    { "type": "deletion" },
     { "type": "required_signatures" }
   ]
 }
@@ -186,7 +191,6 @@ else
     }
   },
   "rules": [
-    { "type": "deletion" },
     { "type": "required_signatures" }
   ]
 }
@@ -216,3 +220,11 @@ MAIN_RULESET_ID=$(
 )
 gh api "repos/${REPO}/rulesets/${MAIN_RULESET_ID}" \
   --jq '{name, rules: [.rules[].type]}'
+
+# Printed so its absence is observable: `deletion` must not appear below, on `~ALL`.
+# If it does, `delete_branch_on_merge` is being overridden again and merged branches
+# will start accumulating.
+echo
+echo "General ruleset detail (must NOT list 'deletion'):"
+gh api "repos/${REPO}/rulesets/${GENERAL_RULESET_ID}" \
+  --jq '{name, include: .conditions.ref_name.include, rules: [.rules[].type]}'

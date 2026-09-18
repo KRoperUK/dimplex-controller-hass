@@ -72,6 +72,16 @@ Re-apply branch protection / rulesets with:
 scripts/setup-branch-protection.sh
 ```
 
+The script's `general` ruleset carries `required_signatures` but deliberately not `deletion`: a
+deletion rule on `~ALL` overrides `delete_branch_on_merge`, so every merged PR left its branch
+on the remote and deleting one by hand was refused. `main` is protected from deletion by its own
+ruleset, which is the branch that needs it. The script prints the general ruleset's rules at the
+end, so a regression shows up on the next run rather than as another pile of branches.
+
+Release-please's PRs run as `github-actions[bot]`, which leaves their workflow runs waiting for
+manual approval. That is the intended workflow here — the maintainer triggers and approves them
+when the release is wanted — so there is no token configured for it.
+
 ## Any contributions you make will be under the MIT Software License
 
 In short, when you submit code changes, your submissions are understood to be under the same [MIT License](http://choosealicense.com/licenses/mit/) that covers the project. Feel free to contact the maintainers if that's a concern.
