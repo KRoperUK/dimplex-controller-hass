@@ -477,15 +477,6 @@ class DimplexApiClient:
                 heat_pump=heat_pump,
             )
 
-    async def async_get_hot_water_schedule(self, hub_id: str, appliance_id: str) -> Any:
-        """Read a heat-pump cylinder's schedule.
-
-        Only ASHW cylinders expose a hot-water schedule; a plain cylinder has no
-        equivalent read endpoint.
-        """
-        with _translated_errors():
-            return await self._client.get_heat_pump_hot_water_schedule(hub_id, appliance_id)
-
     async def async_copy_schedule(
         self,
         hub_id: str,
