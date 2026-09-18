@@ -101,6 +101,9 @@ Leave `temperature` empty to use the next schedule period's own target — what 
 app does for Quantum and storage heaters. Advance ends when that period ends; it is not a
 fixed-duration override. See [advance vs boost](../use/temperature.md#advance-vs-boost).
 
+Refused for appliances whose capability matrix reports `advance: false` — a cylinder has no
+"next comfort period" to bring on, so there is nothing for it to mean.
+
 ## `dimplex.clear_advance`
 
 Cancels an active advance and hands control back to the schedule. No fields beyond the

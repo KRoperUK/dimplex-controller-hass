@@ -669,3 +669,31 @@ async def test_hot_water_hygiene_refuses_an_appliance_without_hygiene(hass: Home
         )
 
     runtime.api.async_set_hot_water_hygiene.assert_not_awaited()
+
+
+async def test_advance_is_refused_for_an_appliance_without_one(hass: HomeAssistant) -> None:
+    """A cylinder has no next comfort period, and the matrix says so (#199)."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    runtime = _make_runtime()
+    runtime.api.async_set_advance = AsyncMock()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with (
+        patch(
+            "custom_components.dimplex.services.capabilities_for_row",
+            return_value=LocalCapabilities(hot_water=True, climate=False, advance=False),
+        ),
+        pytest.raises(HomeAssistantError, match="does not support this control"),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_ADVANCE,
+            {"device_id": device_id},
+            blocking=True,
+        )
+
+    runtime.api.async_set_advance.assert_not_awaited()

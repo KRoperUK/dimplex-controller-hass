@@ -409,6 +409,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if resolved is None:
             return
         entry_id, hub_id, appliance_id, api = resolved
+        # A cylinder has no "next comfort period" to jump to, and the capability
+        # matrix says so. Advancing one is meaningless rather than merely refused
+        # (#199).
+        _require_capability(hass, entry_id, appliance_id, "advance", f"{DOMAIN}.{call.service}")
         await api.async_set_advance(
             hub_id,
             appliance_id,
@@ -423,6 +427,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         if resolved is None:
             return
         entry_id, hub_id, appliance_id, api = resolved
+        _require_capability(hass, entry_id, appliance_id, "advance", f"{DOMAIN}.{call.service}")
         await api.async_set_advance(hub_id, appliance_id, enable=False)
         await _refresh_status(hass, entry_id)
 

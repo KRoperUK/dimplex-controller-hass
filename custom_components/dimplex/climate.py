@@ -247,7 +247,15 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
 
     @property
     def _boost_minutes(self) -> int:
-        raw = self.config_entry.options.get(CONF_BOOST_DURATION, DEFAULT_BOOST_MINUTES)
+        """Boost length: the user's option, else the appliance's own default.
+
+        The option is unset unless someone changes it, so falling back to a constant
+        ignored the capability matrix's ``default_boost_minutes`` — one of the values
+        the integration used to copy and then never read (#199).
+        """
+        raw = self.config_entry.options.get(CONF_BOOST_DURATION)
+        if raw is None:
+            raw = getattr(self._caps, "default_boost_minutes", None) or DEFAULT_BOOST_MINUTES
         try:
             minutes = int(raw)
         except (TypeError, ValueError):

@@ -7,30 +7,11 @@ description: Version-by-version upgrade notes for the Dimplex Hub Home Assistant
 Restart Home Assistant after any HACS update. Notes are newest first; you only need to read
 the entries between your current version and the one you are moving to.
 
-## To 4.2.0
-
-New control surface, no configuration changes.
-
-- **Setback is writable.** A new **Setback target** number entity per capable appliance
-  writes the reduced temperature instead of only reporting it. See
-  [Entities](../reference/entities.md#numbers).
-- **The weekly schedule can be edited from Home Assistant**, through two actions:
-  `dimplex.copy_schedule` applies one appliance's programme to others, and
-  `dimplex.set_period_setpoint` changes one period's target. See
-  [Actions](../reference/actions.md#dimplexcopy_schedule).
-- **Hot water cylinders have a control surface for the first time.** Two actions,
-  `dimplex.set_hot_water_temperature` and `dimplex.set_hot_water_hygiene`, plus a
-  disabled-by-default diagnostic sensor. All of it is untested against real hardware —
-  see [appliance support](../reference/appliances.md#hot-water-cylinders).
-- **Controls are gated on the cloud's own capability matrix.** The integration now fetches
-  the account's product catalogue, so an appliance the library says cannot take a control
-  no longer offers it — and the hot-water / heat-pump flags are derivable for the first
-  time. [Diagnostics](../help/diagnostics.md) list the resolved flags per appliance.
-
 ## To 4.1.0
 
-Behaviour fixes, no configuration changes. Everything here is a correction — if you were
-working around any of it, stop.
+Behaviour fixes plus new control surface. Everything in the first list is a correction — if
+you were working around any of it, stop. The new entities and actions at the end change no
+existing configuration.
 
 !!! warning "The declared Home Assistant floor is now 2026.9"
 
@@ -87,6 +68,31 @@ working around any of it, stop.
   readable message the thermostat has given since 4.0.2, and distinguishes "this appliance
   will not do this" from "the cloud was unreachable".
 
+### New entities and actions
+
+New control surface; no configuration changes, and nothing existing is removed.
+
+- **Controls are gated on the cloud's own capability matrix.** The integration now fetches
+  the account's product catalogue, so an appliance the library says cannot take a control no
+  longer offers it — and the hot-water / heat-pump flags are derivable for the first time.
+  An appliance affected by this gains or loses an entity it could not have used anyway;
+  [diagnostics](../help/diagnostics.md) list the resolved flags per appliance, which is the
+  place to look if a control is missing.
+- **Setback is writable.** A new **Setback target** number entity per capable appliance writes
+  the reduced temperature instead of only reporting it. See
+  [Entities](../reference/entities.md#numbers).
+- **The weekly schedule can be edited from Home Assistant**, through two actions:
+  `dimplex.copy_schedule` applies one appliance's programme to others, and
+  `dimplex.set_period_setpoint` changes one period's target. See
+  [Actions](../reference/actions.md#dimplexcopy_schedule).
+- **Hot water cylinders have a control surface for the first time.** Two actions,
+  `dimplex.set_hot_water_temperature` and `dimplex.set_hot_water_hygiene`, plus a
+  disabled-by-default diagnostic sensor. All of it is untested against real hardware — see
+  [appliance support](../reference/appliances.md#hot-water-cylinders).
+- **The Boost preset's length now follows the appliance** when the Boost duration option has
+  never been set, instead of always using a fixed 60 minutes. If you set that option, nothing
+  changes.
+
 ### After upgrading
 
 - [ ] Confirm the config entry loaded without requirement errors in the log.
@@ -96,6 +102,10 @@ working around any of it, stop.
       mode on appliances an earlier release parked in the frost/off timer mode.
 - [ ] Enable the new mode binary sensors if you want them on a dashboard; they are
       diagnostic and off by default.
+- [ ] And if you have a **hot water cylinder**: enable its **Hot water available** diagnostic
+      sensor and compare the number it shows against the official app. It is deliberately
+      unitless because nothing documents what that field measures, so what it reports is
+      genuinely useful — please say so on the issue rather than assuming.
 - [ ] If an **Energy lifetime** sensor was a consumption source, remove it, add **Energy
       today** instead, and delete the old statistic if the history looks inflated.
 
