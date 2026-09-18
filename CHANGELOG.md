@@ -1,5 +1,39 @@
 # Changelog
 
+## [4.1.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.0.2...v4.1.0) (2026-09-18)
+
+
+### Features
+
+* **climate:** away duration and the cloud's real temperature range ([#169](https://github.com/KRoperUK/dimplex-controller-hass/issues/169)) ([bbab3ef](https://github.com/KRoperUK/dimplex-controller-hass/commit/bbab3efd2342c6a1f847c1b2d3b0ef797843f2ba)), closes [#163](https://github.com/KRoperUK/dimplex-controller-hass/issues/163)
+* **climate:** control via the app's own setpoint and off endpoints ([#168](https://github.com/KRoperUK/dimplex-controller-hass/issues/168)) ([9e0ef56](https://github.com/KRoperUK/dimplex-controller-hass/commit/9e0ef56d9fe433b51f10cae8d05c3d84c0ff0d55)), closes [#149](https://github.com/KRoperUK/dimplex-controller-hass/issues/149) [#163](https://github.com/KRoperUK/dimplex-controller-hass/issues/163)
+* **deps:** require dimplex-controller 0.13.0 for correct mode flags ([#167](https://github.com/KRoperUK/dimplex-controller-hass/issues/167)) ([59d63f7](https://github.com/KRoperUK/dimplex-controller-hass/commit/59d63f7f28278ce3517eb36bd5db619569cece98)), closes [#163](https://github.com/KRoperUK/dimplex-controller-hass/issues/163)
+* give hot water cylinders a control surface ([#219](https://github.com/KRoperUK/dimplex-controller-hass/issues/219)) ([fe457af](https://github.com/KRoperUK/dimplex-controller-hass/commit/fe457afb3a44936dc6c5da79ab33320863af0223))
+* honour the capability flags the controls were still ignoring ([#220](https://github.com/KRoperUK/dimplex-controller-hass/issues/220)) ([61f857e](https://github.com/KRoperUK/dimplex-controller-hass/commit/61f857e6adb83b6bea4daf7b899ea1616d879157))
+* surface the engaged appliance modes and add advance control ([#170](https://github.com/KRoperUK/dimplex-controller-hass/issues/170)) ([873fc32](https://github.com/KRoperUK/dimplex-controller-hass/commit/873fc32067046ae1bdf5d02c7d04c4eb085c2e22))
+
+
+### Bug Fixes
+
+* **ci:** cut RC pre-releases on main again, and match sungrow's cleanup ([#171](https://github.com/KRoperUK/dimplex-controller-hass/issues/171)) ([a337512](https://github.com/KRoperUK/dimplex-controller-hass/commit/a3375123cd71cc775c591f0b88912dd9a33095c0))
+* **ci:** match the release-please commit by subject, not anywhere in the body ([#172](https://github.com/KRoperUK/dimplex-controller-hass/issues/172)) ([194aee2](https://github.com/KRoperUK/dimplex-controller-hass/commit/194aee2979cc4b3b4cfa4e15e4c21b3bd3802cfe))
+* **climate:** cap Away at the 18 °C the cloud actually accepts ([#177](https://github.com/KRoperUK/dimplex-controller-hass/issues/177)) ([158a95c](https://github.com/KRoperUK/dimplex-controller-hass/commit/158a95c073d06a0552a2e04cfda2a1c3a5dc6806)), closes [#174](https://github.com/KRoperUK/dimplex-controller-hass/issues/174)
+* **climate:** make a preset establish its state, not add to it ([#176](https://github.com/KRoperUK/dimplex-controller-hass/issues/176)) ([c3453d5](https://github.com/KRoperUK/dimplex-controller-hass/commit/c3453d5f7e5936e44d09dccf7228cf5f39e2e4b1)), closes [#173](https://github.com/KRoperUK/dimplex-controller-hass/issues/173)
+* **climate:** only a refusal may trigger the destructive schedule rewrite ([#204](https://github.com/KRoperUK/dimplex-controller-hass/issues/204)) ([d26bfef](https://github.com/KRoperUK/dimplex-controller-hass/commit/d26bfef912af234ebd1e2f2ab1b48f3b73abd711))
+* **climate:** show writes immediately instead of waiting for a stale poll ([#210](https://github.com/KRoperUK/dimplex-controller-hass/issues/210)) ([4349ff6](https://github.com/KRoperUK/dimplex-controller-hass/commit/4349ff698b9258da1319ef7fec1d0cb61798950e))
+* declare the Home Assistant floor the integration actually needs ([#195](https://github.com/KRoperUK/dimplex-controller-hass/issues/195)) ([2675e6c](https://github.com/KRoperUK/dimplex-controller-hass/commit/2675e6c62f59cdfc3c9795a041f0358037019af9))
+* **docs:** prune the glossary to abbreviations that earn their tooltip ([#188](https://github.com/KRoperUK/dimplex-controller-hass/issues/188)) ([a086f2d](https://github.com/KRoperUK/dimplex-controller-hass/commit/a086f2d122005aab97e6805336cd3285e0f76b19))
+* **docs:** restore the unofficial-project callout on the repo home page ([#194](https://github.com/KRoperUK/dimplex-controller-hass/issues/194)) ([0b1caf8](https://github.com/KRoperUK/dimplex-controller-hass/commit/0b1caf81739f6098ae81feb3eee5f8f845779c4b))
+* **docs:** stop the home page grid cards falling apart ([#187](https://github.com/KRoperUK/dimplex-controller-hass/issues/187)) ([d50e984](https://github.com/KRoperUK/dimplex-controller-hass/commit/d50e984a21f793617e396605bf406120ae3e3970))
+* filter the 255 °C sentinel from the thermostat and drop deprecated via_device ([#205](https://github.com/KRoperUK/dimplex-controller-hass/issues/205)) ([37e942c](https://github.com/KRoperUK/dimplex-controller-hass/commit/37e942c8f3b0c46d379057b68684ee1b94b7151b))
+* keep runtime on the config entry, and let stale devices be removed ([#211](https://github.com/KRoperUK/dimplex-controller-hass/issues/211)) ([b5caad1](https://github.com/KRoperUK/dimplex-controller-hass/commit/b5caad1d843e5b029cd9a948caf77443ec1e9189))
+* Quantum setpoint sentinel, clearer control errors, HA 2026.9 compat + pre-commit CI parity ([#165](https://github.com/KRoperUK/dimplex-controller-hass/issues/165)) ([f4d4f91](https://github.com/KRoperUK/dimplex-controller-hass/commit/f4d4f9184da8ab118142b5f1fbee49db445f6ee1))
+* **sensor:** stop the 30-day energy window corrupting long-term statistics ([#203](https://github.com/KRoperUK/dimplex-controller-hass/issues/203)) ([cb6c6b2](https://github.com/KRoperUK/dimplex-controller-hass/commit/cb6c6b2a6ef984f31c2c033c6287949f3984fdfc))
+* **services:** describe the Away range the cloud actually accepts ([#179](https://github.com/KRoperUK/dimplex-controller-hass/issues/179)) ([3e4eae0](https://github.com/KRoperUK/dimplex-controller-hass/commit/3e4eae094810a4b2e379776d7d2357dc2a11a964)), closes [#175](https://github.com/KRoperUK/dimplex-controller-hass/issues/175)
+* set repository topics through the endpoint that accepts them ([#226](https://github.com/KRoperUK/dimplex-controller-hass/issues/226)) ([d102e5e](https://github.com/KRoperUK/dimplex-controller-hass/commit/d102e5eecf27b690be9174ddce627847857a6703))
+* translate control failures everywhere, and make the energy memo work ([#206](https://github.com/KRoperUK/dimplex-controller-hass/issues/206)) ([2ef408d](https://github.com/KRoperUK/dimplex-controller-hass/commit/2ef408d81387dd066de06e88e9bd79f6973837d3))
+* verify the account on reauth, key every entry, and log flow errors ([#209](https://github.com/KRoperUK/dimplex-controller-hass/issues/209)) ([cfb6179](https://github.com/KRoperUK/dimplex-controller-hass/commit/cfb6179088eaa16a13f8a3d749369dc1cf328f1a))
+
 ## [4.0.2](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.0.1...v4.0.2) (2026-07-18)
 
 
