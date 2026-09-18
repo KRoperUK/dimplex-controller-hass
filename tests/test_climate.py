@@ -1066,3 +1066,40 @@ async def test_no_optimistic_state_is_held_after_a_failed_write(hass):
         )
 
     assert hass.states.get(entity_id).attributes.get("temperature") == 20
+
+
+@pytest.mark.asyncio
+async def test_boost_duration_falls_back_to_the_appliance_default(hass):
+    """With no option set, the capability matrix's own default is used, not a constant.
+
+    `default_boost_minutes` was one of the values the integration copied and then
+    never read (#199).
+    """
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    payload = _payload()
+    caps = LocalCapabilities(default_boost_minutes=120)
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    with (
+        _api_data(payload),
+        patch("custom_components.dimplex.climate.capabilities_for_row", return_value=caps),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_set_boost", new_callable=AsyncMock) as set_boost,
+        patch("custom_components.dimplex.climate.capabilities_for_row", return_value=caps),
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_PRESET_MODE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_PRESET_MODE: "boost"},
+            blocking=True,
+        )
+
+    assert set_boost.await_args.kwargs["duration_minutes"] == 120
