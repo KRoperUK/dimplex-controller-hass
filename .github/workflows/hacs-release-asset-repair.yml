@@ -61,3 +61,15 @@ jobs:
           fi
           gh release upload "$TAG" dimplex.zip --clobber
           echo "Attached dimplex.zip to ${TAG}"
+
+      - name: Verify the replacement asset is installable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # This workflow exists to fix a bad asset, so check the replacement rather than
+          # assuming the repair worked — the local build is not what HACS downloads.
+          gh release download "$TAG" --pattern dimplex.zip --dir repaired --clobber
+          bash scripts/test-hacs-zip.sh repaired/dimplex.zip
+          echo "Verified the dimplex.zip now published on ${TAG} is installable."
