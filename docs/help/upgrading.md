@@ -35,6 +35,18 @@ existing configuration.
     **Developer tools** → **Statistics**, find the entity and delete its statistic. The
     **Energy today** sensors were always correct and need nothing.
 
+    Two things to expect, both explained in
+    [troubleshooting](../help/troubleshooting.md#a-repair-says-a-sensor-no-longer-has-a-state-class):
+
+    - A **repair per appliance** saying an entity *no longer has a state class*. That is Home
+      Assistant noticing the statistics stopped, which is intended rather than a fault, and
+      deleting the old statistic (above) stops it returning. Dismissing also works, but only
+      until the next Home Assistant version.
+    - If those sensors were **consumption sources on your Energy Dashboard**, Home Assistant
+      reports **Unexpected state class** and the source has to be swapped: **Energy last 30
+      days** → **Energy today**, and **Energy T2 last 30 days** → **Energy T2 today** (the T2
+      pair is disabled by default).
+
 - **Setting a target no longer rewrites your schedule.** Writes go through the cloud's
   dedicated setpoint endpoint, with the old schedule rewrite kept only as a fallback for
   appliances that reject it. See
