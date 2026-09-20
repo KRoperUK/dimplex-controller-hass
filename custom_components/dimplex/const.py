@@ -143,7 +143,16 @@ COORDINATOR_UPDATE_INTERVAL = DEFAULT_STATUS_INTERVAL  # backwards-compatible al
 # Energy monitoring — POST /Reports/GetTsiEnergyReportDataForHub.
 # Fetch with IncludePreviousPeriod so idle heaters still return history;
 # daily / lifetime totals are computed client-side.
-ENERGY_REPORT_DAYS = 30
+# How far back the energy report request asks for. **It does not bound the response.**
+# With `IncludePreviousPeriod` set (which the adapter always sets, so idle appliances still
+# return their history) the cloud returns the appliance's full available daily history and
+# ignores this — the library's `get_tsi_energy_report` docstring says as much and tells callers
+# to filter client-side. The integration deliberately does not filter: the cumulative sensors
+# are meant to total everything the cloud holds.
+#
+# The old name was `ENERGY_REPORT_DAYS` and it was read — by two reporters, by the docs, and by
+# the author of this file — as "the sensors cover 30 days". They never did (#227).
+ENERGY_REQUEST_DAYS = 30
 ENERGY_REPORT_INTERVAL = "00:10:00"
 
 STARTUP_MESSAGE = f"""

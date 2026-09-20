@@ -24,7 +24,7 @@ from dimplex_controller import (
 )
 
 from .capabilities import product_for_appliance, product_lookup
-from .const import ENERGY_REPORT_DAYS, ENERGY_REPORT_INTERVAL
+from .const import ENERGY_REPORT_INTERVAL, ENERGY_REQUEST_DAYS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -612,13 +612,20 @@ class DimplexApiClient:
     async def async_get_energy_report(
         self,
         hub_id: str,
-        days_back: int = ENERGY_REPORT_DAYS,
+        days_back: int = ENERGY_REQUEST_DAYS,
         interval: str = ENERGY_REPORT_INTERVAL,
     ) -> dict[str, dict[str, list[tuple[datetime | None, float]]]]:
         """Fetch the per-appliance energy telemetry report for a hub.
 
         Returns a dict with separate ``t1`` and ``t2`` maps (never combined).
         Each maps appliance id to normalised ``(timestamp, value)`` tuples.
+
+        The points are **not** filtered to ``days_back``. With
+        ``include_previous_period=True`` the cloud returns the appliance's full
+        available history and ignores the start date, which is what the cumulative
+        sensors want — they total everything the cloud holds, and Home Assistant
+        reads that as a rising meter. Filtering here would silently change what
+        those sensors mean (#227).
 
         T1 and T2 are independent dual-rate registers (T1 off-peak / cheaper,
         T2 peak / more expensive). Do not sum them into a single total —
