@@ -50,7 +50,7 @@ jobs:
           gh release upload "$TAG" dimplex.zip --clobber
           echo "Attached dimplex.zip to ${TAG}"
 
-      - name: Verify HACS zip asset is attached
+      - name: Verify the published asset is attached and installable
         if: ${{ steps.release.outputs.release_created == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -64,7 +64,15 @@ jobs:
             echo "::error::Release ${TAG} is missing the dimplex.zip asset — HACS installs would fail."
             exit 1
           fi
-          echo "Verified dimplex.zip is attached to ${TAG}."
+
+          # Then check the shape of what was actually uploaded. The zip was built and
+          # verified from this tree a moment ago, but that is the local artefact — this is
+          # the one HACS will download, and asserting on it is the only way to know they
+          # are the same. A release is immutable once published: a malformed asset means
+          # deleting the release, so it is worth catching here.
+          gh release download "$TAG" --pattern dimplex.zip --dir published-asset --clobber
+          bash scripts/test-hacs-zip.sh published-asset/dimplex.zip
+          echo "Verified the dimplex.zip published on ${TAG} is installable."
 
       # A published stable release supersedes every dev build. Prune them so only the
       # real release remains (rc / pr / legacy dev-* schemes).

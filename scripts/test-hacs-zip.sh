@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
-# Smoke-test package-hacs-zip.sh: the release asset has to be installable by HACS.
+# Check that a HACS release asset is installable.
+#
+# Usage: scripts/test-hacs-zip.sh [zip]
+#
+#   zip — an asset to check, e.g. one downloaded from a published release. Without it,
+#         the script builds one from the working tree first, which is what CI does on
+#         a pull request.
+#
+# Both modes exist because they catch different things: the build keeps
+# package-hacs-zip.sh honest, and the download proves the artefact users actually
+# install is the one that was checked. A release is immutable once published, so a
+# malformed asset can only be replaced by deleting the release — worth catching before
+# it ships rather than after.
 #
 # HACS extracts the asset into custom_components/<domain>/, so the zip must hold the
 # *contents* of the integration directory — manifest.json at the root, and no nested
@@ -17,8 +29,17 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-OUT="${TMP}/dimplex.zip"
-bash "${ROOT}/scripts/package-hacs-zip.sh" "$OUT"
+if [ "$#" -gt 0 ]; then
+  OUT="$1"
+  if [ ! -f "$OUT" ]; then
+    echo "error: no such asset to check: ${OUT}" >&2
+    exit 1
+  fi
+  echo "Checking supplied asset ${OUT}"
+else
+  OUT="${TMP}/dimplex.zip"
+  bash "${ROOT}/scripts/package-hacs-zip.sh" "$OUT"
+fi
 
 names="${TMP}/names.txt"
 unzip -Z1 "$OUT" > "$names"
