@@ -317,6 +317,23 @@ jobs:
       - name: Package the integration and check the asset is installable
         run: bash scripts/test-hacs-zip.sh
 
+  # Lint the workflows themselves. These files are the least-exercised code in the
+  # repository: a bad expression or a missing `needs` fails at run time, usually on the
+  # release path where nobody is watching, and neither ruff nor mypy nor pytest looks at
+  # YAML. actionlint checks the expressions and the `needs` graph, and runs shellcheck
+  # over every `run:` block.
+  #
+  # Ungated on purpose, unlike the component jobs: a change to `release-please.yaml` or
+  # `hacs-release-asset-repair.yml` does not touch `custom_components/`, so a
+  # `component` gate would skip exactly the changes this exists to check.
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+
   # Stable required status check for the `main` branch ruleset / protection.
   # - Component changes: fails unless translations, lint, mypy, pre-commit, test,
   #   hacs_validate, and scripts all succeed
@@ -333,6 +350,7 @@ jobs:
       [
         changes,
         conventional_commits,
+        actionlint,
         docs,
         translations,
         lint,
@@ -358,6 +376,7 @@ jobs:
           echo "docs changes: ${docs}"
           echo "docs: ${{ needs.docs.result }}"
           echo "conventional_commits: ${{ needs.conventional_commits.result }}"
+          echo "actionlint: ${{ needs.actionlint.result }}"
           echo "translations: ${{ needs.translations.result }}"
           echo "lint: ${{ needs.lint.result }}"
           echo "mypy: ${{ needs.mypy.result }}"
@@ -374,6 +393,14 @@ jobs:
               echo "::error::conventional_commits did not succeed (${{ needs.conventional_commits.result }})"
               failed=1
             fi
+          fi
+
+          # Checked before the `component` early-exit below, because it is the one job
+          # that is not component-gated: a docs-only or workflow-only change still has to
+          # lint.
+          if [ "${{ needs.actionlint.result }}" != "success" ]; then
+            echo "::error::actionlint did not succeed (${{ needs.actionlint.result }})"
+            failed=1
           fi
 
           if [ "${docs}" = "true" ] && [ "${{ needs.docs.result }}" != "success" ]; then
@@ -476,10 +503,12 @@ jobs:
           WORKFLOW_EVENT=pull_request
           export VERSION HEAD_BRANCH PR_NUMBER SHORT_SHA RUN_ID WORKFLOW_EVENT
           mapfile -t _dev_kv < <(bash scripts/compute-dev-tag.sh)
-          echo "${_dev_kv[0]}" >> "$GITHUB_OUTPUT" # version=
-          echo "${_dev_kv[1]}" >> "$GITHUB_OUTPUT" # tag=
-          echo "base_version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "base_sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          {
+            echo "${_dev_kv[0]}" # version=
+            echo "${_dev_kv[1]}" # tag=
+            echo "base_version=${VERSION}"
+            echo "base_sha=${{ github.event.pull_request.head.sha }}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create pre-release
         id: prerelease
@@ -702,12 +731,15 @@ jobs:
           WORKFLOW_EVENT=push
           export VERSION RC_NUMBER HEAD_BRANCH WORKFLOW_EVENT
           mapfile -t _dev_kv < <(bash scripts/compute-dev-tag.sh)
-          echo "${_dev_kv[0]}" >> "$GITHUB_OUTPUT" # version=
-          echo "${_dev_kv[1]}" >> "$GITHUB_OUTPUT" # tag=
-          echo "base_version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "base_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-          echo "rc_number=${RC_NUMBER}" >> "$GITHUB_OUTPUT"
-          echo "skip=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "${_dev_kv[0]}" # version=
+            echo "${_dev_kv[1]}" # tag=
+            echo "base_version=${VERSION}"
+            echo "base_sha=${{ github.sha }}"
+            echo "rc_number=${RC_NUMBER}"
+            echo "skip=false"
+          } >> "$GITHUB_OUTPUT"
+          # Deliberately outside the block: this one is a log line, not an output.
           echo "Next main RC candidate: ${_dev_kv[1]#tag=}"
 
       - name: Prune superseded main RC pre-releases
