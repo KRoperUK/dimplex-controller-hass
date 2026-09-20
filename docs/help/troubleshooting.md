@@ -170,20 +170,19 @@ except the recorded history, which you can leave alone or purge for that entity.
 **Symptom:** Dimplex consumption on the Energy Dashboard is implausibly high — sometimes a
 month of usage appearing repeatedly.
 
-**Cause:** Before 4.1.0 the **Energy lifetime** sensors declared themselves rising meters
-(`total_increasing`) while actually reporting a rolling 30-day sum. The value falls whenever a
-heavy day drops off the back of that window, and Home Assistant reads a fall of more than 10%
-as a meter reset, adding the whole 30-day total to long-term statistics again. Routine in
-spring and autumn, and guaranteed after a cold snap.
+**Cause:** the **Energy lifetime** sensors sum every daily reading the cloud holds for an
+appliance, so they rise like a meter. That part is correct. What broke was the _dip_: when the
+cloud returned a truncated history the sum fell, and Home Assistant reads a fall of more than
+10% on a rising meter as a meter reset — adding the entire total to long-term statistics again
+on top of everything already recorded. Routine, because a short read needs no error to happen.
 
-**Fix:** Upgrade to 4.1.0, which renames them **Energy last 30 days** and removes the state
-class, so they can no longer be selected as a consumption source.
+**Fix:** upgrade to **4.1.1**, which holds the highest total seen so the value can no longer
+fall, and restores the state class 4.1.0 had removed.
 
 **Then clean up the history**, because statistics do not self-heal:
 
-1. Remove the sensor from **Settings** → **Dashboards** → **Energy** and add **Energy today**
-   instead.
-2. Go to **Developer tools** → **Statistics**, find the old entity, and delete its statistic.
+1. Check **Developer tools** → **Statistics** for the entity.
+2. Delete its statistic if the history looks inflated.
 
 The **Energy today** sensors were always correct and need nothing. See
 [Energy monitoring](../use/energy.md).

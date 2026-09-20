@@ -113,13 +113,13 @@
         "name": "Varmtvann tilgjengelig"
       },
       "energy_lifetime": {
-        "name": "Energi siste 30 dager"
+        "name": "Energi totalt"
       },
       "energy_today": {
         "name": "Energi i dag"
       },
       "energy_t2_lifetime": {
-        "name": "Energi T2 siste 30 dager"
+        "name": "Energi T2 totalt"
       },
       "energy_t2_today": {
         "name": "Energi T2 i dag"

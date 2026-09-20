@@ -127,13 +127,13 @@
         "name": "Hot water available"
       },
       "energy_lifetime": {
-        "name": "Energy last 30 days"
+        "name": "Energy lifetime"
       },
       "energy_today": {
         "name": "Energy today"
       },
       "energy_t2_lifetime": {
-        "name": "Energy T2 last 30 days"
+        "name": "Energy T2 lifetime"
       },
       "energy_t2_today": {
         "name": "Energy T2 today"
