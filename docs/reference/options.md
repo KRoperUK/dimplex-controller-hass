@@ -32,11 +32,11 @@ The boost duration here applies to the climate `boost` preset only.
 
 Three separate cadences, because the underlying calls cost very different amounts:
 
-| What                         | Default | Why                                                  |
-| ---------------------------- | ------- | ---------------------------------------------------- |
-| Status — temperatures, modes | 30 s    | Light call, and what you watch on a dashboard        |
-| Schedules                    | 15 min  | One call per appliance, and programmes change rarely |
-| Energy history               | 30 min  | Heavy call returning up to 30 days of points         |
+| What                         | Default | Why                                                         |
+| ---------------------------- | ------- | ----------------------------------------------------------- |
+| Status — temperatures, modes | 30 s    | Light call, and what you watch on a dashboard               |
+| Schedules                    | 15 min  | One call per appliance, and programmes change rarely        |
+| Energy history               | 30 min  | Heavy call — the cloud returns the appliance's full history |
 
 The schedule interval is not configurable.
 
