@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.1](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.1.0...v4.1.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* restore the energy lifetime state class, and hold the total monotonic ([#229](https://github.com/KRoperUK/dimplex-controller-hass/issues/229)) ([4147c92](https://github.com/KRoperUK/dimplex-controller-hass/commit/4147c927ad436df36809a812b6c37d75ac0e43f9))
+
 ## [4.1.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.0.2...v4.1.0) (2026-09-18)
 
 
