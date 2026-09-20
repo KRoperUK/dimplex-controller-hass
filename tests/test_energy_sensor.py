@@ -425,3 +425,39 @@ async def test_energy_summary_is_memoised_across_property_reads(hass):
             f"summarise_energy ran {summarise.call_count} times for four reads of one "
             "update cycle — the memo is not holding"
         )
+
+
+async def test_the_lifetime_total_covers_all_history_not_a_request_window(hass):
+    """The cumulative total sums every point, however far back it goes (#227).
+
+    The request asks for 30 days (``ENERGY_REQUEST_DAYS``), but with
+    ``IncludePreviousPeriod`` the cloud returns the appliance's full available history
+    and ignores the start date — so this pins that the integration does not window the
+    result client-side. Two reporters, the docs and this repository's own comments all
+    read the old constant as "the sensors cover 30 days", which they never did.
+    """
+    now = dt_util.now()
+    points = [
+        # Far outside any 30-day request window...
+        (now - timedelta(days=700), 12.0),
+        (now - timedelta(days=400), 30.0),
+        # ...and a recent one.
+        (now - timedelta(days=2), 1.5),
+    ]
+    status_payload, energy_payload = _row(t1=points)
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch("custom_components.dimplex.DimplexApiClient.async_get_status_data", return_value=status_payload),
+        patch("custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs", return_value=energy_payload),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    state = _state(hass, "energy")
+    assert state is not None
+    assert float(state.state) == 43.5  # 12 + 30 + 1.5, nothing dropped
+    assert state.attributes["telemetry_points"] == 3
+    assert state.attributes["window_start"] is not None
