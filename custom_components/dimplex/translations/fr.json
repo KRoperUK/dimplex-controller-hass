@@ -113,13 +113,13 @@
         "name": "Eau chaude disponible"
       },
       "energy_lifetime": {
-        "name": "Énergie 30 derniers jours"
+        "name": "Énergie totale"
       },
       "energy_today": {
         "name": "Énergie aujourd'hui"
       },
       "energy_t2_lifetime": {
-        "name": "Énergie T2 30 derniers jours"
+        "name": "Énergie T2 totale"
       },
       "energy_t2_today": {
         "name": "Énergie T2 aujourd'hui"

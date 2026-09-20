@@ -43,36 +43,37 @@ Full field reference: [Actions](actions.md).
 
 ## Sensors
 
-| Name                   | Unit      | Device class | Description                                                                                                                                                                            |
-| ---------------------- | --------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Room temperature       | °C        | temperature  | Current room temperature.                                                                                                                                                              |
-| Target temperature     | °C        | temperature  | Active setpoint.                                                                                                                                                                       |
-| Boost temperature      | °C        | temperature  | Boost mode target.                                                                                                                                                                     |
-| Away temperature       | °C        | temperature  | Away mode target.                                                                                                                                                                      |
-| Setback temperature    | °C        | temperature  | Setback target.                                                                                                                                                                        |
-| Energy last 30 days    | kWh       | energy       | Rolling 30-day sum for register **T1** only (off-peak / cheaper rate). No state class — not a meter, so it never enters long-term statistics. Translation key stays `energy_lifetime`. |
-| Energy today           | kWh       | energy       | T1 (off-peak) kWh for the current local calendar day.                                                                                                                                  |
-| Energy T2 last 30 days | kWh       | energy       | Rolling 30-day sum for register **T2** only (peak / more expensive; disabled by default). No state class. Translation key stays `energy_t2_lifetime`.                                  |
-| Energy T2 today        | kWh       | energy       | T2 (peak) kWh for the current local calendar day (disabled by default).                                                                                                                |
-| Rated power            | kW        | power        | Static nameplate power from product provisioning (_disabled by default_).                                                                                                              |
-| Estimated power        | kW        | power        | Heuristic `rated_power` when boost or advance is engaged, else `0` (_diagnostic, disabled by default; not a live meter_).                                                              |
-| Charge capacity        | kWh       | energy       | Static storage capacity from provisioning (_disabled by default_).                                                                                                                     |
-| Error code             | —         | —            | Appliance error code (_disabled by default_).                                                                                                                                          |
-| Warning code           | —         | —            | Appliance warning code (_disabled by default_).                                                                                                                                        |
-| Last telemetry         | timestamp | timestamp    | Last cloud telemetry time (_disabled by default_).                                                                                                                                     |
-| Hot water available    | —         | —            | The cloud's `AvailableHotWater` reading, for cylinders only (_diagnostic, disabled by default; unit unconfirmed_).                                                                     |
+| Name                | Unit      | Device class | Description                                                                                                                                                               |
+| ------------------- | --------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Room temperature    | °C        | temperature  | Current room temperature.                                                                                                                                                 |
+| Target temperature  | °C        | temperature  | Active setpoint.                                                                                                                                                          |
+| Boost temperature   | °C        | temperature  | Boost mode target.                                                                                                                                                        |
+| Away temperature    | °C        | temperature  | Away mode target.                                                                                                                                                         |
+| Setback temperature | °C        | temperature  | Setback target.                                                                                                                                                           |
+| Energy lifetime     | kWh       | energy       | Total across every daily reading the cloud still holds for the appliance — normally its whole history, so it rises like a meter. Translation key stays `energy_lifetime`. |
+| Energy today        | kWh       | energy       | T1 (off-peak) kWh for the current local calendar day.                                                                                                                     |
+| Energy T2 lifetime  | kWh       | energy       | As **Energy lifetime**, for register **T2** (peak / more expensive; disabled by default). Translation key stays `energy_t2_lifetime`.                                     |
+| Energy T2 today     | kWh       | energy       | T2 (peak) kWh for the current local calendar day (disabled by default).                                                                                                   |
+| Rated power         | kW        | power        | Static nameplate power from product provisioning (_disabled by default_).                                                                                                 |
+| Estimated power     | kW        | power        | Heuristic `rated_power` when boost or advance is engaged, else `0` (_diagnostic, disabled by default; not a live meter_).                                                 |
+| Charge capacity     | kWh       | energy       | Static storage capacity from provisioning (_disabled by default_).                                                                                                        |
+| Error code          | —         | —            | Appliance error code (_disabled by default_).                                                                                                                             |
+| Warning code        | —         | —            | Appliance warning code (_disabled by default_).                                                                                                                           |
+| Last telemetry      | timestamp | timestamp    | Last cloud telemetry time (_disabled by default_).                                                                                                                        |
+| Hot water available | —         | —            | The cloud's `AvailableHotWater` reading, for cylinders only (_diagnostic, disabled by default; unit unconfirmed_).                                                        |
 
 ### Energy attributes
 
-| Attribute                     | Description                                           |
-| ----------------------------- | ----------------------------------------------------- |
-| `mode`                        | `lifetime` (the 30-day window) or `daily`.            |
-| `register`                    | `t1` or `t2` (always separate).                       |
-| `window_days`                 | Days summed — 30 for the window sensors, 1 for today. |
-| `window_start` / `window_end` | Bounds of points used in the total.                   |
-| `telemetry_points`            | Number of points included.                            |
+| Attribute                     | Description                                            |
+| ----------------------------- | ------------------------------------------------------ |
+| `mode`                        | `lifetime` (everything the cloud returned) or `daily`. |
+| `register`                    | `t1` or `t2` (always separate).                        |
+| `window_start` / `window_end` | Bounds of points used in the total — the real span.    |
+| `telemetry_points`            | Number of points included.                             |
 
 Energy data is **daily kWh history** from the cloud, not live watts. Sensors are **unavailable** (not `0`) when there are no points, and **T1 and T2 are never combined** — they are separate dual-rate registers.
+
+The lifetime sensors declare `total_increasing` and are held monotonic: the highest value seen is what gets reported, and it is restored across a restart. That exists because a truncated cloud response would otherwise make the total fall, which Home Assistant reads as a meter reset and re-adds to long-term statistics.
 
 See [Energy monitoring](../use/energy.md) for adding these to the Energy Dashboard, the
 tariff mapping, and the automatic poll back-off when history stays empty.

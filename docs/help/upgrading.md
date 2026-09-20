@@ -7,6 +7,27 @@ description: Version-by-version upgrade notes for the Dimplex Hub Home Assistant
 Restart Home Assistant after any HACS update. Notes are newest first; you only need to read
 the entries between your current version and the one you are moving to.
 
+## To 4.1.1
+
+A fix for energy statistics, and nothing else. **If you are on 4.1.0, upgrade** — that release
+took the **Energy lifetime** sensors off the Energy Dashboard and raises a repair for each one.
+
+- **The lifetime sensors are meters again.** 4.1.0 removed their state class on the belief that
+  they were rolling 30-day windows. They are not: the cloud returns the appliance's full
+  available history, so the figure rises like a meter and `total_increasing` was right. The
+  state class is restored, they are selectable on the Energy Dashboard again, and the repairs
+  clear themselves once Home Assistant resumes recording.
+- **The value can no longer fall.** A truncated cloud response used to make the sum dip, and
+  Home Assistant reads a fall of more than 10% on a rising meter as a meter reset — adding the
+  whole total to statistics again. The highest value seen is now what gets reported, and it
+  survives a restart.
+- **The names go back**: **Energy lifetime** / **Energy T2 lifetime**. The misleading
+  `window_days` attribute is gone — it claimed a fixed 30 days the data never matched — but
+  `window_start` and `window_end` still show the real span.
+
+If your recorded history was inflated under the older bug it stays inflated; see
+[the 4.1.0 notes below](#to-410) for how to delete it.
+
 ## To 4.1.0
 
 Behaviour fixes plus new control surface. Everything in the first list is a correction — if
@@ -22,30 +43,27 @@ existing configuration.
     the update back on Home Assistant below 2026.9 instead of offering an install that
     cannot work.
 
-!!! danger "Check your Energy Dashboard if you used an \"Energy lifetime\" sensor"
+!!! danger "If your Energy Dashboard history looks inflated"
 
-    Those sensors were a rolling 30-day window declared `total_increasing`, so every time the
-    window dipped by more than 10% — routine in spring and autumn — Home Assistant read it as
-    a meter reset and added the whole 30-day total to long-term statistics again. Your
-    dashboard may show considerably more energy than the heaters used.
+    The **Energy lifetime** sensors sum every daily reading the cloud holds for an appliance, so
+    they rise like a meter — which is what they are. What went wrong is a *dip*: when the cloud
+    returned a truncated history the sum fell, and Home Assistant reads a fall of more than 10%
+    on a rising meter as a meter reset, adding the entire total to long-term statistics again on
+    top of everything already recorded. Your dashboard may show considerably more energy than
+    the heaters used. Fixed in 4.1.1.
 
-    They are renamed **Energy last 30 days** and now carry no state class, so Home Assistant
-    will not offer them as a consumption source at all. Existing entities keep their old
-    entity ID; only the display name changes. To clean up inflated history, go to
-    **Developer tools** → **Statistics**, find the entity and delete its statistic. The
-    **Energy today** sensors were always correct and need nothing.
+    The recorded history does not correct itself. To clean it up, go to **Developer tools** →
+    **Statistics**, find the entity and delete its statistic — but only if the history looks
+    inflated. The **Energy today** sensors were always correct and need nothing.
 
-    Two things to expect, both explained in
-    [troubleshooting](../help/troubleshooting.md#a-repair-says-a-sensor-no-longer-has-a-state-class):
+!!! warning "4.1.0 also removed the state class from those sensors"
 
-    - A **repair per appliance** saying an entity *no longer has a state class*. That is Home
-      Assistant noticing the statistics stopped, which is intended rather than a fault, and
-      deleting the old statistic (above) stops it returning. Dismissing also works, but only
-      until the next Home Assistant version.
-    - If those sensors were **consumption sources on your Energy Dashboard**, Home Assistant
-      reports **Unexpected state class** and the source has to be swapped: **Energy last 30
-      days** → **Energy today**, and **Energy T2 last 30 days** → **Energy T2 today** (the T2
-      pair is disabled by default).
+    4.1.0 renamed them **Energy last 30 days** and took them off long-term statistics entirely,
+    on the belief that they were rolling 30-day windows. They never were. If you are on 4.1.0
+    you will see a **repair per appliance** saying an entity *no longer has a state class*, and
+    the sensors cannot be used on the Energy Dashboard at all. **4.1.1 restores the state class
+    and the lifetime names, and holds the total monotonic so the dip above cannot recur.** See
+    [troubleshooting](../help/troubleshooting.md#a-repair-says-a-sensor-no-longer-has-a-state-class).
 
 - **Setting a target no longer rewrites your schedule.** Writes go through the cloud's
   dedicated setpoint endpoint, with the old schedule rewrite kept only as a fallback for
@@ -132,9 +150,10 @@ A major release relative to 2.0.0.
 - **Energy became two sensors:** **Energy lifetime** and **Energy today** (local calendar day
   from midnight). Prefer **Energy today** for the Energy Dashboard.
 
-  The "lifetime" half of that claim was wrong — it was still a 30-day window, and declaring
-  it a rising meter is what corrupted statistics. Corrected in 4.1.0, where it is named
-  **Energy last 30 days** and carries no state class; see the 4.1.0 notes above.
+  The three-year detour: 4.1.0 briefly renamed the lifetime sensor to **Energy last 30 days**
+  and removed its state class, on the belief that it was a rolling window. It never was — the
+  cloud returns the appliance's full history — and 4.1.1 put the name and the state class back.
+  If you are coming from 3.x, both are as they should be.
 
 - **Entity unique IDs and names may change.** EcoStart gained a stable `_ecostart` suffix,
   and open-window detection became a switch as well as a binary sensor. Expect some renamed

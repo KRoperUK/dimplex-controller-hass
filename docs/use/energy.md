@@ -11,10 +11,10 @@ There is no wattage stream to read, so nothing here is a real-time meter.
 
 The cloud exposes two energy registers, and the integration never sums them.
 
-| Register | Sensors                                  | Tariff (observed)    | Default  |
-| -------- | ---------------------------------------- | -------------------- | -------- |
-| **T1**   | Energy today / Energy last 30 days       | Off-peak, cheaper    | Enabled  |
-| **T2**   | Energy T2 today / Energy T2 last 30 days | Peak, more expensive | Disabled |
+| Register | Sensors                              | Tariff (observed)    | Default  |
+| -------- | ------------------------------------ | -------------------- | -------- |
+| **T1**   | Energy today / Energy lifetime       | Off-peak, cheaper    | Enabled  |
+| **T2**   | Energy T2 today / Energy T2 lifetime | Peak, more expensive | Disabled |
 
 !!! warning "Do not merge them into one helper"
 
@@ -36,20 +36,24 @@ been observed, not something the cloud labels explicitly.
 Use the **today** sensors for the dashboard. They reset at local midnight and give clean
 daily bars.
 
-The **last 30 days** sensors are a running window, not a meter: each poll fetches 30 days of
-cloud telemetry and sums it, so the figure _falls_ whenever a heavy day drops off the back of
-the window. They are for reading, not for statistics, and from 4.1.0 they carry **no state
-class** — which means Home Assistant will not offer them in the Energy Dashboard picker at
-all.
+The **lifetime** sensors are the other option, and are what most people want for a total: they
+sum every daily reading the cloud still holds for that appliance — normally its whole history,
+which is why the figure only ever rises. They declare a state class, so Home Assistant records
+them in long-term statistics and offers them in the picker. Pick **one** of the two per register
+rather than both, or the same kWh is counted twice.
 
-!!! warning "If you added an \"Energy lifetime\" sensor to the Energy Dashboard before 4.1.0"
+!!! warning "If your history looks inflated"
 
-    Those sensors were declared `total_increasing`, which tells Home Assistant the value only
-    ever rises. Every time the window dipped by more than 10%, the recorder read it as a
-    meter reset and added the whole 30-day total to your long-term statistics again — so the
-    dashboard may show substantially more energy than the heaters used. Check
-    **Developer tools** → **Statistics** for the entity and delete its statistic if the
-    history looks inflated; the daily sensors are unaffected.
+    4.1.0 removed the state class from the lifetime sensors on the belief that they were
+    rolling 30-day windows. They never were — the cloud returns the appliance's full history —
+    and 4.1.1 restores it. What actually corrupted statistics was a *dip*: when the cloud
+    returned a truncated history the sum fell, and the recorder read a fall of more than 10% as
+    a meter reset and added the whole total again. 4.1.1 also holds the highest value seen, so
+    that cannot happen.
+
+    If your dashboard still shows more energy than the heaters used, check
+    **Developer tools** → **Statistics** for the entity and delete its statistic; the inflated
+    history is already recorded and does not correct itself.
 
 ## Behaviour worth knowing
 
@@ -68,16 +72,20 @@ all.
 
 Each energy sensor carries the provenance of its total:
 
-| Attribute                     | Meaning                                                   |
-| ----------------------------- | --------------------------------------------------------- |
-| `mode`                        | `lifetime` (the 30-day window) or `daily`                 |
-| `register`                    | `t1` or `t2` — always separate                            |
-| `window_days`                 | Days of telemetry summed — 30 for the window, 1 for today |
-| `window_start` / `window_end` | Bounds of the points summed                               |
-| `telemetry_points`            | How many points went into the total                       |
+| Attribute                     | Meaning                                               |
+| ----------------------------- | ----------------------------------------------------- |
+| `mode`                        | `lifetime` (everything the cloud returned) or `daily` |
+| `register`                    | `t1` or `t2` — always separate                        |
+| `window_start` / `window_end` | Bounds of the points summed — the real span           |
+| `telemetry_points`            | How many points went into the total                   |
 
 If a figure looks wrong, `telemetry_points` and the window bounds usually explain it — a
 partial day, or a gap in cloud history.
+
+`window_start` is worth knowing about for the lifetime sensors: the request asks for 30 days,
+but the cloud returns the appliance's full available history regardless, so the span is
+normally months or years, not 30 days. Reading it is the quickest way to see how much history
+an appliance actually has.
 
 ## Power sensors are not meters
 

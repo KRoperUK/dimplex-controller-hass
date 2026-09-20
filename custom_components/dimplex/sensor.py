@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from dimplex_controller import summarise_energy
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
@@ -24,8 +26,10 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpda
 from homeassistant.util import dt as dt_util
 
 from .capabilities import capabilities_for_row
-from .const import DOMAIN, ENERGY_REPORT_DAYS, HEAT_DEMAND_FLAGS, has_any_mode, sane_temperature
+from .const import DOMAIN, HEAT_DEMAND_FLAGS, has_any_mode, sane_temperature
 from .entity import DimplexEntity, resolve_via_device_id
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -228,18 +232,29 @@ class DimplexEnergySensorEntityDescription(SensorEntityDescription):
 
 
 ENERGY_SENSORS: tuple[DimplexEnergySensorEntityDescription, ...] = (
-    # No state_class on the two window sensors, deliberately. Their value is
-    # sum(last ENERGY_REPORT_DAYS of cloud telemetry) — a rolling window, not a
-    # meter reading — so it falls whenever a day leaving the back of the window
-    # carried more kWh than the day entering it. Declaring TOTAL_INCREASING made
-    # Home Assistant's reset detection treat that dip as a new meter cycle and add
-    # the whole value to long-term statistics again (#196). Without a state_class
-    # they stay readable sensors and never reach the statistics engine; use the
-    # "today" sensors for the Energy Dashboard.
+    # The two cumulative sensors are rising meters over everything the cloud
+    # returns, so TOTAL_INCREASING is the correct state class — and the only one
+    # that lets the Energy Dashboard use them.
+    #
+    # 4.1.0 removed the state class from them on the belief that they were rolling
+    # 30-day windows. They are not. `summarise_energy(mode="lifetime")` sums every
+    # point it is handed, and the cloud returns the full available daily history
+    # behind the request's 30-day start date — the library's own
+    # `get_tsi_energy_report` docstring says so and warns callers to "filter
+    # client-side". A real installation's diagnostics show 183-289 daily points per
+    # appliance spanning 12-17 months, each starting at its own first reading
+    # (#227).
+    #
+    # What actually corrupted statistics was a *dip*: when the cloud returns a
+    # truncated history the cumulative sum falls, and Home Assistant's
+    # `reset_detected` reads a fall of more than 10% as a meter reset and adds the
+    # whole total to the statistics again (#196). `DimplexEnergySensor` reports a
+    # monotonic value instead, which is what makes this state class safe.
     DimplexEnergySensorEntityDescription(
         key="energy",
         translation_key="energy_lifetime",
         device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         mode="lifetime",
         register="t1",
@@ -257,6 +272,7 @@ ENERGY_SENSORS: tuple[DimplexEnergySensorEntityDescription, ...] = (
         key="energy_t2",
         translation_key="energy_t2_lifetime",
         device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         entity_registry_enabled_default=False,
         mode="lifetime",
@@ -456,13 +472,15 @@ class DimplexZoneSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]
         return info
 
 
-class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):
+class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], RestoreSensor):
     """Energy sensor backed by the energy coordinator."""
 
     _attr_has_entity_name = True
     entity_description: DimplexEnergySensorEntityDescription
     _summary_cached: Any | None = None
     _summary_ts: Any | None = None
+    # Highest cumulative total reported, so the sensor is a true rising meter.
+    _peak_total: float | None = None
 
     def __init__(
         self,
@@ -564,7 +582,55 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         summary = self._summary()
         if summary is None or summary.point_count == 0:
             return None
-        return float(summary.total_kwh)
+        return self._reported_total(float(summary.total_kwh))
+
+    def _reported_total(self, total: float) -> float:
+        """Return a cumulative total that never falls, and remember the peak.
+
+        The cloud normally returns the appliance's whole history, so the sum only
+        grows — but a truncated response makes it fall, and Home Assistant's reset
+        detection reads a fall of more than 10% as a new meter cycle and adds the
+        entire total to long-term statistics a second time (#196). Holding the
+        highest value seen means a short read is simply ignored, and the meter only
+        ever moves forward as it should.
+
+        Only the cumulative sensors are clamped: a daily total is expected to drop
+        to zero at midnight.
+
+        The peak is restored across restarts because Home Assistant compares
+        against the last value in *its* recorder, not against anything held in
+        memory — so a dip on the first poll after a restart would still look like a
+        reset.
+        """
+        if self.entity_description.mode != "lifetime":
+            return total
+        peak = self._peak_total
+        if peak is None or total > peak:
+            self._peak_total = total
+            return total
+        if total < peak:
+            _LOGGER.debug(
+                "%s reported %s kWh, below the %s kWh already seen; holding the higher value",
+                self.entity_id,
+                total,
+                peak,
+            )
+        return peak
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the highest cumulative total across a restart."""
+        await super().async_added_to_hass()
+        if self.entity_description.mode != "lifetime":
+            return
+        last = await self.async_get_last_sensor_data()
+        if last is None:
+            return
+        # Our own restored value is always a float; anything else means someone
+        # else wrote the attribute, so ignore it rather than guessing.
+        restored = last.native_value
+        if isinstance(restored, bool) or not isinstance(restored, int | float):
+            return
+        self._peak_total = float(restored)
 
     @property
     def last_reset(self) -> datetime | None:
@@ -591,7 +657,10 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         return {
             "mode": summary.mode,
             "register": self.entity_description.register,
-            "window_days": ENERGY_REPORT_DAYS if self.entity_description.mode == "lifetime" else 1,
+            # No `window_days`: the value covers whatever span the cloud returned,
+            # and asserting a fixed 30 days there was simply false — the request's
+            # start date does not bound the response (#227). `window_start` and
+            # `window_end` are the real span, taken from the points themselves.
             "window_start": summary.start.isoformat() if summary.start else None,
             "window_end": summary.end.isoformat() if summary.end else None,
             "telemetry_points": summary.point_count,

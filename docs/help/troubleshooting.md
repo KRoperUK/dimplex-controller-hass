@@ -14,24 +14,24 @@ Find your symptom below, or read the section that matches where it went wrong.
 
 ## Symptom index
 
-| Symptom                                              | Likely cause                                                                                                    |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Boost does nothing, or the wrong thing happens       | [Boost engages the wrong mode](#boost-does-nothing-or-something-else-happens)                                   |
-| Away drops the heater to 7 °C                        | [Away engaged frost protection](#away-pins-the-heater-to-7-c)                                                   |
-| Away will not go above 18 °C                         | [That is the cloud's real limit](#away-will-not-go-above-18-c)                                                  |
-| Changing the preset appears to do nothing            | [Presets used to stack instead of replace](#changing-the-preset-does-nothing)                                   |
-| Changing the temperature is rejected                 | [Some Quantum heaters refuse remote writes](#changing-the-temperature-is-rejected)                              |
-| The heater reports 7 °C after being turned off       | [Correct — "off" is frost protection](#the-heater-reports-7-c-after-i-turned-it-off)                            |
-| A target on a storage heater had no effect           | [No stored charge to release](#a-target-on-a-storage-heater-did-nothing)                                        |
-| `preset_mode` disagrees with the mode sensors        | [One preset cannot show several modes](#preset_mode-disagrees-with-the-mode-sensors)                            |
-| My timer schedule changed by itself                  | [Setpoint writes used to rewrite it](#my-timer-schedule-changed-by-itself)                                      |
-| Room temperature reads 255 °C                        | [The cloud's "no value" sentinel](#room-temperature-reads-255-c)                                                |
-| Energy Dashboard shows far too much energy           | [A window sensor was treated as a meter](#the-energy-dashboard-shows-far-more-than-the-heaters-used)            |
-| A repair says a sensor "no longer has a state class" | [Expected after 4.1.0 — the statistics stopped on purpose](#a-repair-says-a-sensor-no-longer-has-a-state-class) |
-| Entities are `unavailable`                           | [Empty cloud overview](#entities-are-unavailable)                                                               |
-| Energy sensor `unavailable` in summer                | [Expected](#energy-sensor-shows-unavailable-in-summer)                                                          |
-| Repeatedly asked to re-authenticate                  | [Token refresh](#tokens-keep-expiring)                                                                          |
-| HACS offers an older version                         | [Pre-release channel](#hacs-shows-an-update-after-installing-a-pre-release)                                     |
+| Symptom                                              | Likely cause                                                                                         |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Boost does nothing, or the wrong thing happens       | [Boost engages the wrong mode](#boost-does-nothing-or-something-else-happens)                        |
+| Away drops the heater to 7 °C                        | [Away engaged frost protection](#away-pins-the-heater-to-7-c)                                        |
+| Away will not go above 18 °C                         | [That is the cloud's real limit](#away-will-not-go-above-18-c)                                       |
+| Changing the preset appears to do nothing            | [Presets used to stack instead of replace](#changing-the-preset-does-nothing)                        |
+| Changing the temperature is rejected                 | [Some Quantum heaters refuse remote writes](#changing-the-temperature-is-rejected)                   |
+| The heater reports 7 °C after being turned off       | [Correct — "off" is frost protection](#the-heater-reports-7-c-after-i-turned-it-off)                 |
+| A target on a storage heater had no effect           | [No stored charge to release](#a-target-on-a-storage-heater-did-nothing)                             |
+| `preset_mode` disagrees with the mode sensors        | [One preset cannot show several modes](#preset_mode-disagrees-with-the-mode-sensors)                 |
+| My timer schedule changed by itself                  | [Setpoint writes used to rewrite it](#my-timer-schedule-changed-by-itself)                           |
+| Room temperature reads 255 °C                        | [The cloud's "no value" sentinel](#room-temperature-reads-255-c)                                     |
+| Energy Dashboard shows far too much energy           | [A window sensor was treated as a meter](#the-energy-dashboard-shows-far-more-than-the-heaters-used) |
+| A repair says a sensor "no longer has a state class" | [A 4.1.0 bug — upgrade to 4.1.1](#a-repair-says-a-sensor-no-longer-has-a-state-class)                |
+| Entities are `unavailable`                           | [Empty cloud overview](#entities-are-unavailable)                                                    |
+| Energy sensor `unavailable` in summer                | [Expected](#energy-sensor-shows-unavailable-in-summer)                                               |
+| Repeatedly asked to re-authenticate                  | [Token refresh](#tokens-keep-expiring)                                                               |
+| HACS offers an older version                         | [Pre-release channel](#hacs-shows-an-update-after-installing-a-pre-release)                          |
 
 ## Heating behaviour
 
@@ -171,23 +171,19 @@ except the recorded history, which you can leave alone or purge for that entity.
 **Symptom:** Dimplex consumption on the Energy Dashboard is implausibly high — sometimes a
 month of usage appearing repeatedly.
 
-**Cause:** Before 4.1.0 the **Energy lifetime** sensors declared themselves rising meters
-(`total_increasing`) while actually reporting a rolling 30-day sum. The value falls whenever a
-heavy day drops off the back of that window, and Home Assistant reads a fall of more than 10%
-as a meter reset, adding the whole 30-day total to long-term statistics again. Routine in
-spring and autumn, and guaranteed after a cold snap.
+**Cause:** the **Energy lifetime** sensors sum every daily reading the cloud holds for an
+appliance, so they rise like a meter. That part is correct. What broke was the _dip_: when the
+cloud returned a truncated history the sum fell, and Home Assistant reads a fall of more than
+10% on a rising meter as a meter reset — adding the entire total to long-term statistics again
+on top of everything already recorded. Routine, because a short read needs no error to happen.
 
-**Fix:** Upgrade to 4.1.0, which renames them **Energy last 30 days** and removes the state
-class, so they can no longer be selected as a consumption source.
+**Fix:** upgrade to **4.1.1**, which holds the highest total seen so the value can no longer
+fall, and restores the state class 4.1.0 had removed.
 
 **Then clean up the history**, because statistics do not self-heal:
 
-1. Remove the sensor from **Settings** → **Dashboards** → **Energy** and add **Energy today**
-   instead.
-2. Go to **Developer tools** → **Statistics**, find the old entity, and delete its statistic.
-
-Step 2 is also what stops the [_no longer has a state class_](#a-repair-says-a-sensor-no-longer-has-a-state-class)
-repair coming back.
+1. Check **Developer tools** → **Statistics** for the entity.
+2. Delete its statistic if the history looks inflated.
 
 The **Energy today** sensors were always correct and need nothing. See
 [Energy monitoring](../use/energy.md).
@@ -325,75 +321,47 @@ Prefer tagged pre-releases (`vX.Y.Z-rc.N`) from [GitHub Releases](https://github
 Home Assistant surfaces some conditions under **Settings** → **System** → **Repairs** rather
 than in the log:
 
-| Repair                      | Meaning                             | Actionable                                                 |
-| --------------------------- | ----------------------------------- | ---------------------------------------------------------- |
-| Reauthentication required   | Tokens rejected                     | Yes — opens the reauth flow                                |
-| Energy polls empty          | Polls succeed but return no points  | No — normal for idle or seasonal heaters                   |
-| Appliance overview empty    | Hubs exist but report no appliances | No — usually stale telemetry                               |
-| No longer has a state class | Statistics stopped for a sensor     | No — nothing is broken, but see below to stop it returning |
+| Repair                      | Meaning                             | Actionable                                 |
+| --------------------------- | ----------------------------------- | ------------------------------------------ |
+| Reauthentication required   | Tokens rejected                     | Yes — opens the reauth flow                |
+| Energy polls empty          | Polls succeed but return no points  | No — normal for idle or seasonal heaters   |
+| Appliance overview empty    | Hubs exist but report no appliances | No — usually stale telemetry               |
+| No longer has a state class | Statistics stopped for a sensor     | Yes on 4.1.0 — upgrade to 4.1.1, see below |
 
 The informational ones can be dismissed. If any persists through a heating season, that is
 worth reporting.
 
-The last one is Home Assistant's own repair rather than one of ours — it appears because of a
-change in 4.1.0, so it is explained in full below.
+The last one is Home Assistant's own repair rather than one of ours, and on **4.1.0** it needs
+acting on rather than dismissing.
 
 ### A repair says a sensor no longer has a state class
 
-**Symptom:** after upgrading to 4.1.0, **Settings** → **System** → **Repairs** shows a warning
-naming an entity — usually **Energy last 30 days** — saying it _no longer has a state class_.
-You get one per appliance whose total was being recorded, plus a second only if you had enabled
-the T2 sensor, which is off by default.
+**Symptom:** on **4.1.0**, **Settings** → **System** → **Repairs** shows a warning naming an
+entity — usually **Energy lifetime** — saying it _no longer has a state class_. You get one per
+appliance whose total was being recorded, plus a second only if you had enabled the T2 sensor,
+which is off by default.
 
-**Nothing needs fixing.** Home Assistant is telling you it has stopped recording long-term
-statistics for that entity, and that is exactly what 4.1.0 asked it to do. It is not a fault
-report: the sensor still reports the same number, the heaters are unaffected, and no data is
-lost that was worth keeping.
+**This is a bug in 4.1.0, fixed in 4.1.1. Upgrade.** Nothing is wrong with the sensor, the
+appliance or your data — but it is not merely informational either: while the repair stands the
+sensor is not a statistics source at all, so it cannot be used on the Energy Dashboard.
 
-**Why it is expected.** The **Energy last 30 days** sensors report a rolling 30-day sum. They
-used to declare a state class, which told Home Assistant to treat that rolling window as a
-rising meter — the bug behind
-[the Energy Dashboard showing far more than the heaters used](#the-energy-dashboard-shows-far-more-than-the-heaters-used).
-Removing the state class is the fix, and a sensor with no state class is not a statistics source
-at all. So the repair is the residue of the correction: Home Assistant still remembers the
-statistics it recorded before the upgrade and notices they have stopped.
+**Why it happens.** 4.1.0 removed the state class from the two cumulative sensors on the belief
+that they were rolling 30-day windows. They were not: the cloud returns the appliance's full
+available history, so the figure is a rising meter and `total_increasing` was the right state
+class. A sensor with no state class is not a statistics source, so Home Assistant stopped
+recording — and raised this repair because it still remembers the statistics from before the
+upgrade. That is also why it returns after every restart.
 
-**Why it keeps coming back.** The old statistics are still in the recorder's database, so each
-restart raises the warning again. Dismissing hides it, but only for the current Home Assistant
-version.
+**After upgrading to 4.1.1** the state class is back, Home Assistant resumes recording, and this
+repair clears itself on the next statistics validation. Nothing needs removing from the Energy
+Dashboard — the sensor becomes a valid source again, so if you swapped it out, add it back.
 
-**To clear it for good**, delete that stale history once:
+The one thing that may still be worth doing is deleting history recorded while the older bug was
+inflating it: see
+[the Energy Dashboard section above](#the-energy-dashboard-shows-far-more-than-the-heaters-used).
 
-1. Copy the `statistic_id` out of the repair text — that is the exact entity ID.
-2. Go to **Developer tools** → **Statistics**, search for it, and delete the statistic.
-3. The warning has nothing left to point at.
-
-The entity IDs still carry the old `_energy_lifetime` and `_energy_t2_lifetime` suffixes from
-before the rename, so searching the Statistics page for the new display name finds nothing — use
-the ID from the repair itself.
-
-**Nothing is left unmeasured.** Home Assistant accumulates the **Energy today** sensors into
-long-term statistics itself, so you keep a rising lifetime figure — it just comes from correct
-daily readings rather than a misdeclared window. There is no cumulative cloud total to fall back
-on: the cloud only returns 30 days of telemetry, so no monotonic meter exists for these
-appliances, which is why the window sensors could never legitimately claim to be one.
-
-### If those sensors were on the Energy Dashboard
-
-Removing the state class makes them invalid _as a source_, and Home Assistant says so directly:
-**Settings** → **System** → **Repairs** reports **Unexpected state class** — _"the following
-entities do not have the expected state class"_. That one is not informational; the dashboard
-configuration has to change.
-
-| Old source                      | Replace with        | Notes                                   |
-| ------------------------------- | ------------------- | --------------------------------------- |
-| **Energy last 30 days** (T1)    | **Energy today**    | Enabled by default, drop-in replacement |
-| **Energy T2 last 30 days** (T2) | **Energy T2 today** | Disabled by default — enable it first   |
-
-In **Settings** → **Dashboards** → **Energy** → **Consumption**, remove the old sensor and add
-the new one. To enable the T2 sensors, open the appliance under **Settings** → **Devices &
-services** → **Entities** and switch them on. If you never added these sensors as a consumption
-source, there is nothing to do here — dismissing the repair is enough.
+Dismissing the repair hides it, but only for the current Home Assistant version, and it leaves
+the sensor unusable on the dashboard in the meantime.
 
 ## Log analysis
 

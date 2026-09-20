@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
@@ -101,16 +101,16 @@ async def test_energy_lifetime_sensor_with_data(hass):
     assert state.state == "0.35"
     assert state.attributes.get("unit_of_measurement") == UnitOfEnergy.KILO_WATT_HOUR
     assert state.attributes.get("device_class") == SensorDeviceClass.ENERGY
-    # No state_class, deliberately: the value is a rolling 30-day window sum, and
-    # declaring TOTAL_INCREASING let Home Assistant read every window dip as a meter
-    # reset and re-add the whole value to long-term statistics (#196).
-    assert state.attributes.get("state_class") is None
+    # The cumulative sensors are rising meters over everything the cloud returns, so
+    # they declare TOTAL_INCREASING and the Energy Dashboard can use them (#227).
+    assert state.attributes.get("state_class") == SensorStateClass.TOTAL_INCREASING
     assert state.attributes.get("mode") == "lifetime"
-    assert state.attributes.get("window_days") == 30
     assert state.attributes.get("telemetry_points") == 2
-    # last_reset is only valid for TOTAL; window_start carries the same information.
+    # last_reset is only set for TOTAL; window_start carries the span instead.
     assert state.attributes.get("last_reset") is None
     assert state.attributes.get("window_start") is not None
+    # No window_days: it used to assert a fixed 30 days that the data never matched.
+    assert "window_days" not in state.attributes
 
 
 async def test_energy_daily_sensor(hass):
@@ -261,30 +261,107 @@ async def test_energy_sensor_unavailable_when_hub_key_missing(hass):
     assert state.state == "unavailable"
 
 
-async def test_window_sensors_carry_no_state_class():
-    """No rolling-window sensor may enter long-term statistics (#196).
+async def test_cumulative_sensors_are_rising_meters():
+    """The cumulative sensors are meters, so they must declare a state class (#227).
 
-    ``mode="lifetime"`` is a 30-day window sum, not a meter counter: it falls when a
-    heavy day leaves the window. With ``TOTAL_INCREASING`` Home Assistant's
-    ``reset_detected()`` treated a >10% fall as a new meter cycle and added the whole
-    state to the statistics sum, permanently inflating the Energy Dashboard. Only the
-    daily sensors, which have a real ``last_reset``, may declare a state class.
+    4.1.0 removed it on the belief that ``mode="lifetime"`` was a rolling 30-day
+    window. It is not: ``summarise_energy(mode="lifetime")`` sums every point it is
+    handed, and the cloud returns the appliance's full available history — the
+    library's own docstring warns callers to filter client-side, and a real
+    installation's diagnostics span 12-17 months. Without a state class the Energy
+    Dashboard cannot use them and Home Assistant raises a repair per sensor.
     """
     from custom_components.dimplex.sensor import ENERGY_SENSORS
 
-    windowed = [d for d in ENERGY_SENSORS if d.mode == "lifetime"]
+    cumulative = [d for d in ENERGY_SENSORS if d.mode == "lifetime"]
     daily = [d for d in ENERGY_SENSORS if d.mode == "daily"]
-    assert windowed and daily, "expected both window and daily energy descriptions"
+    assert cumulative and daily, "expected both cumulative and daily energy descriptions"
 
-    for description in windowed:
-        assert description.state_class is None, (
-            f"{description.key} declares {description.state_class}; a rolling window "
-            "must not reach long-term statistics"
+    for description in cumulative:
+        assert description.state_class == SensorStateClass.TOTAL_INCREASING, (
+            f"{description.key} must declare TOTAL_INCREASING so it is a usable "
+            "energy source and enters long-term statistics"
         )
     for description in daily:
         assert description.state_class == SensorStateClass.TOTAL, (
             f"{description.key} must stay TOTAL so its midnight last_reset is honoured"
         )
+
+
+def _energy_sensor(mode: str):
+    """Build an energy sensor over a stub coordinator, for unit-level checks."""
+    from custom_components.dimplex.sensor import ENERGY_SENSORS, DimplexEnergySensor
+
+    description = next(d for d in ENERGY_SENSORS if d.mode == mode)
+    coordinator = SimpleNamespace(data={}, last_update_success_time=None, last_update_success=True)
+    config_entry = SimpleNamespace(entry_id="test")
+    row = {
+        "appliance": SimpleNamespace(ApplianceId="app-1", FriendlyName="Heater", ApplianceModel="QM100RF"),
+        "hub": SimpleNamespace(HubId="hub-1"),
+        "zone": SimpleNamespace(ZoneName="Living Room", ZoneId="z1"),
+    }
+    sensor = DimplexEnergySensor(coordinator, config_entry, row, description)
+    sensor.entity_id = f"sensor.heater_{description.key}"
+    return sensor
+
+
+async def test_a_truncated_history_never_lowers_the_cumulative_total():
+    """A short cloud read must not look like a meter reset.
+
+    Home Assistant's ``reset_detected()`` treats a fall of more than 10% as a new
+    meter cycle and adds the whole state to the statistics sum again — the inflation
+    behind #196. Holding the highest total seen means the short read is ignored and
+    the meter only moves forward, which is what makes TOTAL_INCREASING safe here.
+    """
+    sensor = _energy_sensor("lifetime")
+
+    def summary(total: float):
+        return SimpleNamespace(total_kwh=total, point_count=3)
+
+    with patch.object(sensor, "_summary", return_value=summary(100.0)):
+        assert sensor.native_value == 100.0
+
+    # A truncated response: the sum falls, and the reported value must not follow.
+    with patch.object(sensor, "_summary", return_value=summary(5.0)):
+        assert sensor.native_value == 100.0
+
+    # A genuine increase is still reported.
+    with patch.object(sensor, "_summary", return_value=summary(104.5)):
+        assert sensor.native_value == 104.5
+
+
+async def test_a_daily_total_is_not_clamped():
+    """Daily totals are expected to fall to zero at midnight, so they must not clamp."""
+    sensor = _energy_sensor("daily")
+
+    def summary(total: float):
+        return SimpleNamespace(total_kwh=total, point_count=3)
+
+    with patch.object(sensor, "_summary", return_value=summary(4.0)):
+        assert sensor.native_value == 4.0
+    with patch.object(sensor, "_summary", return_value=summary(0.25)):
+        assert sensor.native_value == 0.25
+
+
+async def test_the_cumulative_peak_survives_a_restart():
+    """The peak is restored, because Home Assistant compares against its recorder.
+
+    It holds the last *recorded* value, not anything in our memory — so without
+    restoring the peak, a dip on the first poll after a restart would still read as
+    a meter reset and inflate the statistics.
+    """
+    from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+    sensor = _energy_sensor("lifetime")
+    restored = SimpleNamespace(native_value=987.5)
+
+    with (
+        patch.object(CoordinatorEntity, "async_added_to_hass", new=AsyncMock()),
+        patch.object(sensor, "async_get_last_sensor_data", new=AsyncMock(return_value=restored)),
+    ):
+        await sensor.async_added_to_hass()
+
+    assert sensor._peak_total == 987.5
 
 
 async def test_energy_summary_is_memoised_across_property_reads(hass):
