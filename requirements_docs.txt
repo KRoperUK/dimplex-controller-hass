@@ -7,4 +7,4 @@
 # 0.0.62 specifically: zensical.toml is written against its behaviour (the mermaid
 # custom-fence handling and `strict`), so a different version is not a safe swap
 # (dimplex-controller-hass#201).
-zensical==0.0.62
+zensical==0.0.63
