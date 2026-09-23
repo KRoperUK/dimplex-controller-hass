@@ -9,10 +9,10 @@
 # Dependabot's `python-minor-patch` group updates both in a single PR, and its pip
 # entry covers this file. The declared HACS floor (hacs.json) is the *minimum*
 # supported; it is deliberately not the tested version.
-homeassistant==2026.9.2
-pytest-homeassistant-custom-component==0.13.365
+homeassistant==2026.9.3
+pytest-homeassistant-custom-component==0.13.366
 
-dimplex-controller>=0.13.0
+dimplex-controller>=0.13.1
 
 # Single source of truth for the docs generator; see the file for why it is pinned.
 -r requirements_docs.txt
