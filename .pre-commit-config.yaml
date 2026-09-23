@@ -57,7 +57,7 @@ repos:
   # shipped broken in #182. rbubley's mirror is the maintained successor.
   # scripts/check-md-alerts.sh guards the syntax regardless of formatter.
   - repo: https://github.com/rbubley/mirrors-prettier
-    rev: v3.9.6
+    rev: v3.9.8
     hooks:
       - id: prettier
   # CI-parity gates that need the project's test environment (homeassistant +
