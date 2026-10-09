@@ -20,6 +20,34 @@ import custom_components.dimplex  # noqa: F401  (see module docstring)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+# Git exports these to any process it spawns — including a pre-push hook, under
+# which `pytest` (and so these tests) runs. Left in the environment they point
+# every `git` call below at the *outer* repository: `git init` then refuses with
+# "Operation not permitted"/"already exists", `git ls-files` lists the outer
+# tree's index, and the throwaway-repo fixtures operate on the real checkout.
+# Scrub them so each subprocess resolves git from its own `cwd`, exactly as a
+# bare `pytest tests/` (CI) does. (dimplex-controller-hass#245)
+_GIT_LOCATION_VARS = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_PREFIX",
+)
+
+
+def _clean_git_env(*overlays: dict[str, str]) -> dict[str, str]:
+    """Return ``os.environ`` with leaked git-location vars removed, plus overlays.
+
+    Overlays are applied left to right on top of the scrubbed base, so a caller
+    can add ``_GIT_ENV`` and per-test variables without re-inheriting the
+    location vars a parent git process exported.
+    """
+    env = {key: value for key, value in os.environ.items() if key not in _GIT_LOCATION_VARS}
+    for overlay in overlays:
+        env.update(overlay)
+    return env
+
 
 def _run(script: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -27,6 +55,7 @@ def _run(script: str) -> subprocess.CompletedProcess[str]:
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        env=_clean_git_env(),
     )
 
 
@@ -203,7 +232,7 @@ def _git(cwd: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", "-c", "commit.gpgsign=false", *args],
         cwd=cwd,
-        env={**os.environ, **_GIT_ENV},
+        env=_clean_git_env(_GIT_ENV),
         capture_output=True,
         text=True,
         check=True,
@@ -224,7 +253,7 @@ def _make_release_repo(tmp_path: Path) -> tuple[Path, Path, str]:
         ["git", "init", "--bare", "-q", "--initial-branch=main", str(origin)],
         check=True,
         capture_output=True,
-        env={**os.environ, **_GIT_ENV},
+        env=_clean_git_env(_GIT_ENV),
     )
     work.mkdir()
     _git(tmp_path, "init", "-q", "--initial-branch=main", str(work))
@@ -258,7 +287,7 @@ def _run_with_env(
     return subprocess.run(
         ["bash", str(root / "scripts" / script)],
         cwd=str(root),
-        env={**os.environ, **_GIT_ENV, **env},
+        env=_clean_git_env(_GIT_ENV, env),
         capture_output=True,
         text=True,
     )
