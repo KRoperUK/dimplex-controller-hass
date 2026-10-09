@@ -12,6 +12,7 @@ from custom_components.dimplex.const import AWAY_TEMP_MAX, DOMAIN
 from custom_components.dimplex.services import (
     SERVICE_CLEAR_ADVANCE,
     SERVICE_COPY_SCHEDULE,
+    SERVICE_REFRESH,
     SERVICE_SET_ADVANCE,
     SERVICE_SET_AWAY,
     SERVICE_SET_BOOST,
@@ -697,3 +698,77 @@ async def test_advance_is_refused_for_an_appliance_without_one(hass: HomeAssista
         )
 
     runtime.api.async_set_advance.assert_not_awaited()
+
+
+def _make_refresh_runtime():
+    """Runtime whose status coordinator records an immediate (non-debounced) refresh."""
+    runtime = _make_runtime()
+    # dimplex.refresh must poll *now*, so it uses async_refresh (not the debounced
+    # async_request_refresh the control services use), and invalidate schedules first.
+    runtime.status.async_refresh = AsyncMock()
+    runtime.status.invalidate_schedules = MagicMock()
+    return runtime
+
+
+async def test_refresh_targeted_polls_immediately_and_bypasses_the_debounce(hass: HomeAssistant) -> None:
+    """A targeted refresh forces an immediate poll of that appliance's entry (#245)."""
+    runtime = _make_refresh_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_REFRESH,
+        {"device_id": device_id},
+        blocking=True,
+    )
+
+    # Immediate poll, not the debounced request the write services use.
+    runtime.status.async_refresh.assert_awaited_once()
+    runtime.status.async_request_refresh.assert_not_awaited()
+    # Schedules invalidated so a change made elsewhere is re-fetched this poll.
+    runtime.status.invalidate_schedules.assert_called_once()
+
+
+async def test_refresh_without_a_target_refreshes_every_loaded_entry(hass: HomeAssistant) -> None:
+    """An untargeted refresh fans out to all configured Dimplex accounts (#245)."""
+    runtime_a = _make_refresh_runtime()
+    await _register_entry(hass, runtime_a, entry_id="svc-entry")
+    runtime_b = _make_refresh_runtime()
+    await _register_entry(hass, runtime_b, entry_id="svc-entry-2")
+
+    await hass.services.async_call(DOMAIN, SERVICE_REFRESH, {}, blocking=True)
+
+    runtime_a.status.async_refresh.assert_awaited_once()
+    runtime_b.status.async_refresh.assert_awaited_once()
+
+
+async def test_refresh_does_not_clear_the_optimistic_window(hass: HomeAssistant) -> None:
+    """Refresh must not touch optimistic state, or it reintroduces #198/#210.
+
+    A refresh fired right after a write would otherwise snap the UI back to the
+    stale cloud value the optimism exists to hide. The service only pokes the
+    coordinator; the entities retire their own optimistic values when the cloud
+    confirms. Guard: the handler must never call a coordinator attribute whose
+    name mentions "optimistic".
+    """
+    runtime = _make_refresh_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    await hass.services.async_call(DOMAIN, SERVICE_REFRESH, {"device_id": device_id}, blocking=True)
+
+    touched = {call[0] for call in runtime.status.mock_calls if call[0] and "optimistic" in call[0].lower()}
+    assert not touched, f"refresh must not touch optimistic state, but called: {touched}"
+
+
+async def test_refresh_unknown_target_is_a_noop(hass: HomeAssistant) -> None:
+    """A targeted refresh for an appliance missing from coordinator data does nothing."""
+    runtime = _make_refresh_runtime()
+    runtime.status.data = {"appliances": []}  # device resolves, appliance unknown
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    await hass.services.async_call(DOMAIN, SERVICE_REFRESH, {"device_id": device_id}, blocking=True)
+
+    runtime.status.async_refresh.assert_not_awaited()

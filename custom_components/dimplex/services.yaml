@@ -380,3 +380,25 @@ set_hot_water_hygiene:
       default: true
       selector:
         boolean:
+
+refresh:
+  name: Refresh
+  description: >-
+    Poll the Dimplex cloud immediately instead of waiting for the next scheduled
+    status update. Target an appliance to refresh only its hub's entry, or call it
+    with no target to refresh every configured Dimplex account. Useful in an
+    automation that sends a command and then needs the sensors to reflect it
+    without waiting out the polling interval.
+  fields:
+    device_id:
+      name: Device
+      description: Appliance to refresh. Leave empty to refresh everything.
+      selector:
+        device:
+          integration: dimplex
+    entity_id:
+      name: Entity
+      description: Any entity belonging to the appliance to refresh.
+      selector:
+        entity:
+          integration: dimplex
