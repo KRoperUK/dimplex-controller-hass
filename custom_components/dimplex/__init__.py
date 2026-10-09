@@ -11,7 +11,7 @@ import asyncio
 import importlib
 import logging
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
@@ -74,6 +74,11 @@ class DimplexRuntimeData:
     energy: DataUpdateCoordinator[dict[str, Any]]
     platforms: list[Platform]
     options_snapshot: dict[str, Any]
+    # Boost length chosen via the per-appliance boost-duration select, keyed by
+    # ApplianceId. The climate boost preset prefers this over the entry-wide
+    # ``CONF_BOOST_DURATION`` option so each appliance can use its own duration
+    # from the discrete set the cloud offers (#252).
+    boost_minutes: dict[str, int] = field(default_factory=dict)
 
 
 async def _preload_platforms(platforms: list[Platform]) -> None:

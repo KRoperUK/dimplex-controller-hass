@@ -66,6 +66,7 @@
           "climate": "Klima aktivert",
           "number": "Tall aktivert",
           "sensor": "Sensor aktivert",
+          "select": "Velger aktivert",
           "switch": "Bryter aktivert",
           "status_interval": "Statusintervall (sekunder)",
           "energy_interval": "Energiintervall (sekunder)",
@@ -168,6 +169,11 @@
     "number": {
       "setback_target": {
         "name": "Senketemperatur mål"
+      }
+    },
+    "select": {
+      "boost_duration": {
+        "name": "Boost-varighet"
       }
     }
   },

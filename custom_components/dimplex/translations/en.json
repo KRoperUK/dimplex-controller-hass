@@ -66,6 +66,7 @@
           "climate": "Climate enabled",
           "number": "Number enabled",
           "sensor": "Sensor enabled",
+          "select": "Select enabled",
           "switch": "Switch enabled",
           "status_interval": "Status poll interval (seconds)",
           "energy_interval": "Energy poll interval (seconds)",
@@ -182,6 +183,11 @@
     "number": {
       "setback_target": {
         "name": "Setback target"
+      }
+    },
+    "select": {
+      "boost_duration": {
+        "name": "Boost duration"
       }
     }
   }

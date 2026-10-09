@@ -66,6 +66,7 @@
           "climate": "Climatisation activée",
           "number": "Nombre activé",
           "sensor": "Capteur activé",
+          "select": "Sélecteur activé",
           "switch": "Interrupteur activé",
           "status_interval": "Intervalle de statut (secondes)",
           "energy_interval": "Intervalle d'énergie (secondes)",
@@ -168,6 +169,11 @@
     "number": {
       "setback_target": {
         "name": "Consigne réduite"
+      }
+    },
+    "select": {
+      "boost_duration": {
+        "name": "Durée du boost"
       }
     }
   },

@@ -11,16 +11,17 @@ this integration.
 
 ## Options flow
 
-| Option               | Default | Range      | Meaning                                                |
-| -------------------- | ------- | ---------- | ------------------------------------------------------ |
-| `climate`            | on      | on/off     | Climate entities — target temperature and presets      |
-| `sensor`             | on      | on/off     | Room temperature, energy and diagnostic sensors        |
-| `binary_sensor`      | on      | on/off     | Comfort, open window, setback, connected, mode sensors |
-| `switch`             | on      | on/off     | EcoStart and open-window-detection toggles             |
-| `number`             | on      | on/off     | The setback target number entity                       |
-| Status poll interval | 30 s    | 15–3600 s  | Temperatures and modes                                 |
-| Energy poll interval | 1800 s  | 60–86400 s | The daily kWh energy report                            |
-| Boost duration       | 60 min  | 1–1440 min | Default for the `boost` **preset**                     |
+| Option               | Default | Range      | Meaning                                                                                    |
+| -------------------- | ------- | ---------- | ------------------------------------------------------------------------------------------ |
+| `climate`            | on      | on/off     | Climate entities — target temperature and presets                                          |
+| `sensor`             | on      | on/off     | Room temperature, energy and diagnostic sensors                                            |
+| `binary_sensor`      | on      | on/off     | Comfort, open window, setback, connected, mode sensors                                     |
+| `switch`             | on      | on/off     | EcoStart and open-window-detection toggles                                                 |
+| `number`             | on      | on/off     | The setback target number entity                                                           |
+| `select`             | on      | on/off     | The per-appliance boost-duration select                                                    |
+| Status poll interval | 30 s    | 15–3600 s  | Temperatures and modes                                                                     |
+| Energy poll interval | 1800 s  | 60–86400 s | The daily kWh energy report                                                                |
+| Boost duration       | 60 min  | 1–1440 min | Default for the `boost` **preset** (overridden per appliance by the Boost duration select) |
 
 Changing any option reloads the integration. Disabling a platform removes its entities
 without deleting the config entry, so re-enabling brings them back with the same IDs.

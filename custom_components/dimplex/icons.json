@@ -74,6 +74,11 @@
       "open_window_detection": {
         "default": "mdi:window-open-variant"
       }
+    },
+    "select": {
+      "boost_duration": {
+        "default": "mdi:timer-cog-outline"
+      }
     }
   }
 }
