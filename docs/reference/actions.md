@@ -13,20 +13,21 @@ to that appliance.
 
 ## Summary
 
-| Action                              | Purpose                                         |
-| ----------------------------------- | ----------------------------------------------- |
-| `dimplex.set_boost`                 | Boost to a target for a fixed number of minutes |
-| `dimplex.clear_boost`               | Cancel boost                                    |
-| `dimplex.set_away`                  | Hold a setback target until a date you choose   |
-| `dimplex.clear_away`                | Cancel away                                     |
-| `dimplex.set_advance`               | Bring the next schedule period on early         |
-| `dimplex.clear_advance`             | Cancel advance and return to the schedule       |
-| `dimplex.set_eco_start`             | Enable or disable EcoStart                      |
-| `dimplex.set_open_window_detection` | Enable or disable open-window detection         |
-| `dimplex.copy_schedule`             | Apply one appliance's schedule to others        |
-| `dimplex.set_period_setpoint`       | Change one schedule period's target temperature |
-| `dimplex.set_hot_water_temperature` | Set a cylinder's normal or boost target         |
-| `dimplex.set_hot_water_hygiene`     | Configure a cylinder's anti-legionella cycle    |
+| Action                              | Purpose                                                   |
+| ----------------------------------- | --------------------------------------------------------- |
+| `dimplex.set_boost`                 | Boost to a target for a fixed number of minutes           |
+| `dimplex.clear_boost`               | Cancel boost                                              |
+| `dimplex.set_away`                  | Hold a setback target until a date you choose             |
+| `dimplex.clear_away`                | Cancel away                                               |
+| `dimplex.set_advance`               | Bring the next schedule period on early                   |
+| `dimplex.clear_advance`             | Cancel advance and return to the schedule                 |
+| `dimplex.set_eco_start`             | Enable or disable EcoStart                                |
+| `dimplex.set_open_window_detection` | Enable or disable open-window detection                   |
+| `dimplex.copy_schedule`             | Apply one appliance's schedule to others                  |
+| `dimplex.set_period_setpoint`       | Change one schedule period's target temperature           |
+| `dimplex.set_hot_water_temperature` | Set a cylinder's normal or boost target                   |
+| `dimplex.set_hot_water_hygiene`     | Configure a cylinder's anti-legionella cycle              |
+| `dimplex.refresh`                   | Poll the cloud now instead of waiting for the next update |
 
 ## `dimplex.set_boost`
 
@@ -179,6 +180,53 @@ data:
 
 A day and start time that match no period raises an error naming the appliance and the time,
 rather than silently doing nothing.
+
+## `dimplex.refresh`
+
+Polls the Dimplex cloud straight away instead of waiting for the next scheduled status
+update (every 30 s by default — see [options](options.md)).
+
+| Field       | Type      | Default | Notes                                            |
+| ----------- | --------- | ------- | ------------------------------------------------ |
+| `device_id` | device id | —       | Appliance to refresh. Omit to refresh everything |
+| `entity_id` | entity id | —       | Any entity of the appliance to refresh           |
+
+```yaml
+action: dimplex.refresh
+target:
+  entity_id: climate.living_room
+```
+
+Call it with no target to refresh every configured Dimplex account at once:
+
+```yaml
+action: dimplex.refresh
+```
+
+Unlike the automatic refresh the control actions already perform after a write, this one is
+**not debounced** — it fires the poll immediately. The main use is an automation that sends a
+command and then needs the sensors to confirm the cloud reflected it without waiting out the
+polling interval:
+
+```yaml
+- action: dimplex.set_boost
+  target:
+    entity_id: climate.living_room
+  data:
+    temperature: 22
+- delay: "00:00:05"
+- action: dimplex.refresh
+  target:
+    entity_id: climate.living_room
+```
+
+!!! note "Just-written values still show first"
+
+    A value you have only just written is shown optimistically for a few polls, so the UI
+    does not flicker back to the old reading while the cloud catches up. A refresh does not
+    override that window — it is still the fastest way to pick up a change made *elsewhere*
+    (the official app, another client), and the optimistic value is retired automatically
+    once the cloud confirms it.
 
 ## Not exposed as an action
 

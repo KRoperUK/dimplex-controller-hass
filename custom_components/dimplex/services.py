@@ -46,6 +46,7 @@ SERVICE_COPY_SCHEDULE = "copy_schedule"
 SERVICE_SET_PERIOD_SETPOINT = "set_period_setpoint"
 SERVICE_SET_HOT_WATER_TEMPERATURE = "set_hot_water_temperature"
 SERVICE_SET_HOT_WATER_HYGIENE = "set_hot_water_hygiene"
+SERVICE_REFRESH = "refresh"
 
 # Hot-water cylinder modes the temperature action writes, and the hygiene cycle
 # frequencies. Both are names rather than the wire values because neither the
@@ -254,6 +255,31 @@ async def _refresh_status(hass: HomeAssistant, config_entry_id: str) -> None:
     runtime = _runtime_for(hass, config_entry_id)
     if runtime is not None:
         await runtime.status.async_request_refresh()
+
+
+async def _force_refresh(hass: HomeAssistant, config_entry_id: str) -> bool:
+    """Poll the status coordinator immediately, bypassing the debounce.
+
+    The control services use ``async_request_refresh`` (debounced) because they
+    fire the write and the follow-up poll back to back. ``dimplex.refresh`` is the
+    opposite case: the user asked for ground truth *now* — typically from an
+    automation that just sent a command and wants to confirm the cloud reflected
+    it — so it must not be collapsed into a debounce window with other refreshes.
+    ``async_refresh`` runs the poll straight away (#245).
+
+    Schedules are invalidated first so a schedule-affecting change made outside
+    Home Assistant (the official app, another client) is re-fetched on this poll
+    rather than waiting out the fifteen-minute schedule cache. Returns ``True`` if
+    the entry was loaded and refreshed, ``False`` if it had no runtime.
+    """
+    runtime = _runtime_for(hass, config_entry_id)
+    if runtime is None:
+        return False
+    invalidate = getattr(runtime.status, "invalidate_schedules", None)
+    if callable(invalidate):
+        invalidate()
+    await runtime.status.async_refresh()
+    return True
 
 
 def _invalidate_schedules(hass: HomeAssistant, config_entry_id: str) -> None:
@@ -662,6 +688,32 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         ),
     )
 
+    @_translated
+    async def handle_refresh(call: ServiceCall) -> None:
+        # Targeted at one appliance, refresh only that appliance's entry; with no
+        # target, refresh every loaded entry so an automation can poll the whole
+        # account with a single call (#245). The optimistic-value window is left
+        # alone deliberately: a refresh fired right after a write would otherwise
+        # snap the UI back to the stale cloud value the optimism exists to hide
+        # (#198, #210) — the entities retire their own optimistic values once the
+        # cloud confirms or the window expires.
+        if call.data.get(ATTR_DEVICE_ID) or call.data.get(ATTR_ENTITY_ID):
+            resolved = await _resolve_appliance(hass, call)
+            if resolved is None:
+                return
+            entry_id = resolved[0]
+            await _force_refresh(hass, entry_id)
+            return
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            await _force_refresh(hass, entry.entry_id)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REFRESH,
+        handle_refresh,
+        schema=_target_schema(),
+    )
+
 
 async def async_unload_services(hass: HomeAssistant, unloading_entry_id: str | None = None) -> None:
     """Remove domain services once the last config entry has unloaded.
@@ -693,6 +745,7 @@ async def async_unload_services(hass: HomeAssistant, unloading_entry_id: str | N
         SERVICE_SET_PERIOD_SETPOINT,
         SERVICE_SET_HOT_WATER_TEMPERATURE,
         SERVICE_SET_HOT_WATER_HYGIENE,
+        SERVICE_REFRESH,
     ):
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)
