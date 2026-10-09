@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.2.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.1.1...v4.2.0) (2026-10-09)
+
+
+### Features
+
+* **services:** add dimplex.refresh action for an immediate poll ([#246](https://github.com/KRoperUK/dimplex-controller-hass/issues/246)) ([553956e](https://github.com/KRoperUK/dimplex-controller-hass/commit/553956ee47e6550fb5e143536ac3eaa5a1df4641)), closes [#245](https://github.com/KRoperUK/dimplex-controller-hass/issues/245)
+
+
+### Bug Fixes
+
+* **deps:** pin pytest-homeassistant-custom-component to the 2026.9.4 build ([#249](https://github.com/KRoperUK/dimplex-controller-hass/issues/249)) ([9e48918](https://github.com/KRoperUK/dimplex-controller-hass/commit/9e4891808f6ef6873f7d61ff87d652c6405d86d9))
+
 ## [4.1.1](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.1.0...v4.1.1) (2026-09-20)
 
 
