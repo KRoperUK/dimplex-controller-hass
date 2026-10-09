@@ -128,6 +128,18 @@ Setback **binary sensor** reports whether setback is currently engaged, and the 
 The range offered is the capability matrix's own 7-30 °C. That range is **inferred** from the
 app rather than measured — see [appliance support](appliances.md#temperature-ranges).
 
+## Selects
+
+| Name           | Description                                                                                                                                                                                                                                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Boost duration | How long the `boost` **preset** runs for this appliance. The options are the discrete durations the appliance's capability matrix offers (`boost_durations`, e.g. 30/60/120/180 minutes), matching the official app's own picker. Translation key `boost_duration`. |
+
+A configuration entity (not shown by default on the main card), created only for
+boost-capable appliances (`boost` in the capability matrix). It is a **preference** — choosing a
+value does not start a boost, it sets how long the next boost preset will run. A per-appliance
+choice here takes precedence over the entry-wide **Boost duration** option, so each appliance can
+use its own duration, and the choice survives a restart.
+
 ## Schedule
 
 Diagnostic **Schedule** sensor per appliance. Its state is the timer mode — `manual`,
