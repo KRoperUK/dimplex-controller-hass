@@ -35,6 +35,18 @@ SETPOINT_TEMP_MAX = float(MODE_TEMP_MAX)
 AWAY_TEMP_MIN = float(getattr(_dc, "AWAY_TEMP_MIN", 7.0))
 AWAY_TEMP_MAX = float(getattr(_dc, "AWAY_TEMP_MAX", 18.0))
 
+# Physical plausibility band for ANY temperature read from the cloud. Setpoints
+# live in 7–30 °C, but ``RoomTemperature`` is an ambient reading that can
+# legitimately fall below 7 or rise above 30 (a cold hallway, a hot
+# conservatory), so the generic sanity check cannot use the setpoint band. These
+# are deliberately wide — no real indoor sensor reads outside them — so a glitch
+# like 200 °C is rejected while every genuine reading passes (#251). The 0xFF
+# (255) sentinel is above the ceiling and so is caught here too, but the explicit
+# sentinel check in ``sane_temperature`` stays first so 255 is never logged as
+# merely "out of range".
+PHYSICAL_TEMP_MIN = -40.0
+PHYSICAL_TEMP_MAX = 80.0
+
 # --- Appliance mode bits ---------------------------------------------------
 # ``EApplianceModes`` values, sourced from the library rather than hard-coded.
 # Before dimplex-controller 0.13.0 this integration assumed boost was bit 16
@@ -58,12 +70,29 @@ TIMER_OFF = int(TimerMode.OFF)
 TIMER_OFF_LIKE = frozenset({TIMER_FROST, TIMER_OFF})
 
 
-def sane_temperature(value: Any) -> float | None:
+def sane_temperature(
+    value: Any,
+    *,
+    lo: float = PHYSICAL_TEMP_MIN,
+    hi: float = PHYSICAL_TEMP_MAX,
+) -> float | None:
     """Return a real temperature, or ``None`` for sentinel/out-of-range readings.
 
-    ``None``/empty and the 0xFF (255) sentinel both map to ``None`` so callers
-    can fall back or report "unknown" rather than an impossible value. Valid
-    readings are returned as ``float``.
+    ``None``/empty and the 0xFF (255) sentinel both map to ``None`` so callers can
+    fall back or report "unknown" rather than an impossible value.
+
+    A reading outside ``[lo, hi]`` also maps to ``None``. The default band is the
+    wide physical range (``PHYSICAL_TEMP_MIN``..``PHYSICAL_TEMP_MAX``), so a cloud
+    glitch such as 200 °C is discarded while a genuine ambient ``RoomTemperature``
+    below 7 or above 30 still passes — only the 0xFF sentinel was filtered before,
+    so any other out-of-band value reached the climate entity verbatim (#251).
+    Pass the tighter setpoint band (``lo=SETPOINT_TEMP_MIN``,
+    ``hi=SETPOINT_TEMP_MAX``) for a setpoint read, which has a narrower valid range
+    than an ambient reading.
+
+    No logging: this is a pure helper on the hot status path, and a repeatedly
+    glitching cloud field would otherwise spam the log. Returning ``None`` is the
+    same "unknown" signal callers already handle for the sentinel.
     """
     if value is None or value == "":
         return None
@@ -71,7 +100,10 @@ def sane_temperature(value: Any) -> float | None:
         num = float(value)
     except (TypeError, ValueError):
         return None
+    # Sentinel first, so 255 is never reported as merely "out of range".
     if num >= SETPOINT_SENTINEL:
+        return None
+    if num < lo or num > hi:
         return None
     return num
 

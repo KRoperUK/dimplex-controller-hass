@@ -29,6 +29,8 @@ from .const import (
     DEFAULT_BOOST_DURATION,
     FROST_FLAG,
     OPTIMISTIC_UPDATES,
+    SETPOINT_TEMP_MAX,
+    SETPOINT_TEMP_MIN,
     TIMER_OFF_LIKE,
     TIMER_USER,
     sane_temperature,
@@ -342,17 +344,17 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         if status is None:
             return None
         if _is_boost_active(status):
-            boost = sane_temperature(status.BoostTemperature)
+            boost = sane_temperature(status.BoostTemperature, lo=SETPOINT_TEMP_MIN, hi=SETPOINT_TEMP_MAX)
             if boost is not None:
                 return boost
         if _is_away_active(status):
-            away = sane_temperature(status.AwayTemperature)
+            away = sane_temperature(status.AwayTemperature, lo=AWAY_TEMP_MIN, hi=AWAY_TEMP_MAX)
             if away is not None:
                 return away
-        active = sane_temperature(status.ActiveSetPointTemperature)
+        active = sane_temperature(status.ActiveSetPointTemperature, lo=SETPOINT_TEMP_MIN, hi=SETPOINT_TEMP_MAX)
         if active is not None:
             return active
-        return sane_temperature(status.NormalTemperature)
+        return sane_temperature(status.NormalTemperature, lo=SETPOINT_TEMP_MIN, hi=SETPOINT_TEMP_MAX)
 
     @property
     def hvac_mode(self) -> HVACMode:

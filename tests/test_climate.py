@@ -381,6 +381,44 @@ def test_sane_temperature_drops_sentinel():
     assert sane_temperature("20") == 20.0
 
 
+def test_sane_temperature_rejects_out_of_physical_range():
+    """A glitch like 200 °C is discarded, not surfaced on the climate card (#251).
+
+    Before #251 only the 0xFF (255) sentinel was filtered, so any other
+    out-of-band value reached the entity verbatim.
+    """
+    from custom_components.dimplex.const import (
+        PHYSICAL_TEMP_MAX,
+        PHYSICAL_TEMP_MIN,
+    )
+
+    # Physically impossible indoor readings -> None.
+    assert sane_temperature(200) is None
+    assert sane_temperature(-100) is None
+    # Genuine ambient readings outside the 7-30 setpoint band still pass on the
+    # default (wide physical) band — a cold hallway or a hot conservatory.
+    assert sane_temperature(-5) == -5.0
+    assert sane_temperature(45) == 45.0
+    # The physical band edges are inclusive.
+    assert sane_temperature(PHYSICAL_TEMP_MIN) == PHYSICAL_TEMP_MIN
+    assert sane_temperature(PHYSICAL_TEMP_MAX) == PHYSICAL_TEMP_MAX
+
+
+def test_sane_temperature_tight_setpoint_band():
+    """A setpoint read uses the narrower 7-30 band passed by the caller."""
+    from custom_components.dimplex.const import SETPOINT_TEMP_MAX, SETPOINT_TEMP_MIN
+
+    # 50 °C is physically plausible as an ambient reading but not a valid setpoint.
+    assert sane_temperature(50, lo=SETPOINT_TEMP_MIN, hi=SETPOINT_TEMP_MAX) is None
+    assert sane_temperature(5, lo=SETPOINT_TEMP_MIN, hi=SETPOINT_TEMP_MAX) is None
+    # In-band setpoints pass, edges inclusive.
+    assert sane_temperature(21, lo=SETPOINT_TEMP_MIN, hi=SETPOINT_TEMP_MAX) == 21.0
+    assert sane_temperature(SETPOINT_TEMP_MIN, lo=SETPOINT_TEMP_MIN, hi=SETPOINT_TEMP_MAX) == SETPOINT_TEMP_MIN
+    assert sane_temperature(SETPOINT_TEMP_MAX, lo=SETPOINT_TEMP_MIN, hi=SETPOINT_TEMP_MAX) == SETPOINT_TEMP_MAX
+    # The sentinel is still caught first, regardless of band.
+    assert sane_temperature(255, lo=SETPOINT_TEMP_MIN, hi=SETPOINT_TEMP_MAX) is None
+
+
 def test_has_any_mode():
     """Mode-bit helper tolerates missing / unparseable ApplianceModes."""
     assert has_any_mode(SimpleNamespace(ApplianceModes=BOOST_FLAG), HEAT_DEMAND_FLAGS) is True
