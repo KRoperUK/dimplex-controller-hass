@@ -10,7 +10,7 @@
 # entry covers this file. The declared HACS floor (hacs.json) is the *minimum*
 # supported; it is deliberately not the tested version.
 homeassistant==2026.9.4
-pytest-homeassistant-custom-component==0.13.368
+pytest-homeassistant-custom-component==0.13.367
 
 dimplex-controller>=0.13.1
 
