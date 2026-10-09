@@ -156,15 +156,20 @@ upgrading.
 
 ### Room temperature reads 255 °C
 
-**Symptom:** The thermostat card shows a current temperature of 255 °C, and history has a spike
-to match — while the separate **Room temperature** sensor shows nothing at all.
+**Symptom:** The thermostat card shows a current temperature of 255 °C (or some other
+nonsensical value such as 200 °C), and history has a spike to match — while the separate
+**Room temperature** sensor shows nothing at all.
 
 **Cause:** The cloud reports 0xFF (255) for a temperature field that has no active value. Every
 other temperature read filtered it; the climate entity's `current_temperature` was the one that
-did not, which is why the sensor and the card disagreed.
+did not, which is why the sensor and the card disagreed. A rarer cloud glitch could also report a
+value that is not 255 but is still impossible (e.g. 200 °C), which the sentinel-only filter let
+through.
 
-**Fix:** Upgrade to 4.1.0. The sentinel now becomes "unknown" on both. Nothing needs repairing
-except the recorded history, which you can leave alone or purge for that entity.
+**Fix:** Upgrade to 4.1.0 for the sentinel, and 4.3.0+ for the wider guard: a reading outside a
+plausible physical range (−40…80 °C), as well as the sentinel, now becomes "unknown" on both the
+card and the sensor. Setpoint reads are checked against the tighter 7–30 °C band. Nothing needs
+repairing except the recorded history, which you can leave alone or purge for that entity.
 
 ### The Energy Dashboard shows far more than the heaters used
 
