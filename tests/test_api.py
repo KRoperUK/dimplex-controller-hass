@@ -811,3 +811,21 @@ async def test_set_period_setpoint_does_not_swallow_a_missing_period(hass):
         pytest.raises(ValueError, match="No timer period"),
     ):
         await api.async_set_period_setpoint("h", "a1", day_of_week=1, start_time="06:00:00", temperature=21.0)
+
+
+def test_appliance_status_accepts_integer_error_and_warning_codes():
+    """The cloud sends ErrorCode/WarningCode as ints; parsing must not fail setup."""
+    from dimplex_controller.models import ApplianceStatus
+
+    status = ApplianceStatus.model_validate(
+        {
+            "HubId": "hub",
+            "ApplianceId": "app",
+            "ZoneId": "zone",
+            "ErrorCode": 0,
+            "WarningCode": 0,
+        }
+    )
+
+    assert status.ErrorCode == "0"
+    assert status.WarningCode == "0"

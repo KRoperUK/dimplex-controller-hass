@@ -22,6 +22,7 @@ from dimplex_controller import (
     TokenBundle,
     parse_telemetry_points,
 )
+from dimplex_controller.models import ApplianceStatus
 
 from .capabilities import product_for_appliance, product_lookup
 from .const import ENERGY_REPORT_INTERVAL, ENERGY_REQUEST_DAYS
@@ -44,6 +45,13 @@ except ImportError:  # pragma: no cover - older wheels
         "amount",
         "v",
     )
+
+# The cloud sends ErrorCode/WarningCode as integers (0 when healthy), but the
+# library (<= 0.13.1) types them as ``str``, so every status poll fails validation
+# and setup never completes. Coerce numbers to strings until the library is fixed.
+if not ApplianceStatus.model_config.get("coerce_numbers_to_str"):
+    ApplianceStatus.model_config["coerce_numbers_to_str"] = True
+    ApplianceStatus.model_rebuild(force=True)
 
 
 class CannotConnect(Exception):
