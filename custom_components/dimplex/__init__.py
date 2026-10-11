@@ -49,6 +49,7 @@ from .const import (
     STARTUP_MESSAGE,
     has_any_mode,
 )
+from .holiday import HolidayManager
 from .repairs import (
     async_update_empty_energy_issue,
     async_update_empty_overview_issue,
@@ -79,6 +80,8 @@ class DimplexRuntimeData:
     # ``CONF_BOOST_DURATION`` option so each appliance can use its own duration
     # from the discrete set the cloud offers (#252).
     boost_minutes: dict[str, int] = field(default_factory=dict)
+    # Hot-water holiday end times and the timers that clear Holiday at them.
+    holiday: HolidayManager | None = None
 
 
 async def _preload_platforms(platforms: list[Platform]) -> None:
@@ -218,14 +221,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
     await energy_coordinator.async_refresh()
 
     platforms = [platform for platform in PLATFORMS if entry.options.get(platform, True)]
+    holiday = HolidayManager(hass, client, status_coordinator)
     runtime = DimplexRuntimeData(
         api=client,
         status=status_coordinator,
         energy=energy_coordinator,
         platforms=platforms,
         options_snapshot=dict(entry.options),
+        holiday=holiday,
     )
     entry.runtime_data = runtime
+    entry.async_on_unload(holiday.async_shutdown)
 
     # Register hub and zone devices up front so platform entities can safely
     # reference them via via_device (see dimplex-controller-hass#117).

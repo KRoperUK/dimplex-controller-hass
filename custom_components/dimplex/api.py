@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import math
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -13,6 +14,7 @@ from typing import Any
 import aiohttp
 from dimplex_controller import (
     VALUE_KEY_T2,
+    ApplianceModeFlag,
     DimplexApiError,
     DimplexAuthError,
     DimplexConnectionError,
@@ -467,6 +469,41 @@ class DimplexApiClient:
                     temperature,
                     enable=enable,
                 )
+
+    async def async_set_hot_water_holiday(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        *,
+        enable: bool,
+        until: datetime | None = None,
+        heat_pump: bool = False,
+    ) -> None:
+        """Put a cylinder on holiday (standby) until ``until``, or take it off.
+
+        Verified on a live ASHW cylinder (EDL200UK-630RF): ``ApplianceModes`` = 8
+        with ``Status`` 1 engages Holiday (status 8192 -> 8200, ``HolidayNumOfDays``
+        set, heating stops) and ``Status`` 0 clears it. The cylinder counts holidays
+        in whole days, so the end date also goes as a rounded-up day count; callers
+        that want a time of day must clear it themselves at that time.
+        """
+        days = 0
+        if enable:
+            if until is None:
+                raise ValueError("a holiday needs an end time")
+            seconds = (until - datetime.now(UTC)).total_seconds()
+            days = max(1, math.ceil(seconds / 86400))
+        endpoint = "/RemoteControl/SetApplianceModeHeatPumpHwc" if heat_pump else "/RemoteControl/SetApplianceModeHwc"
+        with _translated_errors():
+            await self._client.set_mode_flag(
+                hub_id,
+                [appliance_id],
+                ApplianceModeFlag.HOLIDAY,
+                enable=enable,
+                until=until,
+                number_of_days=days,
+                endpoint=endpoint,
+            )
 
     async def async_set_hot_water_hygiene(
         self,

@@ -198,6 +198,9 @@
       },
       "open_window_detection": {
         "name": "Deteksjon av åpent vindu"
+      },
+      "holiday": {
+        "name": "Ferie"
       }
     },
     "number": {
@@ -220,6 +223,11 @@
           "boost": "Boost",
           "hygiene": "Hygiene"
         }
+      }
+    },
+    "datetime": {
+      "holiday_end": {
+        "name": "Ferie slutter"
       }
     }
   },

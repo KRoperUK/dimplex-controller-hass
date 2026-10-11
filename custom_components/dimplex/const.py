@@ -163,6 +163,7 @@ ISSUE_URL = "https://github.com/kroperuk/dimplex-controller-hass/issues"
 PLATFORMS = [
     Platform.BINARY_SENSOR,
     Platform.CLIMATE,
+    Platform.DATETIME,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,

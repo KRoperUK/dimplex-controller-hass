@@ -181,3 +181,184 @@ async def test_cylinder_entities(hass):
     assert "switch.hall_hall_ecostart" in ids
     assert not any(i.startswith("water_heater.hall") for i in ids)
     assert not any(i.startswith("sensor.hall_hot_water") for i in ids)
+
+
+async def _setup(hass, payload):
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    entry.add_to_hass(hass)
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch("custom_components.dimplex.DimplexApiClient.async_get_status_data", return_value=payload),
+        patch("custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs", return_value={"energy": {}}),
+    ):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    return entry
+
+
+@pytest.mark.asyncio
+async def test_holiday_switch_and_end_time(hass):
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    payload = _payload()
+    cylinder_status = payload["appliances"][0]["status"]
+
+    async def fake_holiday(_self, hub_id, appliance_id, *, enable, until=None, heat_pump=False):
+        calls.append((hub_id, appliance_id, enable, until, heat_pump))
+        cylinder_status.ApplianceModes = 8200 if enable else 8192
+
+    calls: list = []
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_get_status_data", return_value=payload),
+        patch("custom_components.dimplex.DimplexApiClient.async_set_hot_water_holiday", fake_holiday),
+    ):
+        await _setup(hass, payload)
+        switch_id = "switch.hot_water_hot_water_holiday"
+        end_id = "datetime.hot_water_hot_water_holiday_ends"
+        assert hass.states.get(switch_id).state == "off"
+        assert hass.states.get(end_id).state == "unknown"
+        # Panel heaters get neither.
+        assert hass.states.get("switch.hall_hall_holiday") is None
+
+        end = (dt_util.utcnow() + timedelta(hours=30)).replace(microsecond=0)
+        await hass.services.async_call("datetime", "set_value", {"entity_id": end_id, "datetime": end}, blocking=True)
+        assert dt_util.parse_datetime(hass.states.get(end_id).state) == end
+        assert calls == []  # choosing an end alone sends nothing
+
+        await hass.services.async_call("switch", "turn_on", {"entity_id": switch_id}, blocking=True)
+        await hass.async_block_till_done()
+        assert calls[-1] == ("hub-1", "cyl-1", True, end, True)
+        assert hass.states.get(switch_id).state == "on"
+        assert hass.states.get("binary_sensor.hot_water_hot_water_holiday").state == "on"
+
+        # Home Assistant clears Holiday at the exact end time.
+        async_fire_time_changed(hass, end + timedelta(seconds=1))
+        await hass.async_block_till_done()
+        assert calls[-1][2] is False
+        assert hass.states.get(switch_id).state == "off"
+
+
+@pytest.mark.asyncio
+async def test_holiday_without_end_defaults_to_a_week_and_off_cancels(hass):
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+
+    payload = _payload()
+    cylinder_status = payload["appliances"][0]["status"]
+    calls: list = []
+
+    async def fake_holiday(_self, hub_id, appliance_id, *, enable, until=None, heat_pump=False):
+        calls.append((enable, until))
+        cylinder_status.ApplianceModes = 8200 if enable else 8192
+
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_get_status_data", return_value=payload),
+        patch("custom_components.dimplex.DimplexApiClient.async_set_hot_water_holiday", fake_holiday),
+    ):
+        entry = await _setup(hass, payload)
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": "switch.hot_water_hot_water_holiday"}, blocking=True
+        )
+        enable, until = calls[-1]
+        assert enable is True
+        assert timedelta(days=6, hours=23) < until - dt_util.utcnow() <= timedelta(days=7)
+        await hass.services.async_call(
+            "switch", "turn_off", {"entity_id": "switch.hot_water_hot_water_holiday"}, blocking=True
+        )
+        assert calls[-1] == (False, None)
+        assert not entry.runtime_data.holiday._timers
+
+
+@pytest.mark.asyncio
+async def test_holiday_end_in_the_past_is_rejected(hass):
+    from datetime import timedelta
+
+    from homeassistant.exceptions import HomeAssistantError
+    from homeassistant.util import dt as dt_util
+
+    await _setup(hass, _payload())
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "datetime",
+            "set_value",
+            {
+                "entity_id": "datetime.hot_water_hot_water_holiday_ends",
+                "datetime": dt_util.utcnow() - timedelta(hours=1),
+            },
+            blocking=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_restored_end_that_passed_while_down_clears_holiday(hass):
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+
+    payload = _payload()
+    payload["appliances"][0]["status"].ApplianceModes = 8200
+    entry = await _setup(hass, payload)
+    manager = entry.runtime_data.holiday
+    stops: list = []
+
+    async def fake_stop(appliance_id):
+        stops.append(appliance_id)
+
+    manager.async_stop = fake_stop
+    manager.restore_end("cyl-1", dt_util.utcnow() - timedelta(minutes=5))
+    await hass.async_block_till_done()
+    assert stops == ["cyl-1"]
+
+    manager.restore_end("cyl-1", dt_util.utcnow() + timedelta(hours=2))
+    assert "cyl-1" in manager._timers
+    manager.async_shutdown()
+    assert not manager._timers
+
+
+async def test_api_holiday_sends_rounded_up_days(hass):
+    from datetime import UTC, datetime, timedelta
+    from unittest.mock import AsyncMock
+
+    from dimplex_controller import ApplianceModeFlag
+
+    from custom_components.dimplex.api import DimplexApiClient
+
+    api = DimplexApiClient.__new__(DimplexApiClient)
+    api._client = SimpleNamespace(set_mode_flag=AsyncMock())
+    until = datetime.now(UTC) + timedelta(days=2, hours=3)
+    await api.async_set_hot_water_holiday("hub", "cyl", enable=True, until=until, heat_pump=True)
+    args, kwargs = api._client.set_mode_flag.call_args
+    assert args == ("hub", ["cyl"], ApplianceModeFlag.HOLIDAY)
+    assert kwargs["enable"] is True and kwargs["number_of_days"] == 3 and kwargs["until"] == until
+    assert kwargs["endpoint"] == "/RemoteControl/SetApplianceModeHeatPumpHwc"
+
+    await api.async_set_hot_water_holiday("hub", "cyl", enable=False)
+    _, kwargs = api._client.set_mode_flag.call_args
+    assert kwargs["enable"] is False and kwargs["number_of_days"] == 0
+    assert kwargs["endpoint"] == "/RemoteControl/SetApplianceModeHwc"
+
+    with pytest.raises(ValueError):
+        await api.async_set_hot_water_holiday("hub", "cyl", enable=True)
+
+
+@pytest.mark.asyncio
+async def test_holiday_end_survives_a_restart(hass):
+    from datetime import timedelta
+
+    from homeassistant.core import State
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import mock_restore_cache
+
+    end = (dt_util.utcnow() + timedelta(days=2)).replace(microsecond=0)
+    mock_restore_cache(hass, [State("datetime.hot_water_hot_water_holiday_ends", end.isoformat())])
+    payload = _payload()
+    payload["appliances"][0]["status"].ApplianceModes = 8200  # on holiday
+    entry = await _setup(hass, payload)
+
+    assert dt_util.parse_datetime(hass.states.get("datetime.hot_water_hot_water_holiday_ends").state) == end
+    assert entry.runtime_data.holiday.ends["cyl-1"] == end
+    assert "cyl-1" in entry.runtime_data.holiday._timers

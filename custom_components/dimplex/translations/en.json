@@ -212,6 +212,9 @@
       },
       "open_window_detection": {
         "name": "Open window detection"
+      },
+      "holiday": {
+        "name": "Holiday"
       }
     },
     "number": {
@@ -234,6 +237,11 @@
           "boost": "Boost",
           "hygiene": "Hygiene"
         }
+      }
+    },
+    "datetime": {
+      "holiday_end": {
+        "name": "Holiday ends"
       }
     }
   }

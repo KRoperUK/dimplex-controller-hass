@@ -14,8 +14,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .api import DimplexApiClient
 from .capabilities import capabilities_for_row
+from .const import HOLIDAY_FLAG, has_any_mode
 from .entity import DimplexEntity
 from .errors import control_errors
+from .holiday import HolidayManager
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -68,7 +70,7 @@ async def async_setup_entry(
     """Set up switch platform."""
     runtime = entry.runtime_data
     rows = (runtime.status.data or {}).get("appliances", [])
-    entities: list[DimplexSwitch] = []
+    entities: list[SwitchEntity] = []
     for appliance_row in rows:
         caps = capabilities_for_row(
             appliance_row["appliance"], appliance_row.get("status"), appliance_row.get("product")
@@ -78,6 +80,8 @@ async def async_setup_entry(
             for description in SWITCHES
             if getattr(caps, description.capability, False)
         )
+        if caps.hot_water:
+            entities.append(DimplexHolidaySwitch(runtime.status, entry, appliance_row, runtime.holiday))
     async_add_entities(entities)
 
 
@@ -132,3 +136,34 @@ class DimplexSwitch(DimplexEntity, SwitchEntity):
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
         await self._async_set(False)
+
+
+class DimplexHolidaySwitch(DimplexEntity, SwitchEntity):
+    """Holiday (standby) for a hot-water cylinder, until the Holiday end time."""
+
+    _attr_translation_key = "holiday"
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+        holiday: HolidayManager,
+    ) -> None:
+        super().__init__(coordinator, config_entry, appliance_row)
+        self._attr_unique_id = f"{config_entry.entry_id}_{self._appliance.ApplianceId}_holiday"
+        self._holiday = holiday
+
+    @property
+    def is_on(self) -> bool:
+        return has_any_mode(self._status, HOLIDAY_FLAG)
+
+    @property
+    def icon(self) -> str:
+        return "mdi:airplane" if self.is_on else "mdi:airplane-off"
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._holiday.async_start(self._appliance.ApplianceId)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._holiday.async_stop(self._appliance.ApplianceId)
