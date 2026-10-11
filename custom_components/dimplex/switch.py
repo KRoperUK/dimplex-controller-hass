@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .api import DimplexApiClient
+from .capabilities import capabilities_for_row
 from .entity import DimplexEntity
 from .errors import control_errors
 
@@ -25,6 +26,8 @@ class DimplexSwitchEntityDescription(SwitchEntityDescription):
     set_fn: Callable[[DimplexApiClient, str, str, bool], Awaitable[None]]
     icon_on: str
     icon_off: str
+    capability: str
+    """Capability flag that must be true for the switch to be created."""
 
 
 async def _set_eco_start(api: DimplexApiClient, hub_id: str, appliance_id: str, enabled: bool) -> None:
@@ -39,6 +42,7 @@ SWITCHES: tuple[DimplexSwitchEntityDescription, ...] = (
     DimplexSwitchEntityDescription(
         key="ecostart",
         translation_key="ecostart",
+        capability="eco_start",
         is_on_fn=lambda status: bool(status and status.EcoStartEnabled),
         set_fn=_set_eco_start,
         icon_on="mdi:leaf",
@@ -47,6 +51,7 @@ SWITCHES: tuple[DimplexSwitchEntityDescription, ...] = (
     DimplexSwitchEntityDescription(
         key="open_window_detection",
         translation_key="open_window_detection",
+        capability="open_window",
         is_on_fn=lambda status: bool(status and getattr(status, "OpenWindowEnabled", False)),
         set_fn=_set_open_window,
         icon_on="mdi:window-open",
@@ -63,11 +68,16 @@ async def async_setup_entry(
     """Set up switch platform."""
     runtime = entry.runtime_data
     rows = (runtime.status.data or {}).get("appliances", [])
-    entities = [
-        DimplexSwitch(runtime.status, entry, appliance_row, runtime.api, description)
-        for appliance_row in rows
-        for description in SWITCHES
-    ]
+    entities: list[DimplexSwitch] = []
+    for appliance_row in rows:
+        caps = capabilities_for_row(
+            appliance_row["appliance"], appliance_row.get("status"), appliance_row.get("product")
+        )
+        entities.extend(
+            DimplexSwitch(runtime.status, entry, appliance_row, runtime.api, description)
+            for description in SWITCHES
+            if getattr(caps, description.capability, False)
+        )
     async_add_entities(entities)
 
 

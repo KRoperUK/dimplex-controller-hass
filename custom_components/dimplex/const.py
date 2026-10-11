@@ -61,6 +61,39 @@ FROST_FLAG = int(ApplianceModeFlag.FROST_PROTECT)
 # estimate live power.
 HEAT_DEMAND_FLAGS = BOOST_FLAG | ADVANCE_FLAG
 
+# Hot-water cylinder modes. A live ASHW cylinder (EDL200UK-630RF) the app shows
+# as "Timer" reports ApplianceModes = 8192 (Normal) with no Timer bit, so Normal
+# and Timer both read as the app's "Timer".
+TIMER_FLAG = int(ApplianceModeFlag.TIMER_MODE)
+HOLIDAY_FLAG = int(ApplianceModeFlag.HOLIDAY)
+HYGIENE_FLAG = int(ApplianceModeFlag.HYGIENE)
+NORMAL_FLAG = int(ApplianceModeFlag.NORMAL)
+STANDBY_FLAG = int(ApplianceModeFlag.STANDBY)
+
+HOT_WATER_MODES: tuple[str, ...] = ("standby", "timer", "holiday", "boost", "hygiene")
+
+# ``EFrequency`` values (days between anti-legionella cycles) to names.
+HYGIENE_FREQUENCY_NAMES: dict[int, str] = {0: "off", 1: "daily", 7: "weekly", 28: "monthly"}
+
+
+def hot_water_mode(status: Any) -> str | None:
+    """Map a cylinder's ``ApplianceModes`` bits to the app's mode name."""
+    modes = getattr(status, "ApplianceModes", None) if status is not None else None
+    if modes is None:
+        return None
+    # Most specific first: a boost or hygiene run sits on top of the base mode.
+    for flag, name in (
+        (HYGIENE_FLAG, "hygiene"),
+        (BOOST_FLAG, "boost"),
+        (HOLIDAY_FLAG, "holiday"),
+        (STANDBY_FLAG, "standby"),
+        (NORMAL_FLAG | TIMER_FLAG, "timer"),
+    ):
+        if modes & flag:
+            return name
+    return None
+
+
 # --- Timer modes -----------------------------------------------------------
 TIMER_USER = int(TimerMode.USER_TIMER)
 TIMER_MANUAL = int(TimerMode.MANUAL)
@@ -134,6 +167,7 @@ PLATFORMS = [
     Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.WATER_HEATER,
 ]
 
 CONF_USERNAME = "username"

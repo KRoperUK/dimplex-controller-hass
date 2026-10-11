@@ -18,7 +18,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfEnergy, UnitOfPower, UnitOfTemperature
+from homeassistant.const import EntityCategory, UnitOfEnergy, UnitOfPower, UnitOfTemperature, UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -26,7 +26,15 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpda
 from homeassistant.util import dt as dt_util
 
 from .capabilities import capabilities_for_row
-from .const import DOMAIN, HEAT_DEMAND_FLAGS, has_any_mode, sane_temperature
+from .const import (
+    DOMAIN,
+    HEAT_DEMAND_FLAGS,
+    HOT_WATER_MODES,
+    HYGIENE_FREQUENCY_NAMES,
+    has_any_mode,
+    hot_water_mode,
+    sane_temperature,
+)
 from .entity import DimplexEntity, resolve_via_device_id
 
 _LOGGER = logging.getLogger(__name__)
@@ -120,6 +128,7 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
+        capability="climate",
         value_fn=_status_temp("RoomTemperature"),
     ),
     DimplexSensorEntityDescription(
@@ -134,6 +143,7 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         translation_key="boost_temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
+        capability="boost",
         value_fn=_status_temp("BoostTemperature"),
     ),
     DimplexSensorEntityDescription(
@@ -141,6 +151,7 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         translation_key="away_temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
+        capability="away",
         value_fn=_status_temp("AwayTemperature"),
     ),
     DimplexSensorEntityDescription(
@@ -148,6 +159,7 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         translation_key="setback_temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
+        capability="setback_read",
         value_fn=_status_temp("SetbackTemperature"),
     ),
     DimplexSensorEntityDescription(
@@ -204,21 +216,51 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_estimated_power_kw,
     ),
-    # The only hot-water value the cloud reports back. Deliberately a diagnostic,
-    # disabled-by-default sensor with no unit or device class: the field is a bare
-    # number and nothing in the app or the API reference says what it measures —
-    # °C and litres are both plausible. Shipping it as a temperature entity would be
-    # inventing a unit; shipping it unitless and off by default lets a cylinder owner
-    # turn it on and report what it shows (#199).
+    # Litres of usable hot water: a live ASHW cylinder reports 336 here and the
+    # Dimplex app shows "336 L Hot water" for it. Capability-gated so an
+    # appliance with no hot water does not get a permanently unknown sensor (#199).
     DimplexSensorEntityDescription(
         key="hot_water_available",
         translation_key="hot_water_available",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        # Capability-gated, so an appliance the library says has no hot water does
-        # not get a permanently unknown hot-water sensor (#199).
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        device_class=SensorDeviceClass.VOLUME_STORAGE,
+        state_class=SensorStateClass.MEASUREMENT,
         capability="hot_water",
         value_fn=_status_attr("AvailableHotWater"),
+    ),
+    DimplexSensorEntityDescription(
+        key="hot_water_capacity",
+        translation_key="hot_water_capacity",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        device_class=SensorDeviceClass.VOLUME_STORAGE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        capability="hot_water",
+        value_fn=_status_attr("Capacity"),
+    ),
+    DimplexSensorEntityDescription(
+        key="hot_water_mode",
+        translation_key="hot_water_mode",
+        device_class=SensorDeviceClass.ENUM,
+        options=list(HOT_WATER_MODES),
+        capability="hot_water",
+        value_fn=lambda status, _appliance: hot_water_mode(status),
+    ),
+    DimplexSensorEntityDescription(
+        key="hygiene_frequency",
+        translation_key="hygiene_frequency",
+        device_class=SensorDeviceClass.ENUM,
+        options=list(HYGIENE_FREQUENCY_NAMES.values()),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        capability="hygiene",
+        value_fn=lambda status, _appliance: HYGIENE_FREQUENCY_NAMES.get(getattr(status, "HygieneFrequency", -1)),
+    ),
+    DimplexSensorEntityDescription(
+        key="holiday_days",
+        translation_key="holiday_days",
+        native_unit_of_measurement=UnitOfTime.DAYS,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        capability="hot_water",
+        value_fn=_status_attr("HolidayNumOfDays"),
     ),
 )
 

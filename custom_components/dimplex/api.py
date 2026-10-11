@@ -49,8 +49,16 @@ except ImportError:  # pragma: no cover - older wheels
 # The cloud sends ErrorCode/WarningCode as integers (0 when healthy), but the
 # library (<= 0.13.1) types them as ``str``, so every status poll fails validation
 # and setup never completes. Coerce numbers to strings until the library is fixed.
-if not ApplianceStatus.model_config.get("coerce_numbers_to_str"):
+# Hot-water cylinders also report fields the library model does not declare
+# (Capacity, HeatingUp, IsGreenEnergyActive, HygieneFrequency, HolidayNumOfDays…);
+# keep them as attributes instead of dropping them so the cylinder entities can
+# read them.
+if (
+    not ApplianceStatus.model_config.get("coerce_numbers_to_str")
+    or ApplianceStatus.model_config.get("extra") != "allow"
+):
     ApplianceStatus.model_config["coerce_numbers_to_str"] = True
+    ApplianceStatus.model_config["extra"] = "allow"
     ApplianceStatus.model_rebuild(force=True)
 
 
