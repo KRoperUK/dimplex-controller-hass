@@ -155,6 +155,9 @@
       },
       "holiday_days": {
         "name": "Feriedager"
+      },
+      "hot_water_schedule": {
+        "name": "Varmtvannsplan"
       }
     },
     "binary_sensor": {

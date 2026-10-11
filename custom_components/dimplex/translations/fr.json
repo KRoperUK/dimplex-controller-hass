@@ -155,6 +155,9 @@
       },
       "holiday_days": {
         "name": "Jours de vacances"
+      },
+      "hot_water_schedule": {
+        "name": "Programme eau chaude"
       }
     },
     "binary_sensor": {

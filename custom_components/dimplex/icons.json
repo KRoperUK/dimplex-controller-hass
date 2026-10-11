@@ -72,6 +72,9 @@
       },
       "hot_water_available": {
         "default": "mdi:water"
+      },
+      "hot_water_schedule": {
+        "default": "mdi:calendar-clock"
       }
     },
     "binary_sensor": {

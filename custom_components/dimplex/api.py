@@ -436,6 +436,22 @@ class DimplexApiClient:
                 return await self._client.get_schedule(hub_id, appliance_id)
             return await self._client.get_appliance_features(hub_id, appliance_id)
 
+    async def async_get_hot_water_schedule(self, hub_id: str, appliance_id: str) -> dict[str, Any]:
+        """Return an ASHW cylinder's weekly schedule as the cloud sends it.
+
+        Read raw because the library parses the reply into the room-heater
+        ``TimerModeSettings``, which it does not fit: a live cylinder returns
+        ``{HubId, ApplianceId, TimerPeriods: [{DayOfWeek, StartTime: 0, Mode: 2}]}``
+        with no ``TimerMode`` and integer start times.
+        """
+        with _translated_errors():
+            data = await self._client._request(
+                "POST",
+                "/RemoteControl/ApiGetTimerModeDetailsForHeatPumpHwcAppliance",
+                json={"HubId": hub_id, "ApplianceId": appliance_id},
+            )
+        return data if isinstance(data, dict) else {}
+
     async def async_set_hot_water_temperature(
         self,
         hub_id: str,

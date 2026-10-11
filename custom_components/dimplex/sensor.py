@@ -354,7 +354,10 @@ async def async_setup_entry(
             if description.capability is None or getattr(caps, description.capability, False)
         )
         devices.extend(DimplexEnergySensor(energy, entry, appliance_row, description) for description in ENERGY_SENSORS)
-        devices.append(DimplexScheduleSensor(status, entry, appliance_row))
+        if caps.hot_water and caps.heat_pump:
+            devices.append(DimplexHotWaterScheduleSensor(status, entry, appliance_row))
+        else:
+            devices.append(DimplexScheduleSensor(status, entry, appliance_row))
         zone = appliance_row.get("zone")
         zone_id = getattr(zone, "ZoneId", None) if zone is not None else None
         if zone_id and zone_id not in seen_zones:
@@ -456,6 +459,106 @@ class DimplexScheduleSensor(DimplexEntity, SensorEntity):
             "period_count": len(periods_out),
             "periods": periods_out,
         }
+
+
+# .NET DayOfWeek, as the cylinder schedule uses it: 0 = Sunday.
+_DAYS = ("sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday")
+_DAY_ABBR = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+_WEEK_ORDER = (1, 2, 3, 4, 5, 6, 0)  # Monday first, like the app
+
+
+def _clock(start: Any) -> str | None:
+    """Format a cylinder period start as HH:MM.
+
+    The cloud sends an integer; minutes after midnight is assumed (a live
+    cylinder only ever showed 0), so the raw value is kept alongside.
+    """
+    try:
+        minutes = int(start)
+    except (TypeError, ValueError):
+        return None
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+class DimplexHotWaterScheduleSensor(DimplexEntity, SensorEntity):
+    """Read-only weekly schedule of a heat-pump hot-water cylinder."""
+
+    _attr_translation_key = "hot_water_schedule"
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+    ) -> None:
+        super().__init__(coordinator, config_entry, appliance_row)
+        # Same id as the room-heater schedule sensor it replaces on cylinders.
+        self._attr_unique_id = f"{config_entry.entry_id}_{self._appliance.ApplianceId}_schedule"
+
+    @property
+    def available(self) -> bool:
+        if not CoordinatorEntity.available.__get__(self, type(self)):
+            return False
+        return isinstance(self._schedule, dict)
+
+    @property
+    def _schedule(self) -> Any:
+        schedules = (self.coordinator.data or {}).get("schedules") or {}
+        return schedules.get(self._appliance.ApplianceId)
+
+    def _by_day(self) -> dict[int, list[tuple[int, Any]]]:
+        days: dict[int, list[tuple[int, Any]]] = {}
+        for period in (self._schedule or {}).get("TimerPeriods") or []:
+            try:
+                day, start = int(period["DayOfWeek"]), int(period["StartTime"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if 0 <= day <= 6:
+                days.setdefault(day, []).append((start, period.get("Mode")))
+        return {day: sorted(periods) for day, periods in days.items()}
+
+    @property
+    def native_value(self) -> str | None:
+        """Compact summary, e.g. ``Mon–Sun 00:00 mode 2``."""
+        if not isinstance(self._schedule, dict):
+            return None
+        by_day = self._by_day()
+        if not by_day:
+            return "no periods"
+        groups: list[tuple[list[int], str]] = []
+        for day in _WEEK_ORDER:
+            text = ", ".join(f"{_clock(start)} mode {mode}" for start, mode in by_day.get(day, [])) or "none"
+            if groups and groups[-1][1] == text:
+                groups[-1][0].append(day)
+            else:
+                groups.append(([day], text))
+        parts = []
+        for days, text in groups:
+            label = _DAY_ABBR[days[0]] if len(days) == 1 else f"{_DAY_ABBR[days[0]]}–{_DAY_ABBR[days[-1]]}"
+            parts.append(f"{label} {text}")
+        return "; ".join(parts)[:255]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        if not isinstance(self._schedule, dict):
+            return {}
+        by_day = self._by_day()
+        now = dt_util.now()
+        today = (now.weekday() + 1) % 7
+        minute = now.hour * 60 + now.minute
+        current = None
+        for start, mode in by_day.get(today, []):
+            if start <= minute:
+                current = mode
+        attrs: dict[str, Any] = {
+            _DAYS[day]: [
+                {"start": _clock(start), "start_raw": start, "mode": mode} for start, mode in by_day.get(day, [])
+            ]
+            for day in _WEEK_ORDER
+        }
+        attrs["current_mode"] = current
+        attrs["period_count"] = sum(len(periods) for periods in by_day.values())
+        return attrs
 
 
 class DimplexZoneSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):

@@ -169,6 +169,9 @@
       },
       "holiday_days": {
         "name": "Holiday days"
+      },
+      "hot_water_schedule": {
+        "name": "Hot water schedule"
       }
     },
     "binary_sensor": {

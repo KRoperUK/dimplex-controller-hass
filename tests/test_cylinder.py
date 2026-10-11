@@ -362,3 +362,61 @@ async def test_holiday_end_survives_a_restart(hass):
     assert dt_util.parse_datetime(hass.states.get("datetime.hot_water_hot_water_holiday_ends").state) == end
     assert entry.runtime_data.holiday.ends["cyl-1"] == end
     assert "cyl-1" in entry.runtime_data.holiday._timers
+
+
+LIVE_SCHEDULE = {
+    "HubId": "hub-1",
+    "ApplianceId": "cyl-1",
+    "TimerPeriods": [{"DayOfWeek": d, "StartTime": 0, "Mode": 2} for d in (1, 2, 3, 4, 5, 6, 0)],
+}
+
+
+@pytest.mark.asyncio
+async def test_hot_water_schedule_sensor(hass):
+    with patch(
+        "custom_components.dimplex.DimplexApiClient.async_get_hot_water_schedule",
+        return_value=LIVE_SCHEDULE,
+    ) as fetch:
+        await _setup(hass, _payload())
+    fetch.assert_awaited_once_with("hub-1", "cyl-1")
+
+    state = hass.states.get("sensor.hot_water_hot_water_hot_water_schedule")
+    assert state.state == "Mon–Sun 00:00 mode 2"
+    assert state.attributes["monday"] == [{"start": "00:00", "start_raw": 0, "mode": 2}]
+    assert state.attributes["current_mode"] == 2
+    assert state.attributes["period_count"] == 7
+    # The panel heater keeps the room-heater schedule sensor.
+    assert hass.states.get("sensor.hall_hall_schedule") is not None
+
+
+@pytest.mark.asyncio
+async def test_hot_water_schedule_summary_groups_days(hass):
+    schedule = {
+        "TimerPeriods": [
+            {"DayOfWeek": d, "StartTime": s, "Mode": m}
+            for d in (1, 2, 3, 4, 5)
+            for s, m in ((0, 0), (390, 2), (1320, 0))
+        ]
+        + [{"DayOfWeek": 6, "StartTime": 0, "Mode": 2}, {"DayOfWeek": 0, "StartTime": 0, "Mode": 2}]
+    }
+    with patch("custom_components.dimplex.DimplexApiClient.async_get_hot_water_schedule", return_value=schedule):
+        await _setup(hass, _payload())
+    state = hass.states.get("sensor.hot_water_hot_water_hot_water_schedule")
+    assert state.state == "Mon–Fri 00:00 mode 0, 06:30 mode 2, 22:00 mode 0; Sat–Sun 00:00 mode 2"
+
+
+async def test_api_reads_cylinder_schedule_raw(hass):
+    from unittest.mock import AsyncMock
+
+    from custom_components.dimplex.api import DimplexApiClient
+
+    api = DimplexApiClient.__new__(DimplexApiClient)
+    api._client = SimpleNamespace(_request=AsyncMock(return_value=LIVE_SCHEDULE))
+    assert await api.async_get_hot_water_schedule("hub-1", "cyl-1") == LIVE_SCHEDULE
+    api._client._request.assert_awaited_once_with(
+        "POST",
+        "/RemoteControl/ApiGetTimerModeDetailsForHeatPumpHwcAppliance",
+        json={"HubId": "hub-1", "ApplianceId": "cyl-1"},
+    )
+    api._client._request.return_value = None
+    assert await api.async_get_hot_water_schedule("hub-1", "cyl-1") == {}
