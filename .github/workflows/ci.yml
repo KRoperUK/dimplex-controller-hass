@@ -250,7 +250,7 @@ jobs:
 
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-report
           path: coverage.xml
@@ -270,7 +270,7 @@ jobs:
           category: integration
 
       - name: Hassfest validation
-        uses: home-assistant/actions/hassfest@06749dd8c0b54f350bc69c8752456cee498808a3 # master
+        uses: home-assistant/actions/hassfest@50baf3a307f87100cf550d4ae127746595030d5d # master
 
   # Syntax-check the release / dev-build shell helpers. These scripts drive tag
   # computation, dev-version commits and HACS packaging, so a syntax error there can
