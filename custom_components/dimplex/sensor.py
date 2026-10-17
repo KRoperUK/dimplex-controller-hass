@@ -722,12 +722,26 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         return summary is not None and summary.point_count > 0
 
     @property
-    def native_value(self) -> float | None:
-        """Return kWh for the configured window."""
+    def _raw_total(self) -> float | None:
+        """Return the total the cloud actually reported, before the monotonic hold.
+
+        The reported value is deliberately held at the peak (:meth:`_reported_total`),
+        so this is the only way to see what the cloud is currently sending. It is
+        exposed as an attribute on the cumulative sensors so a suppressed drop is
+        inspectable rather than invisible (#234).
+        """
         summary = self._summary()
         if summary is None or summary.point_count == 0:
             return None
-        return self._reported_total(float(summary.total_kwh))
+        return float(summary.total_kwh)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return kWh for the configured window."""
+        total = self._raw_total
+        if total is None:
+            return None
+        return self._reported_total(total)
 
     def _reported_total(self, total: float) -> float:
         """Return a cumulative total that never falls, and remember the peak.
@@ -746,6 +760,16 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         against the last value in *its* recorder, not against anything held in
         memory — so a dip on the first poll after a restart would still look like a
         reset.
+
+        Holding forever has a cost the issue named: if the cloud's history for an
+        appliance is reduced *permanently* — retention trimming, a changed report
+        shape, a re-onboarded appliance under the same id — the true total falls and
+        nothing notices. The entity then over-reports silently and indefinitely. A
+        drop of more than 10% is exactly the case that is both worth suppressing (it
+        is what Home Assistant reads as a meter cycle) and the signature of that
+        permanent reduction, so it is logged at ``warning``; anything smaller is
+        routine noise and stays at ``debug``. The unheld value is published as
+        ``raw_total`` alongside it (#234).
         """
         if self.entity_description.mode != "lifetime":
             return total
@@ -754,11 +778,15 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
             self._peak_total = total
             return total
         if total < peak:
-            _LOGGER.debug(
-                "%s reported %s kWh, below the %s kWh already seen; holding the higher value",
+            drop_percent = round((peak - total) / peak * 100, 1) if peak else 0.0
+            log = _LOGGER.warning if drop_percent > 10 else _LOGGER.debug
+            log(
+                "%s reported %s kWh, below the %s kWh already seen (%s%% drop); holding the higher value. "
+                "Raw total is on the raw_total attribute",
                 self.entity_id,
                 total,
                 peak,
+                drop_percent,
             )
         return peak
 
@@ -799,7 +827,7 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         summary = self._summary()
         if summary is None:
             return {}
-        return {
+        attributes: dict[str, Any] = {
             "mode": summary.mode,
             "register": self.entity_description.register,
             # No `window_days`: the value covers whatever span the cloud returned,
@@ -810,3 +838,13 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
             "window_end": summary.end.isoformat() if summary.end else None,
             "telemetry_points": summary.point_count,
         }
+        if self.entity_description.mode == "lifetime":
+            # `raw_total` is what the cloud is sending now; the state is the held
+            # peak, which can be higher. Together with the warning in
+            # `_reported_total` this makes a suppressed drop answerable from a
+            # diagnostics download, instead of "is the cloud trimming our history?"
+            # being unanswerable without guesswork (#234). Daily totals are not
+            # held, so they need neither.
+            attributes["raw_total"] = self._raw_total
+            attributes["peak_total"] = self._peak_total
+        return attributes

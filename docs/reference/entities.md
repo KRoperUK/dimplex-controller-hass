@@ -64,16 +64,20 @@ Full field reference: [Actions](actions.md).
 
 ### Energy attributes
 
-| Attribute                     | Description                                            |
-| ----------------------------- | ------------------------------------------------------ |
-| `mode`                        | `lifetime` (everything the cloud returned) or `daily`. |
-| `register`                    | `t1` or `t2` (always separate).                        |
-| `window_start` / `window_end` | Bounds of points used in the total — the real span.    |
-| `telemetry_points`            | Number of points included.                             |
+| Attribute                     | Description                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `mode`                        | `lifetime` (everything the cloud returned) or `daily`.                      |
+| `register`                    | `t1` or `t2` (always separate).                                             |
+| `window_start` / `window_end` | Bounds of points used in the total — the real span.                         |
+| `telemetry_points`            | Number of points included.                                                  |
+| `raw_total`                   | _Lifetime only._ The total the cloud is sending now, before the hold below. |
+| `peak_total`                  | _Lifetime only._ The highest total seen, which the state reports.           |
 
 Energy data is **daily kWh history** from the cloud, not live watts. Sensors are **unavailable** (not `0`) when there are no points, and **T1 and T2 are never combined** — they are separate dual-rate registers.
 
 The lifetime sensors declare `total_increasing` and are held monotonic: the highest value seen is what gets reported, and it is restored across a restart. That exists because a truncated cloud response would otherwise make the total fall, which Home Assistant reads as a meter reset and re-adds to long-term statistics.
+
+A **permanent** reduction of the cloud's history cannot be reported as a lower reading, for that same reason — so on its own the hold would over-report silently and for ever. `raw_total` is what makes that visible: it is the number the cloud is currently sending, so a value below the state (or below `peak_total`) means the hold is suppressing something, and a suppressed drop of more than 10% logs a warning naming both figures. If `raw_total` stays below the state across consecutive polls, the cloud has lost history for that appliance — see [troubleshooting](../help/troubleshooting.md#the-energy-total-stays-above-what-the-cloud-is-sending).
 
 See [Energy monitoring](../use/energy.md) for adding these to the Energy Dashboard, the
 tariff mapping, and the automatic poll back-off when history stays empty.
