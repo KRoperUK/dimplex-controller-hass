@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 _lib_capabilities_for: Callable[..., Any] | None = None
@@ -188,7 +188,9 @@ def capabilities_for_row(appliance: Any, status: Any = None, product: Any = None
     """
     if _lib_capabilities_for is not None:
         try:
-            return _from_library(_lib_capabilities_for(appliance, status=status, product=product))
+            return _cylinder_only(
+                _from_library(_lib_capabilities_for(appliance, status=status, product=product)), status
+            )
         except Exception:
             pass
 
@@ -213,12 +215,42 @@ def capabilities_for_row(appliance: Any, status: Any = None, product: Any = None
     ):
         climate = True
 
-    return LocalCapabilities(
-        climate=climate,
-        advance=not (hot_water and not climate),
-        hot_water=hot_water,
-        heat_pump=heat_pump,
-        hygiene=hot_water,
-        storage=storage,
-        energy_meter=storage,
+    return _cylinder_only(
+        LocalCapabilities(
+            climate=climate,
+            advance=not (hot_water and not climate),
+            hot_water=hot_water,
+            heat_pump=heat_pump,
+            hygiene=hot_water,
+            storage=storage,
+            energy_meter=storage,
+        ),
+        status,
+    )
+
+
+def _cylinder_only(caps: LocalCapabilities, status: Any) -> LocalCapabilities:
+    """Strip the room-heater features from a hot-water cylinder.
+
+    The library (<= 0.13.1) and the fallback above both call an appliance room
+    climate when it reports ``ActiveSetPointTemperature`` — but a cylinder reports
+    its water target there (45 °C on a live ASHW cylinder, outside the 7-30 °C
+    room range). A cylinder only gets the room features when it also reports a
+    room temperature. Its boost is the cylinder's own, not a timed room boost, so
+    that and the room temperature range go too.
+    """
+    if not caps.hot_water or (status is not None and getattr(status, "RoomTemperature", None) is not None):
+        return caps
+    return replace(
+        caps,
+        climate=False,
+        boost=False,
+        away=False,
+        advance=False,
+        open_window=False,
+        eco_start=False,
+        setback_read=False,
+        setback_write=False,
+        frost=False,
+        setpoint_write=False,
     )

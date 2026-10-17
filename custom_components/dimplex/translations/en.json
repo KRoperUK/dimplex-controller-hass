@@ -144,6 +144,34 @@
       },
       "zone": {
         "name": "Zone"
+      },
+      "hot_water_capacity": {
+        "name": "Hot water capacity"
+      },
+      "hot_water_mode": {
+        "name": "Hot water mode",
+        "state": {
+          "standby": "Standby",
+          "timer": "Timer",
+          "holiday": "Holiday",
+          "boost": "Boost",
+          "hygiene": "Hygiene"
+        }
+      },
+      "hygiene_frequency": {
+        "name": "Hygiene recurrence",
+        "state": {
+          "off": "Off",
+          "daily": "Daily",
+          "weekly": "Weekly",
+          "monthly": "Monthly"
+        }
+      },
+      "holiday_days": {
+        "name": "Holiday days"
+      },
+      "hot_water_schedule": {
+        "name": "Hot water schedule"
       }
     },
     "binary_sensor": {
@@ -170,6 +198,15 @@
       },
       "advance_active": {
         "name": "Advance active"
+      },
+      "hot_water_heating": {
+        "name": "Heating water"
+      },
+      "green_energy": {
+        "name": "Green energy"
+      },
+      "holiday_active": {
+        "name": "Holiday"
       }
     },
     "switch": {
@@ -178,6 +215,9 @@
       },
       "open_window_detection": {
         "name": "Open window detection"
+      },
+      "holiday": {
+        "name": "Holiday"
       }
     },
     "number": {
@@ -188,6 +228,23 @@
     "select": {
       "boost_duration": {
         "name": "Boost duration"
+      }
+    },
+    "water_heater": {
+      "cylinder": {
+        "name": "Hot water",
+        "state": {
+          "standby": "Standby",
+          "timer": "Timer",
+          "holiday": "Holiday",
+          "boost": "Boost",
+          "hygiene": "Hygiene"
+        }
+      }
+    },
+    "datetime": {
+      "holiday_end": {
+        "name": "Holiday ends"
       }
     }
   }

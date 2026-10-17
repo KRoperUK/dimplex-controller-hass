@@ -30,6 +30,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .api import CannotConnect, DimplexApiClient, InvalidAuth
+from .capabilities import capabilities_for_row
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_ENERGY_INTERVAL,
@@ -49,6 +50,7 @@ from .const import (
     STARTUP_MESSAGE,
     has_any_mode,
 )
+from .holiday import HolidayManager
 from .repairs import (
     async_update_empty_energy_issue,
     async_update_empty_overview_issue,
@@ -79,6 +81,8 @@ class DimplexRuntimeData:
     # ``CONF_BOOST_DURATION`` option so each appliance can use its own duration
     # from the discrete set the cloud offers (#252).
     boost_minutes: dict[str, int] = field(default_factory=dict)
+    # Hot-water holiday end times and the timers that clear Holiday at them.
+    holiday: HolidayManager | None = None
 
 
 async def _preload_platforms(platforms: list[Platform]) -> None:
@@ -218,14 +222,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
     await energy_coordinator.async_refresh()
 
     platforms = [platform for platform in PLATFORMS if entry.options.get(platform, True)]
+    holiday = HolidayManager(hass, client, status_coordinator)
     runtime = DimplexRuntimeData(
         api=client,
         status=status_coordinator,
         energy=energy_coordinator,
         platforms=platforms,
         options_snapshot=dict(entry.options),
+        holiday=holiday,
     )
     entry.runtime_data = runtime
+    entry.async_on_unload(holiday.async_shutdown)
 
     # Register hub and zone devices up front so platform entities can safely
     # reference them via via_device (see dimplex-controller-hass#117).
@@ -292,7 +299,7 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_fetch_schedules(self, appliances: list[dict[str, Any]]) -> dict[str, Any]:
         """Fetch timer schedules for all appliances concurrently (best-effort)."""
-        targets: list[tuple[str, str]] = []
+        targets: list[tuple[str, str, bool]] = []
         for row in appliances:
             appliance = row.get("appliance")
             hub = row.get("hub")
@@ -301,18 +308,23 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             appliance_id = getattr(appliance, "ApplianceId", None)
             hub_id = getattr(hub, "HubId", None)
             if appliance_id and hub_id:
-                targets.append((hub_id, appliance_id))
+                # Heat-pump cylinders have their own schedule endpoint; the
+                # room-heater one returns an empty schedule for them.
+                caps = capabilities_for_row(appliance, row.get("status"), row.get("product"))
+                targets.append((hub_id, appliance_id, caps.hot_water and caps.heat_pump))
 
-        async def _one(hub_id: str, appliance_id: str) -> Any:
+        async def _one(hub_id: str, appliance_id: str, cylinder: bool) -> Any:
+            if cylinder:
+                return await self.api.async_get_hot_water_schedule(hub_id, appliance_id)
             return await self.api.async_get_schedule(hub_id, appliance_id)
 
         results = await asyncio.gather(
-            *(_one(hub_id, appliance_id) for hub_id, appliance_id in targets),
+            *(_one(*target) for target in targets),
             return_exceptions=True,
         )
 
         schedules: dict[str, Any] = {}
-        for (_, appliance_id), result in zip(targets, results, strict=False):
+        for (_, appliance_id, _cylinder), result in zip(targets, results, strict=False):
             if isinstance(result, Exception):
                 _LOGGER.debug("Schedule unavailable for %s: %s", appliance_id, result)
                 schedules[appliance_id] = None

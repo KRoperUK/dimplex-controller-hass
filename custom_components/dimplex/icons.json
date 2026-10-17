@@ -51,6 +51,30 @@
       },
       "zone": {
         "default": "mdi:floor-plan"
+      },
+      "hot_water_capacity": {
+        "default": "mdi:storage-tank"
+      },
+      "hot_water_mode": {
+        "default": "mdi:water-boiler",
+        "state": {
+          "standby": "mdi:water-boiler-off",
+          "holiday": "mdi:airplane",
+          "boost": "mdi:fire",
+          "hygiene": "mdi:shield-check"
+        }
+      },
+      "hygiene_frequency": {
+        "default": "mdi:shield-refresh"
+      },
+      "holiday_days": {
+        "default": "mdi:calendar-range"
+      },
+      "hot_water_available": {
+        "default": "mdi:water"
+      },
+      "hot_water_schedule": {
+        "default": "mdi:calendar-clock"
       }
     },
     "binary_sensor": {
@@ -65,6 +89,9 @@
       },
       "connected": {
         "default": "mdi:wifi"
+      },
+      "hot_water_heating": {
+        "default": "mdi:water-boiler"
       }
     },
     "switch": {
@@ -78,6 +105,11 @@
     "select": {
       "boost_duration": {
         "default": "mdi:timer-cog-outline"
+      }
+    },
+    "water_heater": {
+      "cylinder": {
+        "default": "mdi:water-boiler"
       }
     }
   }

@@ -10,7 +10,7 @@ Entity names use Home Assistant’s `has_entity_name` pattern: the **device** is
 
 ## Climate
 
-One climate entity per appliance.
+One climate entity per room heater. Hot water cylinders get a [water heater](#water-heater) instead.
 
 | Name            | Entity ID pattern     | Description                                                                                                                                                                                                                    |
 | --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -43,24 +43,24 @@ Full field reference: [Actions](actions.md).
 
 ## Sensors
 
-| Name                | Unit      | Device class | Description                                                                                                                                                               |
-| ------------------- | --------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Room temperature    | °C        | temperature  | Current room temperature.                                                                                                                                                 |
-| Target temperature  | °C        | temperature  | Active setpoint.                                                                                                                                                          |
-| Boost temperature   | °C        | temperature  | Boost mode target.                                                                                                                                                        |
-| Away temperature    | °C        | temperature  | Away mode target.                                                                                                                                                         |
-| Setback temperature | °C        | temperature  | Setback target.                                                                                                                                                           |
-| Energy lifetime     | kWh       | energy       | Total across every daily reading the cloud still holds for the appliance — normally its whole history, so it rises like a meter. Translation key stays `energy_lifetime`. |
-| Energy today        | kWh       | energy       | T1 (off-peak) kWh for the current local calendar day.                                                                                                                     |
-| Energy T2 lifetime  | kWh       | energy       | As **Energy lifetime**, for register **T2** (peak / more expensive; disabled by default). Translation key stays `energy_t2_lifetime`.                                     |
-| Energy T2 today     | kWh       | energy       | T2 (peak) kWh for the current local calendar day (disabled by default).                                                                                                   |
-| Rated power         | kW        | power        | Static nameplate power from product provisioning (_disabled by default_).                                                                                                 |
-| Estimated power     | kW        | power        | Heuristic `rated_power` when boost or advance is engaged, else `0` (_diagnostic, disabled by default; not a live meter_).                                                 |
-| Charge capacity     | kWh       | energy       | Static storage capacity from provisioning (_disabled by default_).                                                                                                        |
-| Error code          | —         | —            | Appliance error code (_disabled by default_).                                                                                                                             |
-| Warning code        | —         | —            | Appliance warning code (_disabled by default_).                                                                                                                           |
-| Last telemetry      | timestamp | timestamp    | Last cloud telemetry time (_disabled by default_).                                                                                                                        |
-| Hot water available | —         | —            | The cloud's `AvailableHotWater` reading, for cylinders only (_diagnostic, disabled by default; unit unconfirmed_).                                                        |
+| Name                | Unit      | Device class   | Description                                                                                                                                                               |
+| ------------------- | --------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Room temperature    | °C        | temperature    | Current room temperature.                                                                                                                                                 |
+| Target temperature  | °C        | temperature    | Active setpoint.                                                                                                                                                          |
+| Boost temperature   | °C        | temperature    | Boost mode target.                                                                                                                                                        |
+| Away temperature    | °C        | temperature    | Away mode target.                                                                                                                                                         |
+| Setback temperature | °C        | temperature    | Setback target.                                                                                                                                                           |
+| Energy lifetime     | kWh       | energy         | Total across every daily reading the cloud still holds for the appliance — normally its whole history, so it rises like a meter. Translation key stays `energy_lifetime`. |
+| Energy today        | kWh       | energy         | T1 (off-peak) kWh for the current local calendar day.                                                                                                                     |
+| Energy T2 lifetime  | kWh       | energy         | As **Energy lifetime**, for register **T2** (peak / more expensive; disabled by default). Translation key stays `energy_t2_lifetime`.                                     |
+| Energy T2 today     | kWh       | energy         | T2 (peak) kWh for the current local calendar day (disabled by default).                                                                                                   |
+| Rated power         | kW        | power          | Static nameplate power from product provisioning (_disabled by default_).                                                                                                 |
+| Estimated power     | kW        | power          | Heuristic `rated_power` when boost or advance is engaged, else `0` (_diagnostic, disabled by default; not a live meter_).                                                 |
+| Charge capacity     | kWh       | energy         | Static storage capacity from provisioning (_disabled by default_).                                                                                                        |
+| Error code          | —         | —              | Appliance error code (_disabled by default_).                                                                                                                             |
+| Warning code        | —         | —              | Appliance warning code (_disabled by default_).                                                                                                                           |
+| Last telemetry      | timestamp | timestamp      | Last cloud telemetry time (_disabled by default_).                                                                                                                        |
+| Hot water available | L         | volume_storage | Usable hot water, as the app's "336 L Hot water" — cylinders only.                                                                                                        |
 
 ### Energy attributes
 
@@ -111,6 +111,50 @@ the sensors are the appliance's actual state and are the better thing to automat
 [Modes & presets](../use/modes.md) for the whole model. A
 [diagnostics download](../help/diagnostics.md) also lists the engaged modes by name.
 
+## Water heater
+
+One per hot water cylinder, **read-only**: the cylinder control endpoints other than holiday
+are untested, so it offers no controls. Translation key `cylinder`.
+
+| State / attribute     | Description                                                           |
+| --------------------- | --------------------------------------------------------------------- |
+| state                 | The app's mode: `standby`, `timer`, `holiday`, `boost` or `hygiene`.  |
+| `temperature`         | Water target (`ActiveSetPointTemperature`).                           |
+| `hot_water_available` | Litres of usable hot water.                                           |
+| `capacity`            | Tank size in litres.                                                  |
+| `heating_up`          | The cylinder is heating now.                                          |
+| `green_energy_active` | Green energy (heat pump) mode.                                        |
+| `appliance_modes`     | The raw mode bitfield. `Normal` (8192) is what the app calls "Timer". |
+
+Cylinder sensors (created only for hot water appliances):
+
+| Name               | Unit | Description                                                                                         |
+| ------------------ | ---- | --------------------------------------------------------------------------------------------------- |
+| Hot water capacity | L    | Tank size (_diagnostic_). Translation key `hot_water_capacity`.                                     |
+| Hot water mode     | —    | `standby` / `timer` / `holiday` / `boost` / `hygiene`. Translation key `hot_water_mode`.            |
+| Hygiene recurrence | —    | Anti-legionella cycle: `off`, `daily`, `weekly`, `monthly` (_diagnostic_). Key `hygiene_frequency`. |
+| Holiday days       | d    | Days of holiday the cylinder has left (_diagnostic_). Translation key `holiday_days`.               |
+
+| Binary sensor | Description                                                                 |
+| ------------- | --------------------------------------------------------------------------- |
+| Heating water | `HeatingUp` — the cylinder is heating. Translation key `hot_water_heating`. |
+| Green energy  | `IsGreenEnergyActive`. Translation key `green_energy`.                      |
+| Holiday       | The `Holiday` mode bit is set. Translation key `holiday_active`.            |
+
+The room-heater entities — climate, room temperature, open window, EcoStart, setback, comfort,
+away, frost, advance, boost duration — are not created for a cylinder.
+
+## Holiday
+
+| Entity       | Platform | Description                                                                                                  |
+| ------------ | -------- | ------------------------------------------------------------------------------------------------------------ |
+| Holiday      | switch   | Puts the cylinder on holiday (standby) until **Holiday ends**; off clears it now. Translation key `holiday`. |
+| Holiday ends | datetime | When Holiday is switched off. Defaults to a week ahead if unset; must be in the future. Key `holiday_end`.   |
+
+The cylinder only counts whole days, so the integration clears Holiday itself at the chosen
+time. The end time survives a restart, and if it passed while Home Assistant was down, Holiday
+is cleared on start.
+
 ## Switches
 
 | Name                  | Description                                                                   |
@@ -153,6 +197,14 @@ as day / start / end / temperature.
 The sensor is read-only. The programme can be copied to other appliances, and one period's
 target edited, through actions — see
 [edit the weekly schedule](../use/temperature.md#editing-the-weekly-schedule).
+
+### Hot water schedule
+
+Heat-pump cylinders get a read-only **Hot water schedule** sensor instead (translation key
+`hot_water_schedule`). Its state summarises the week, e.g. `Mon–Sun 00:00 mode 2`, and its
+attributes list each day's periods (`start`, `start_raw`, `mode`) and the `current_mode`.
+`Mode` is shown as the cloud's number because its meaning is not yet known, and start times
+assume minutes after midnight.
 
 ## Zones
 

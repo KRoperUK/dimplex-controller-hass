@@ -15,14 +15,14 @@ access to the full Dimplex range.
 
 ## By family
 
-| Family                                        | Status                                  | Notes                                                                                                        |
-| --------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Panel heaters, PLX, other simple room heaters | **Verified**{ .status-verified }        | Exercised routinely. Climate, presets, setpoint writes and modes all confirmed.                              |
-| QRAD                                          | **Verified**{ .status-verified }        | As above, plus energy telemetry.                                                                             |
-| Quantum storage heaters                       | **Partly verified**{ .status-inferred } | Modes and energy confirmed. Setpoint and timer writes are **rejected on some units** — see below.            |
-| Hot water cylinders                           | **Untested**{ .status-untested }        | Endpoints exist in the library, confirmed from the app, never run against hardware. No entities are created. |
-| Air-source heat pumps (ASHW)                  | **Untested**{ .status-untested }        | Detected by the capability matrix; no dedicated support.                                                     |
-| Hygiene / anti-legionella cycles              | **Untested**{ .status-untested }        | Mode bit is read but never written; no entity.                                                               |
+| Family                                        | Status                                  | Notes                                                                                                                                  |
+| --------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Panel heaters, PLX, other simple room heaters | **Verified**{ .status-verified }        | Exercised routinely. Climate, presets, setpoint writes and modes all confirmed.                                                        |
+| QRAD                                          | **Verified**{ .status-verified }        | As above, plus energy telemetry.                                                                                                       |
+| Quantum storage heaters                       | **Partly verified**{ .status-inferred } | Modes and energy confirmed. Setpoint and timer writes are **rejected on some units** — see below.                                      |
+| Hot water cylinders                           | **Partly verified**{ .status-inferred } | Status, holiday mode and the schedule (read) verified on an ASHW cylinder. Temperature, boost and hygiene writes untested — see below. |
+| Air-source heat pump cylinders (ASHW)         | **Partly verified**{ .status-inferred } | Verified on an EDL200UK-630RF: handled as a hot water cylinder, with the heat-pump endpoints.                                          |
+| Hygiene / anti-legionella cycles              | **Untested**{ .status-untested }        | The recurrence is read (a sensor) but never written.                                                                                   |
 
 If you own something in the untested rows and are willing to try it,
 [say so on an issue](https://github.com/KRoperUK/dimplex-controller-hass/issues) — a
@@ -52,23 +52,46 @@ against what a panel heater would do.
 
 ## Hot water cylinders
 
-The library implements the hot water surface — read state, set target, schedules, hygiene —
-and every endpoint is confirmed from the official app. **None of it has been run against
-hardware**, so this is what the integration does with it:
+Verified on an air-source heat pump cylinder (`ASHW Cylinder`, model `EDL200UK-630RF`) by
+comparing the cloud's replies with the official app at the same moment:
 
-- A **Hot water available** diagnostic sensor, disabled by default, reading the cloud's
-  `AvailableHotWater`. It has no unit: that field is a bare number and nothing in the app or
-  the API reference says whether it is °C, litres or a percentage. Turn it on and tell us what
-  it shows.
-- Two actions, [`dimplex.set_hot_water_temperature`](actions.md#dimplexset_hot_water_temperature)
-  and [`dimplex.set_hot_water_hygiene`](actions.md#dimplexset_hot_water_hygiene), gated on the
-  `hot_water` and `hygiene` flags.
-- **No number or select entity**, deliberately. Nothing reads the normal, boost or hygiene
-  values back, so such an entity could be set and could never show what it was actually set
-  to — worse than no entity.
-- The capability matrix marks cylinder-only appliances as `climate: false`, so they get no
-  thermostat and no advance (there is no "next comfort period" to jump to).
-- Library callers can reach the endpoints directly and are warned in every docstring.
+| What                  | Cloud                                                                    | App                           |
+| --------------------- | ------------------------------------------------------------------------ | ----------------------------- |
+| Hot water available   | `AvailableHotWater` = 336                                                | "336 L Hot water" — litres    |
+| Target                | `ActiveSetPointTemperature` = 45                                         | 45°                           |
+| Mode                  | `ApplianceModes` = 8192 (`Normal`), no `TimerMode` bit                   | "Timer"                       |
+| Holiday               | `Holiday` bit (8) plus `HolidayNumOfDays`                                | "Holiday"                     |
+| Green energy, heating | `IsGreenEnergyActive`, `HeatingUp`                                       | "Green energy mode is active" |
+| Hygiene recurrence    | `HygieneFrequency` = 7                                                   | "7 days"                      |
+| Tank size             | `Capacity` = 200                                                         | —                             |
+| Error / warning       | `ErrorCode` / `WarningCode` = **integer** `0` (room heaters send `null`) | —                             |
+
+What the integration does with a cylinder:
+
+- **No thermostat.** A cylinder reports its water target in `ActiveSetPointTemperature`, which
+  library releases up to 0.13.1 read as room climate — the cylinder got a climate entity with a
+  7-30 °C range its 45 °C target could not fit, plus room temperature, open window, EcoStart and
+  setback entities. Room-heater features are now stripped from a hot water appliance unless it
+  also reports a room temperature.
+- A **Water heater** entity (read-only): the app's mode and the target temperature.
+- Sensors for hot water available (L), tank capacity, mode, hygiene recurrence and holiday
+  days; binary sensors for heating, green energy and holiday. See [Entities](entities.md#water-heater).
+- **Holiday** — a switch and a **Holiday ends** date and time. `SetApplianceModeHeatPumpHwc`
+  with `Holiday` engages it (status 8192 → 8200, heating stops) and clears it again. The
+  cylinder counts holidays in whole days, so the integration also clears Holiday itself at the
+  chosen time; the rounded-up day count is still sent so the cylinder comes off holiday on its
+  own if Home Assistant is down.
+- **Schedule, read only.** Heat-pump cylinders keep it behind
+  `ApiGetTimerModeDetailsForHeatPumpHwcAppliance` (one `{DayOfWeek, StartTime, Mode}` per
+  period, no `TimerMode`). `UpdateHeatPumpHwcSchedulePeriods` answered **HTTP 403** to every
+  request shape tried, so the schedule cannot be edited from Home Assistant.
+- The two actions, [`dimplex.set_hot_water_temperature`](actions.md#dimplexset_hot_water_temperature)
+  and [`dimplex.set_hot_water_hygiene`](actions.md#dimplexset_hot_water_hygiene), are
+  unchanged and **still untested** on hardware.
+
+Not yet known: what the schedule's `Mode` values mean (a live cylinder only ever showed `2`),
+whether `StartTime` counts minutes after midnight, and how the app computes the fill
+percentage it shows next to the target.
 
 ## How capabilities are decided
 

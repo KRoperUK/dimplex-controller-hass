@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import math
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -13,6 +14,7 @@ from typing import Any
 import aiohttp
 from dimplex_controller import (
     VALUE_KEY_T2,
+    ApplianceModeFlag,
     DimplexApiError,
     DimplexAuthError,
     DimplexConnectionError,
@@ -22,6 +24,7 @@ from dimplex_controller import (
     TokenBundle,
     parse_telemetry_points,
 )
+from dimplex_controller.models import ApplianceStatus
 
 from .capabilities import product_for_appliance, product_lookup
 from .const import ENERGY_REPORT_INTERVAL, ENERGY_REQUEST_DAYS
@@ -44,6 +47,21 @@ except ImportError:  # pragma: no cover - older wheels
         "amount",
         "v",
     )
+
+# The cloud sends ErrorCode/WarningCode as integers (0 when healthy), but the
+# library (<= 0.13.1) types them as ``str``, so every status poll fails validation
+# and setup never completes. Coerce numbers to strings until the library is fixed.
+# Hot-water cylinders also report fields the library model does not declare
+# (Capacity, HeatingUp, IsGreenEnergyActive, HygieneFrequency, HolidayNumOfDays…);
+# keep them as attributes instead of dropping them so the cylinder entities can
+# read them.
+if (
+    not ApplianceStatus.model_config.get("coerce_numbers_to_str")
+    or ApplianceStatus.model_config.get("extra") != "allow"
+):
+    ApplianceStatus.model_config["coerce_numbers_to_str"] = True
+    ApplianceStatus.model_config["extra"] = "allow"
+    ApplianceStatus.model_rebuild(force=True)
 
 
 class CannotConnect(Exception):
@@ -418,6 +436,22 @@ class DimplexApiClient:
                 return await self._client.get_schedule(hub_id, appliance_id)
             return await self._client.get_appliance_features(hub_id, appliance_id)
 
+    async def async_get_hot_water_schedule(self, hub_id: str, appliance_id: str) -> dict[str, Any]:
+        """Return an ASHW cylinder's weekly schedule as the cloud sends it.
+
+        Read raw because the library parses the reply into the room-heater
+        ``TimerModeSettings``, which it does not fit: a live cylinder returns
+        ``{HubId, ApplianceId, TimerPeriods: [{DayOfWeek, StartTime: 0, Mode: 2}]}``
+        with no ``TimerMode`` and integer start times.
+        """
+        with _translated_errors():
+            data = await self._client._request(
+                "POST",
+                "/RemoteControl/ApiGetTimerModeDetailsForHeatPumpHwcAppliance",
+                json={"HubId": hub_id, "ApplianceId": appliance_id},
+            )
+        return data if isinstance(data, dict) else {}
+
     async def async_set_hot_water_temperature(
         self,
         hub_id: str,
@@ -451,6 +485,41 @@ class DimplexApiClient:
                     temperature,
                     enable=enable,
                 )
+
+    async def async_set_hot_water_holiday(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        *,
+        enable: bool,
+        until: datetime | None = None,
+        heat_pump: bool = False,
+    ) -> None:
+        """Put a cylinder on holiday (standby) until ``until``, or take it off.
+
+        Verified on a live ASHW cylinder (EDL200UK-630RF): ``ApplianceModes`` = 8
+        with ``Status`` 1 engages Holiday (status 8192 -> 8200, ``HolidayNumOfDays``
+        set, heating stops) and ``Status`` 0 clears it. The cylinder counts holidays
+        in whole days, so the end date also goes as a rounded-up day count; callers
+        that want a time of day must clear it themselves at that time.
+        """
+        days = 0
+        if enable:
+            if until is None:
+                raise ValueError("a holiday needs an end time")
+            seconds = (until - datetime.now(UTC)).total_seconds()
+            days = max(1, math.ceil(seconds / 86400))
+        endpoint = "/RemoteControl/SetApplianceModeHeatPumpHwc" if heat_pump else "/RemoteControl/SetApplianceModeHwc"
+        with _translated_errors():
+            await self._client.set_mode_flag(
+                hub_id,
+                [appliance_id],
+                ApplianceModeFlag.HOLIDAY,
+                enable=enable,
+                until=until,
+                number_of_days=days,
+                endpoint=endpoint,
+            )
 
     async def async_set_hot_water_hygiene(
         self,

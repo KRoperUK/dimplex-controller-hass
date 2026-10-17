@@ -130,6 +130,34 @@
       },
       "zone": {
         "name": "Zone"
+      },
+      "hot_water_capacity": {
+        "name": "Capacité d'eau chaude"
+      },
+      "hot_water_mode": {
+        "name": "Mode eau chaude",
+        "state": {
+          "standby": "Veille",
+          "timer": "Programmation",
+          "holiday": "Vacances",
+          "boost": "Boost",
+          "hygiene": "Hygiène"
+        }
+      },
+      "hygiene_frequency": {
+        "name": "Cycle d'hygiène",
+        "state": {
+          "off": "Désactivé",
+          "daily": "Quotidien",
+          "weekly": "Hebdomadaire",
+          "monthly": "Mensuel"
+        }
+      },
+      "holiday_days": {
+        "name": "Jours de vacances"
+      },
+      "hot_water_schedule": {
+        "name": "Programme eau chaude"
       }
     },
     "binary_sensor": {
@@ -156,6 +184,15 @@
       },
       "advance_active": {
         "name": "Avance active"
+      },
+      "hot_water_heating": {
+        "name": "Chauffe de l'eau"
+      },
+      "green_energy": {
+        "name": "Énergie verte"
+      },
+      "holiday_active": {
+        "name": "Vacances"
       }
     },
     "switch": {
@@ -164,6 +201,9 @@
       },
       "open_window_detection": {
         "name": "Détection fenêtre ouverte"
+      },
+      "holiday": {
+        "name": "Vacances"
       }
     },
     "number": {
@@ -174,6 +214,23 @@
     "select": {
       "boost_duration": {
         "name": "Durée du boost"
+      }
+    },
+    "water_heater": {
+      "cylinder": {
+        "name": "Eau chaude",
+        "state": {
+          "standby": "Veille",
+          "timer": "Programmation",
+          "holiday": "Vacances",
+          "boost": "Boost",
+          "hygiene": "Hygiène"
+        }
+      }
+    },
+    "datetime": {
+      "holiday_end": {
+        "name": "Fin des vacances"
       }
     }
   },

@@ -18,12 +18,14 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .capabilities import capabilities_for_row
 from .const import (
     ADVANCE_FLAG,
     AWAY_FLAG,
     BOOST_FLAG,
     DOMAIN,
     FROST_FLAG,
+    HOLIDAY_FLAG,
     has_any_mode,
 )
 from .entity import DimplexEntity
@@ -36,12 +38,15 @@ class DimplexBinarySensorEntityDescription(BinarySensorEntityDescription):
     is_on_fn: Callable[[Any], bool]
     icon_on: str | None = None
     icon_off: str | None = None
+    capability: str | None = None
+    """Capability flag that must be true for the entity to be created, if any."""
 
 
 APPLIANCE_BINARY_SENSORS: tuple[DimplexBinarySensorEntityDescription, ...] = (
     DimplexBinarySensorEntityDescription(
         key="comfort",
         translation_key="comfort",
+        capability="climate",
         is_on_fn=lambda status: bool(status and status.ComfortStatus),
         icon_on="mdi:sofa",
         icon_off="mdi:sofa-outline",
@@ -50,6 +55,7 @@ APPLIANCE_BINARY_SENSORS: tuple[DimplexBinarySensorEntityDescription, ...] = (
         key="open_window",
         translation_key="open_window",
         device_class=BinarySensorDeviceClass.WINDOW,
+        capability="open_window",
         is_on_fn=lambda status: bool(status and getattr(status, "OpenWindowEnabled", False)),
         icon_on="mdi:window-open",
         icon_off="mdi:window-closed",
@@ -57,6 +63,7 @@ APPLIANCE_BINARY_SENSORS: tuple[DimplexBinarySensorEntityDescription, ...] = (
     DimplexBinarySensorEntityDescription(
         key="setback",
         translation_key="setback",
+        capability="setback_read",
         is_on_fn=lambda status: bool(status and getattr(status, "SetbackEnabled", False)),
         icon_on="mdi:thermometer-chevron-down",
         icon_off="mdi:thermometer",
@@ -69,6 +76,7 @@ APPLIANCE_BINARY_SENSORS: tuple[DimplexBinarySensorEntityDescription, ...] = (
         key="boost_active",
         translation_key="boost_active",
         entity_category=EntityCategory.DIAGNOSTIC,
+        capability="boost",
         is_on_fn=lambda status: has_any_mode(status, BOOST_FLAG),
         icon_on="mdi:rocket-launch",
         icon_off="mdi:rocket-launch-outline",
@@ -77,6 +85,7 @@ APPLIANCE_BINARY_SENSORS: tuple[DimplexBinarySensorEntityDescription, ...] = (
         key="away_active",
         translation_key="away_active",
         entity_category=EntityCategory.DIAGNOSTIC,
+        capability="away",
         is_on_fn=lambda status: has_any_mode(status, AWAY_FLAG),
         icon_on="mdi:home-export-outline",
         icon_off="mdi:home-outline",
@@ -85,6 +94,7 @@ APPLIANCE_BINARY_SENSORS: tuple[DimplexBinarySensorEntityDescription, ...] = (
         key="frost_protection",
         translation_key="frost_protection",
         entity_category=EntityCategory.DIAGNOSTIC,
+        capability="frost",
         is_on_fn=lambda status: has_any_mode(status, FROST_FLAG),
         icon_on="mdi:snowflake",
         icon_off="mdi:snowflake-off",
@@ -93,9 +103,34 @@ APPLIANCE_BINARY_SENSORS: tuple[DimplexBinarySensorEntityDescription, ...] = (
         key="advance_active",
         translation_key="advance_active",
         entity_category=EntityCategory.DIAGNOSTIC,
+        capability="advance",
         is_on_fn=lambda status: has_any_mode(status, ADVANCE_FLAG),
         icon_on="mdi:fast-forward",
         icon_off="mdi:fast-forward-outline",
+    ),
+    # Hot-water cylinder state, as the Dimplex app shows it.
+    DimplexBinarySensorEntityDescription(
+        key="hot_water_heating",
+        translation_key="hot_water_heating",
+        device_class=BinarySensorDeviceClass.HEAT,
+        capability="hot_water",
+        is_on_fn=lambda status: bool(status and getattr(status, "HeatingUp", False)),
+    ),
+    DimplexBinarySensorEntityDescription(
+        key="green_energy",
+        translation_key="green_energy",
+        capability="hot_water",
+        is_on_fn=lambda status: bool(status and getattr(status, "IsGreenEnergyActive", False)),
+        icon_on="mdi:leaf",
+        icon_off="mdi:leaf-off",
+    ),
+    DimplexBinarySensorEntityDescription(
+        key="holiday_active",
+        translation_key="holiday_active",
+        capability="hot_water",
+        is_on_fn=lambda status: has_any_mode(status, HOLIDAY_FLAG),
+        icon_on="mdi:airplane",
+        icon_off="mdi:airplane-off",
     ),
 )
 
@@ -116,11 +151,16 @@ async def async_setup_entry(
     runtime = entry.runtime_data
     coordinator: DataUpdateCoordinator[dict[str, Any]] = runtime.status
     rows = (coordinator.data or {}).get("appliances", [])
-    entities: list[BinarySensorEntity] = [
-        DimplexBinarySensor(coordinator, entry, appliance_row, description)
-        for appliance_row in rows
-        for description in APPLIANCE_BINARY_SENSORS
-    ]
+    entities: list[BinarySensorEntity] = []
+    for appliance_row in rows:
+        caps = capabilities_for_row(
+            appliance_row["appliance"], appliance_row.get("status"), appliance_row.get("product")
+        )
+        entities.extend(
+            DimplexBinarySensor(coordinator, entry, appliance_row, description)
+            for description in APPLIANCE_BINARY_SENSORS
+            if description.capability is None or getattr(caps, description.capability, False)
+        )
 
     seen_hubs: set[str] = set()
     for appliance_row in rows:

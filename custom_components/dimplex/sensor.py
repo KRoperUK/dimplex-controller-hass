@@ -18,7 +18,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfEnergy, UnitOfPower, UnitOfTemperature
+from homeassistant.const import EntityCategory, UnitOfEnergy, UnitOfPower, UnitOfTemperature, UnitOfTime, UnitOfVolume
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -26,7 +26,15 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpda
 from homeassistant.util import dt as dt_util
 
 from .capabilities import capabilities_for_row
-from .const import DOMAIN, HEAT_DEMAND_FLAGS, has_any_mode, sane_temperature
+from .const import (
+    DOMAIN,
+    HEAT_DEMAND_FLAGS,
+    HOT_WATER_MODES,
+    HYGIENE_FREQUENCY_NAMES,
+    has_any_mode,
+    hot_water_mode,
+    sane_temperature,
+)
 from .entity import DimplexEntity, resolve_via_device_id
 
 _LOGGER = logging.getLogger(__name__)
@@ -120,6 +128,7 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
+        capability="climate",
         value_fn=_status_temp("RoomTemperature"),
     ),
     DimplexSensorEntityDescription(
@@ -134,6 +143,7 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         translation_key="boost_temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
+        capability="boost",
         value_fn=_status_temp("BoostTemperature"),
     ),
     DimplexSensorEntityDescription(
@@ -141,6 +151,7 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         translation_key="away_temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
+        capability="away",
         value_fn=_status_temp("AwayTemperature"),
     ),
     DimplexSensorEntityDescription(
@@ -148,6 +159,7 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         translation_key="setback_temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
+        capability="setback_read",
         value_fn=_status_temp("SetbackTemperature"),
     ),
     DimplexSensorEntityDescription(
@@ -204,21 +216,51 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_estimated_power_kw,
     ),
-    # The only hot-water value the cloud reports back. Deliberately a diagnostic,
-    # disabled-by-default sensor with no unit or device class: the field is a bare
-    # number and nothing in the app or the API reference says what it measures —
-    # °C and litres are both plausible. Shipping it as a temperature entity would be
-    # inventing a unit; shipping it unitless and off by default lets a cylinder owner
-    # turn it on and report what it shows (#199).
+    # Litres of usable hot water: a live ASHW cylinder reports 336 here and the
+    # Dimplex app shows "336 L Hot water" for it. Capability-gated so an
+    # appliance with no hot water does not get a permanently unknown sensor (#199).
     DimplexSensorEntityDescription(
         key="hot_water_available",
         translation_key="hot_water_available",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-        # Capability-gated, so an appliance the library says has no hot water does
-        # not get a permanently unknown hot-water sensor (#199).
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        device_class=SensorDeviceClass.VOLUME_STORAGE,
+        state_class=SensorStateClass.MEASUREMENT,
         capability="hot_water",
         value_fn=_status_attr("AvailableHotWater"),
+    ),
+    DimplexSensorEntityDescription(
+        key="hot_water_capacity",
+        translation_key="hot_water_capacity",
+        native_unit_of_measurement=UnitOfVolume.LITERS,
+        device_class=SensorDeviceClass.VOLUME_STORAGE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        capability="hot_water",
+        value_fn=_status_attr("Capacity"),
+    ),
+    DimplexSensorEntityDescription(
+        key="hot_water_mode",
+        translation_key="hot_water_mode",
+        device_class=SensorDeviceClass.ENUM,
+        options=list(HOT_WATER_MODES),
+        capability="hot_water",
+        value_fn=lambda status, _appliance: hot_water_mode(status),
+    ),
+    DimplexSensorEntityDescription(
+        key="hygiene_frequency",
+        translation_key="hygiene_frequency",
+        device_class=SensorDeviceClass.ENUM,
+        options=list(HYGIENE_FREQUENCY_NAMES.values()),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        capability="hygiene",
+        value_fn=lambda status, _appliance: HYGIENE_FREQUENCY_NAMES.get(getattr(status, "HygieneFrequency", -1)),
+    ),
+    DimplexSensorEntityDescription(
+        key="holiday_days",
+        translation_key="holiday_days",
+        native_unit_of_measurement=UnitOfTime.DAYS,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        capability="hot_water",
+        value_fn=_status_attr("HolidayNumOfDays"),
     ),
 )
 
@@ -312,7 +354,10 @@ async def async_setup_entry(
             if description.capability is None or getattr(caps, description.capability, False)
         )
         devices.extend(DimplexEnergySensor(energy, entry, appliance_row, description) for description in ENERGY_SENSORS)
-        devices.append(DimplexScheduleSensor(status, entry, appliance_row))
+        if caps.hot_water and caps.heat_pump:
+            devices.append(DimplexHotWaterScheduleSensor(status, entry, appliance_row))
+        else:
+            devices.append(DimplexScheduleSensor(status, entry, appliance_row))
         zone = appliance_row.get("zone")
         zone_id = getattr(zone, "ZoneId", None) if zone is not None else None
         if zone_id and zone_id not in seen_zones:
@@ -414,6 +459,106 @@ class DimplexScheduleSensor(DimplexEntity, SensorEntity):
             "period_count": len(periods_out),
             "periods": periods_out,
         }
+
+
+# .NET DayOfWeek, as the cylinder schedule uses it: 0 = Sunday.
+_DAYS = ("sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday")
+_DAY_ABBR = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+_WEEK_ORDER = (1, 2, 3, 4, 5, 6, 0)  # Monday first, like the app
+
+
+def _clock(start: Any) -> str | None:
+    """Format a cylinder period start as HH:MM.
+
+    The cloud sends an integer; minutes after midnight is assumed (a live
+    cylinder only ever showed 0), so the raw value is kept alongside.
+    """
+    try:
+        minutes = int(start)
+    except (TypeError, ValueError):
+        return None
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+class DimplexHotWaterScheduleSensor(DimplexEntity, SensorEntity):
+    """Read-only weekly schedule of a heat-pump hot-water cylinder."""
+
+    _attr_translation_key = "hot_water_schedule"
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+    ) -> None:
+        super().__init__(coordinator, config_entry, appliance_row)
+        # Same id as the room-heater schedule sensor it replaces on cylinders.
+        self._attr_unique_id = f"{config_entry.entry_id}_{self._appliance.ApplianceId}_schedule"
+
+    @property
+    def available(self) -> bool:
+        if not CoordinatorEntity.available.__get__(self, type(self)):
+            return False
+        return isinstance(self._schedule, dict)
+
+    @property
+    def _schedule(self) -> Any:
+        schedules = (self.coordinator.data or {}).get("schedules") or {}
+        return schedules.get(self._appliance.ApplianceId)
+
+    def _by_day(self) -> dict[int, list[tuple[int, Any]]]:
+        days: dict[int, list[tuple[int, Any]]] = {}
+        for period in (self._schedule or {}).get("TimerPeriods") or []:
+            try:
+                day, start = int(period["DayOfWeek"]), int(period["StartTime"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if 0 <= day <= 6:
+                days.setdefault(day, []).append((start, period.get("Mode")))
+        return {day: sorted(periods) for day, periods in days.items()}
+
+    @property
+    def native_value(self) -> str | None:
+        """Compact summary, e.g. ``Mon–Sun 00:00 mode 2``."""
+        if not isinstance(self._schedule, dict):
+            return None
+        by_day = self._by_day()
+        if not by_day:
+            return "no periods"
+        groups: list[tuple[list[int], str]] = []
+        for day in _WEEK_ORDER:
+            text = ", ".join(f"{_clock(start)} mode {mode}" for start, mode in by_day.get(day, [])) or "none"
+            if groups and groups[-1][1] == text:
+                groups[-1][0].append(day)
+            else:
+                groups.append(([day], text))
+        parts = []
+        for days, text in groups:
+            label = _DAY_ABBR[days[0]] if len(days) == 1 else f"{_DAY_ABBR[days[0]]}–{_DAY_ABBR[days[-1]]}"
+            parts.append(f"{label} {text}")
+        return "; ".join(parts)[:255]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        if not isinstance(self._schedule, dict):
+            return {}
+        by_day = self._by_day()
+        now = dt_util.now()
+        today = (now.weekday() + 1) % 7
+        minute = now.hour * 60 + now.minute
+        current = None
+        for start, mode in by_day.get(today, []):
+            if start <= minute:
+                current = mode
+        attrs: dict[str, Any] = {
+            _DAYS[day]: [
+                {"start": _clock(start), "start_raw": start, "mode": mode} for start, mode in by_day.get(day, [])
+            ]
+            for day in _WEEK_ORDER
+        }
+        attrs["current_mode"] = current
+        attrs["period_count"] = sum(len(periods) for periods in by_day.values())
+        return attrs
 
 
 class DimplexZoneSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], SensorEntity):

@@ -130,6 +130,34 @@
       },
       "zone": {
         "name": "Sone"
+      },
+      "hot_water_capacity": {
+        "name": "Varmtvannskapasitet"
+      },
+      "hot_water_mode": {
+        "name": "Varmtvannsmodus",
+        "state": {
+          "standby": "Hvilemodus",
+          "timer": "Tidsplan",
+          "holiday": "Ferie",
+          "boost": "Boost",
+          "hygiene": "Hygiene"
+        }
+      },
+      "hygiene_frequency": {
+        "name": "Hygienesyklus",
+        "state": {
+          "off": "Av",
+          "daily": "Daglig",
+          "weekly": "Ukentlig",
+          "monthly": "Månedlig"
+        }
+      },
+      "holiday_days": {
+        "name": "Feriedager"
+      },
+      "hot_water_schedule": {
+        "name": "Varmtvannsplan"
       }
     },
     "binary_sensor": {
@@ -156,6 +184,15 @@
       },
       "advance_active": {
         "name": "Framskynding aktiv"
+      },
+      "hot_water_heating": {
+        "name": "Varmer vann"
+      },
+      "green_energy": {
+        "name": "Grønn energi"
+      },
+      "holiday_active": {
+        "name": "Ferie"
       }
     },
     "switch": {
@@ -164,6 +201,9 @@
       },
       "open_window_detection": {
         "name": "Deteksjon av åpent vindu"
+      },
+      "holiday": {
+        "name": "Ferie"
       }
     },
     "number": {
@@ -174,6 +214,23 @@
     "select": {
       "boost_duration": {
         "name": "Boost-varighet"
+      }
+    },
+    "water_heater": {
+      "cylinder": {
+        "name": "Varmtvann",
+        "state": {
+          "standby": "Hvilemodus",
+          "timer": "Tidsplan",
+          "holiday": "Ferie",
+          "boost": "Boost",
+          "hygiene": "Hygiene"
+        }
+      }
+    },
+    "datetime": {
+      "holiday_end": {
+        "name": "Ferie slutter"
       }
     }
   },
