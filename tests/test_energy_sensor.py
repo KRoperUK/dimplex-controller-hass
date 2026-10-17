@@ -1,5 +1,6 @@
 """Tests for the energy sensor."""
 
+import logging
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -362,6 +363,100 @@ async def test_the_cumulative_peak_survives_a_restart():
         await sensor.async_added_to_hass()
 
     assert sensor._peak_total == 987.5
+
+
+async def test_a_suppressed_drop_publishes_the_raw_total():
+    """The unheld total is exposed, so a suppression is inspectable (#234).
+
+    The reported state is the held peak, so on its own it cannot answer "is the
+    cloud still sending what we think it is?" — the one question that matters when a
+    permanently reduced history would make the entity over-report forever.
+    """
+    sensor = _energy_sensor("lifetime")
+
+    def summary(total: float):
+        return SimpleNamespace(
+            total_kwh=total,
+            point_count=3,
+            mode="lifetime",
+            start=dt_util.parse_datetime("2025-01-01T00:00:00+00:00"),
+            end=dt_util.parse_datetime("2026-01-01T00:00:00+00:00"),
+        )
+
+    with patch.object(sensor, "_summary", return_value=summary(100.0)):
+        assert sensor.native_value == 100.0
+        assert sensor.extra_state_attributes["raw_total"] == 100.0
+        assert sensor.extra_state_attributes["peak_total"] == 100.0
+
+    # The cloud trims the history: the state holds the peak, the attribute does not.
+    with patch.object(sensor, "_summary", return_value=summary(5.0)):
+        assert sensor.native_value == 100.0
+        assert sensor.extra_state_attributes["raw_total"] == 5.0
+        assert sensor.extra_state_attributes["peak_total"] == 100.0
+
+    # Once the cloud catches back up, the attribute follows it.
+    with patch.object(sensor, "_summary", return_value=summary(104.5)):
+        assert sensor.native_value == 104.5
+        assert sensor.extra_state_attributes["raw_total"] == 104.5
+
+
+async def test_a_large_suppressed_drop_is_logged_at_warning(caplog):
+    """A drop big enough to be a trimmed history must not be a debug line (#234).
+
+    More than 10% is the band Home Assistant's ``reset_detected()`` acts on, which is
+    why it is held in the first place — and it is also what a *permanent* reduction
+    looks like. Logging it at ``debug`` meant the only evidence was invisible.
+    """
+    sensor = _energy_sensor("lifetime")
+
+    def summary(total: float):
+        return SimpleNamespace(
+            total_kwh=total,
+            point_count=3,
+            mode="lifetime",
+            start=None,
+            end=None,
+        )
+
+    with patch.object(sensor, "_summary", return_value=summary(100.0)):
+        assert sensor.native_value == 100.0
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.dimplex.sensor"):
+        # 95% down: the case the issue is about.
+        with patch.object(sensor, "_summary", return_value=summary(5.0)):
+            assert sensor.native_value == 100.0
+        large = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("raw_total" in r.getMessage() for r in large), "a >10% suppressed drop must warn"
+
+        caplog.clear()
+        # 5% down: routine, and must stay quiet so the warning keeps its meaning.
+        with patch.object(sensor, "_summary", return_value=summary(95.0)):
+            assert sensor.native_value == 100.0
+        assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert [r for r in caplog.records if r.levelno == logging.DEBUG]
+
+
+async def test_daily_totals_publish_no_hold_attributes():
+    """Daily totals are not held, so they must not claim a peak or a raw total.
+
+    A daily total legitimately falls to zero at midnight; exposing ``peak_total``
+    there would imply a hold that does not exist.
+    """
+    sensor = _energy_sensor("daily")
+
+    def summary(total: float):
+        return SimpleNamespace(
+            total_kwh=total,
+            point_count=3,
+            mode="daily",
+            start=dt_util.parse_datetime("2026-01-01T00:00:00+00:00"),
+            end=dt_util.parse_datetime("2026-01-01T23:59:59+00:00"),
+        )
+
+    with patch.object(sensor, "_summary", return_value=summary(4.0)):
+        attributes = sensor.extra_state_attributes
+    assert "raw_total" not in attributes
+    assert "peak_total" not in attributes
 
 
 async def test_energy_summary_is_memoised_across_property_reads(hass):
