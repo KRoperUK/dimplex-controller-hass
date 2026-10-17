@@ -25,6 +25,7 @@ from dimplex_controller import (
     parse_telemetry_points,
 )
 from dimplex_controller.models import ApplianceStatus
+from pydantic import ValidationError
 
 from .capabilities import product_for_appliance, product_lookup
 from .const import ENERGY_REPORT_INTERVAL, ENERGY_REQUEST_DAYS
@@ -50,7 +51,15 @@ except ImportError:  # pragma: no cover - older wheels
 
 # The cloud sends ErrorCode/WarningCode as integers (0 when healthy), but the
 # library (<= 0.13.1) types them as ``str``, so every status poll fails validation
-# and setup never completes. Coerce numbers to strings until the library is fixed.
+# and setup never completes. Coerce numbers to strings until a library release
+# carrying the fix can be required here.
+#
+# 0.14.0 does carry it (dimplex-controller-py#127), but it is not adoptable yet:
+# its metadata demands ``pydantic>=2.13.5`` (raised mechanically by the uv
+# dependency pass, not by need) while Home Assistant's test stack pins pydantic
+# 2.13.4 — so requiring it makes the environment unsatisfiable. Relax the library
+# floor and release, then bump `manifest.json` and delete this shim.
+#
 # Hot-water cylinders also report fields the library model does not declare
 # (Capacity, HeatingUp, IsGreenEnergyActive, HygieneFrequency, HolidayNumOfDays…);
 # keep them as attributes instead of dropping them so the cylinder entities can
@@ -98,6 +107,25 @@ class InvalidAuth(Exception):
 REJECTED_STATUSES = frozenset({403, 405, 501})
 
 
+def _unexpected_payload(exception: ValidationError) -> CannotConnect:
+    """Return a readable error for a payload whose shape the models did not expect.
+
+    The library parses the cloud's responses with pydantic, which raises
+    ``ValidationError`` when a field arrives as a different type than the model
+    declares. That is exactly the failure behind dimplex-controller-py#127 / #256,
+    where ``ErrorCode`` came back as an integer: every status poll raised, and
+    because nothing here caught it the exception escaped as a bare traceback and
+    Home Assistant reported only "Unexpected error fetching status", naming neither
+    the field nor the appliance. Pydantic's message does name the field, so keep it.
+
+    Catch ``ValidationError`` itself rather than its ``ValueError`` base class: the
+    library raises plain ``ValueError`` for domain errors — a schedule period that
+    does not exist, for one — and those are the caller's to handle, not ours to
+    translate (``async_set_period_setpoint`` documents exactly that).
+    """
+    return CannotConnect(f"Unexpected payload from the Dimplex cloud: {exception}")
+
+
 @contextmanager
 def _translated_errors() -> Iterator[None]:
     """Map library exceptions onto the adapter's error types.
@@ -120,6 +148,8 @@ def _translated_errors() -> Iterator[None]:
         raise CannotConnect from exception
     except DimplexConnectionError as exception:
         raise CannotConnect from exception
+    except ValidationError as exception:
+        raise _unexpected_payload(exception) from exception
 
 
 class DimplexApiClient:
@@ -258,6 +288,11 @@ class DimplexApiClient:
             raise CannotConnect from exception
         except DimplexApiError as exception:
             raise CannotConnect from exception
+        except ValidationError as exception:
+            # A model that does not match the cloud's payload — see
+            # _unexpected_payload. Surfaces as a readable setup/reauth failure
+            # instead of a bare traceback (dimplex-controller-hass#257).
+            raise _unexpected_payload(exception) from exception
 
         return self.token_data
 
@@ -272,6 +307,11 @@ class DimplexApiClient:
             raise CannotConnect from exception
         except DimplexApiError as exception:
             raise CannotConnect from exception
+        except ValidationError as exception:
+            # A model that does not match the cloud's payload — see
+            # _unexpected_payload. Surfaces as a readable setup/reauth failure
+            # instead of a bare traceback (dimplex-controller-hass#257).
+            raise _unexpected_payload(exception) from exception
 
         return self.token_data
 
@@ -357,6 +397,11 @@ class DimplexApiClient:
             raise CannotConnect from exception
         except DimplexApiError as exception:
             raise CannotConnect from exception
+        except ValidationError as exception:
+            # The status poll is where a payload-shape change lands first, and it is
+            # what made #256 report "Unexpected error fetching status" and nothing
+            # else. Pydantic's message names the offending field, so keep it.
+            raise _unexpected_payload(exception) from exception
 
     async def async_get_data(self) -> dict[str, Any]:
         """Fetch status and energy (combined; used by tests / legacy callers)."""

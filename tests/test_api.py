@@ -12,7 +12,9 @@ from dimplex_controller import (
     DimplexAuthError,
     DimplexConnectionError,
 )
+from dimplex_controller.models import ApplianceStatus
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from pydantic import ValidationError
 
 from custom_components.dimplex.api import CannotConnect, ControlRejected, DimplexApiClient, InvalidAuth
 
@@ -829,3 +831,57 @@ def test_appliance_status_accepts_integer_error_and_warning_codes():
 
     assert status.ErrorCode == "0"
     assert status.WarningCode == "0"
+
+
+def _rejected_payload() -> ValidationError:
+    """A real pydantic ValidationError, as the library raises for an unexpected payload."""
+    try:
+        ApplianceStatus.model_validate(
+            {
+                "HubId": "hub",
+                "ApplianceId": "app",
+                "ZoneId": "zone",
+                # A temperature field arriving as something that cannot be a number.
+                "RoomTemperature": "not-a-temperature",
+            }
+        )
+    except ValidationError as exception:
+        return exception
+    raise AssertionError("ApplianceStatus accepted a non-numeric RoomTemperature")
+
+
+async def test_a_payload_the_models_reject_is_reported_with_its_field(hass):
+    """A payload-shape change must name itself, not read as a generic failure (#256).
+
+    The cloud sending ErrorCode/WarningCode as integers made every status poll raise
+    pydantic's ValidationError, and nothing mapped it — so Home Assistant reported only
+    "Unexpected error fetching status" and the config entry never finished loading. The
+    library fix removes that particular failure (dimplex-controller 0.14.0, required by
+    the manifest); this pins that the *next* shape change surfaces the offending field
+    instead of a bare traceback.
+    """
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    with (
+        patch.object(api._client, "get_hubs", new=AsyncMock(side_effect=_rejected_payload())),
+        pytest.raises(CannotConnect) as caught,
+    ):
+        await api.async_get_status_data()
+
+    message = str(caught.value)
+    assert "Unexpected payload" in message
+    # Pydantic names the offending field, which is the whole point of keeping the message.
+    assert "RoomTemperature" in message
+
+
+async def test_a_rejected_payload_during_a_control_call_is_readable(hass):
+    """Control calls map the same failure through _translated_errors."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    with (
+        patch.object(api._client, "set_eco_start", new=AsyncMock(side_effect=_rejected_payload())),
+        pytest.raises(CannotConnect) as caught,
+    ):
+        await api.async_set_eco_start("hub-1", "appliance-1", True)
+
+    assert "Unexpected payload" in str(caught.value)
