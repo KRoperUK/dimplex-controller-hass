@@ -14,24 +14,25 @@ Find your symptom below, or read the section that matches where it went wrong.
 
 ## Symptom index
 
-| Symptom                                              | Likely cause                                                                                         |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Boost does nothing, or the wrong thing happens       | [Boost engages the wrong mode](#boost-does-nothing-or-something-else-happens)                        |
-| Away drops the heater to 7 °C                        | [Away engaged frost protection](#away-pins-the-heater-to-7-c)                                        |
-| Away will not go above 18 °C                         | [That is the cloud's real limit](#away-will-not-go-above-18-c)                                       |
-| Changing the preset appears to do nothing            | [Presets used to stack instead of replace](#changing-the-preset-does-nothing)                        |
-| Changing the temperature is rejected                 | [Some Quantum heaters refuse remote writes](#changing-the-temperature-is-rejected)                   |
-| The heater reports 7 °C after being turned off       | [Correct — "off" is frost protection](#the-heater-reports-7-c-after-i-turned-it-off)                 |
-| A target on a storage heater had no effect           | [No stored charge to release](#a-target-on-a-storage-heater-did-nothing)                             |
-| `preset_mode` disagrees with the mode sensors        | [One preset cannot show several modes](#preset_mode-disagrees-with-the-mode-sensors)                 |
-| My timer schedule changed by itself                  | [Setpoint writes used to rewrite it](#my-timer-schedule-changed-by-itself)                           |
-| Room temperature reads 255 °C                        | [The cloud's "no value" sentinel](#room-temperature-reads-255-c)                                     |
-| Energy Dashboard shows far too much energy           | [A window sensor was treated as a meter](#the-energy-dashboard-shows-far-more-than-the-heaters-used) |
-| A repair says a sensor "no longer has a state class" | [A 4.1.0 bug — upgrade to 4.1.1](#a-repair-says-a-sensor-no-longer-has-a-state-class)                |
-| Entities are `unavailable`                           | [Empty cloud overview](#entities-are-unavailable)                                                    |
-| Energy sensor `unavailable` in summer                | [Expected](#energy-sensor-shows-unavailable-in-summer)                                               |
-| Repeatedly asked to re-authenticate                  | [Token refresh](#tokens-keep-expiring)                                                               |
-| HACS offers an older version                         | [Pre-release channel](#hacs-shows-an-update-after-installing-a-pre-release)                          |
+| Symptom                                              | Likely cause                                                                                               |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Boost does nothing, or the wrong thing happens       | [Boost engages the wrong mode](#boost-does-nothing-or-something-else-happens)                              |
+| Away drops the heater to 7 °C                        | [Away engaged frost protection](#away-pins-the-heater-to-7-c)                                              |
+| Away will not go above 18 °C                         | [That is the cloud's real limit](#away-will-not-go-above-18-c)                                             |
+| Changing the preset appears to do nothing            | [Presets used to stack instead of replace](#changing-the-preset-does-nothing)                              |
+| Changing the temperature is rejected                 | [Some Quantum heaters refuse remote writes](#changing-the-temperature-is-rejected)                         |
+| The heater reports 7 °C after being turned off       | [Correct — "off" is frost protection](#the-heater-reports-7-c-after-i-turned-it-off)                       |
+| A target on a storage heater had no effect           | [No stored charge to release](#a-target-on-a-storage-heater-did-nothing)                                   |
+| `preset_mode` disagrees with the mode sensors        | [One preset cannot show several modes](#preset_mode-disagrees-with-the-mode-sensors)                       |
+| My timer schedule changed by itself                  | [Setpoint writes used to rewrite it](#my-timer-schedule-changed-by-itself)                                 |
+| Room temperature reads 255 °C                        | [The cloud's "no value" sentinel](#room-temperature-reads-255-c)                                           |
+| Energy Dashboard shows far too much energy           | [A window sensor was treated as a meter](#the-energy-dashboard-shows-far-more-than-the-heaters-used)       |
+| Energy total stays above what the cloud is sending   | [The lifetime hold is covering a reduced history](#the-energy-total-stays-above-what-the-cloud-is-sending) |
+| A repair says a sensor "no longer has a state class" | [A 4.1.0 bug — upgrade to 4.1.1](#a-repair-says-a-sensor-no-longer-has-a-state-class)                      |
+| Entities are `unavailable`                           | [Empty cloud overview](#entities-are-unavailable)                                                          |
+| Energy sensor `unavailable` in summer                | [Expected](#energy-sensor-shows-unavailable-in-summer)                                                     |
+| Repeatedly asked to re-authenticate                  | [Token refresh](#tokens-keep-expiring)                                                                     |
+| HACS offers an older version                         | [Pre-release channel](#hacs-shows-an-update-after-installing-a-pre-release)                                |
 
 ## Heating behaviour
 
@@ -192,6 +193,34 @@ fall, and restores the state class 4.1.0 had removed.
 
 The **Energy today** sensors were always correct and need nothing. See
 [Energy monitoring](../use/energy.md).
+
+### The energy total stays above what the cloud is sending
+
+**Symptom:** the **Energy lifetime** value is higher than the official app shows for the same
+appliance, and it stays there — including across a restart. In the sensor's attributes `raw_total`
+sits below the state.
+
+**Cause:** not necessarily a bug. That sensor is deliberately held monotonic — see
+[the attribute table](../reference/entities.md) — because a fall of more than 10% is what Home
+Assistant reads as a meter reset and re-adds to long-term statistics. The hold is right for a
+_truncated_ read, which recovers. But if the cloud's history for an appliance is reduced
+**permanently** — retention trimming, a changed report shape, an appliance re-onboarded under the
+same id — the true total falls and the sensor cannot follow it down without causing exactly that
+reset, so it keeps reporting the old peak and over-reports.
+
+**How to tell which of those it is:**
+
+1. Open the sensor's attributes (**Developer tools** → **States**) and compare `raw_total` with the
+   state.
+2. If `raw_total` equals the state, no hold is in play: the number matches what the cloud sent, and
+   the difference is in the cloud or the official app.
+3. If `raw_total` is below the state, something is being suppressed. A suppressed drop of more than
+   10% also logs a warning naming both figures.
+4. If `raw_total` stays below the state across several consecutive polls rather than one, the cloud
+   really has lost history for that appliance. Nothing in the integration fixes that by itself
+   today: it is the open case in issue #234. Please
+   [open an issue](https://github.com/kroperuk/dimplex-controller-hass/issues) with a diagnostics
+   download, which carries the attributes above.
 
 ## Setup failures
 
