@@ -7,6 +7,53 @@ description: Version-by-version upgrade notes for the Dimplex Hub Home Assistant
 Restart Home Assistant after any HACS update. Notes are newest first; you only need to read
 the entries between your current version and the one you are moving to.
 
+## To 4.3.0
+
+Hot-water cylinders are now handled as cylinders rather than as room heaters, the temperature guard
+covers more than the `255` sentinel, and the cumulative energy sensors can show the figure the cloud
+is actually sending.
+
+### Hot-water cylinders lose the room-heater entities
+
+A cylinder reports its **water** target — 45 °C, say — in the same field a room heater uses for its
+**room** target. It was therefore being set up as a room heater: a thermostat with a 7–30 °C range
+that rejected the cylinder's real target, plus room temperature, open window, EcoStart, setback,
+comfort, away, frost protection, advance and boost-duration entities that a cylinder has no use for.
+Room-heater features are now stripped from a hot-water appliance unless it also reports a room
+temperature, and the switches and binary sensors are capability-gated like the sensors already were.
+
+**On an existing cylinder those entities become "no longer provided".** That is expected, and safe
+to remove from the entity registry. In their place:
+
+- A read-only **Water heater** entity — the app's mode (`standby` / `timer` / `holiday` / `boost` /
+  `hygiene`) and the water target.
+- **Hot water available**, now in **litres** and enabled by default, matching the app's
+  "336 L Hot water". The previously disabled entity keeps its disabled state.
+- **Hot water capacity**, **Hot water mode**, **Hygiene recurrence** and **Holiday days**, with
+  **Heating water**, **Green energy** and **Holiday** binary sensors.
+- A **Holiday** switch and a **Holiday ends** datetime, verified against a live cylinder.
+- A read-only **Hot water schedule** sensor, read from the heat-pump endpoint.
+
+Writing that schedule is not offered: `UpdateHeatPumpHwcSchedulePeriods` answered HTTP 403 to every
+request shape tried, so it stays a read. Room heaters are unchanged by any of this. See
+[Entities](../reference/entities.md) for the full list.
+
+### Nonsensical temperatures become unknown everywhere
+
+The climate card only filtered the cloud's `0xFF` "no value" sentinel, so any _other_ impossible
+reading — a glitch reporting 200 °C — reached the thermostat and the temperature sensors as-is. A
+reading outside −40…80 °C, as well as the sentinel, now reads as **unknown**; setpoint reads are
+checked against the tighter 7–30 °C band. Genuine ambient readings outside 7–30 °C are unaffected.
+
+### The cumulative energy sensors show the unheld total
+
+**Energy lifetime** and **Energy T2 lifetime** report the highest total seen, so a truncated cloud
+read cannot look like a meter reset. The cost is that a _permanently_ reduced history is held at the
+old peak rather than reported, so the sensors now also carry `raw_total` (what the cloud is sending
+now) and `peak_total`, and a suppressed drop of more than 10% logs a warning. If `raw_total` sits
+below the state across consecutive polls, the cloud has lost history for that appliance — see
+[Troubleshooting](troubleshooting.md#the-energy-total-stays-above-what-the-cloud-is-sending).
+
 ## To 4.1.1
 
 A fix for energy statistics, and nothing else. **If you are on 4.1.0, upgrade** — that release
