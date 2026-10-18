@@ -7,7 +7,6 @@ import pytest
 from dimplex_controller.models import ApplianceStatus
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-import custom_components.dimplex.api  # noqa: F401  (applies the ApplianceStatus shim)
 from custom_components.dimplex.capabilities import capabilities_for_row
 from custom_components.dimplex.const import DOMAIN, hot_water_mode
 
@@ -94,7 +93,17 @@ def _payload():
     }
 
 
-def test_shim_keeps_cylinder_only_fields():
+def test_the_library_model_declares_the_cylinder_fields():
+    """The cylinder fields come from dimplex-controller, not from a shim here.
+
+    The integration used to patch ``ApplianceStatus.model_config`` at import time to
+    keep these fields — ``extra="allow"`` for the cylinder-only ones, and
+    ``coerce_numbers_to_str`` for the integer ``ErrorCode``/``WarningCode`` the cloud
+    sends — because the library declared neither. dimplex-controller 0.15.0 declares
+    the cylinder fields and coerces the codes itself, and ``manifest.json`` now
+    requires it, so the patch is gone. This asserts the data still arrives
+    (dimplex-controller-py#128).
+    """
     status = ApplianceStatus.model_validate(CYLINDER_OVERVIEW)
     assert status.Capacity == 200
     assert status.IsGreenEnergyActive is True

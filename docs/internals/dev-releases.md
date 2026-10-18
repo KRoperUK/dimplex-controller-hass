@@ -46,10 +46,14 @@ are not enabled for the repository in HACS, so "latest" only tracks stable tags.
 ## Library dependency
 
 The integration requires
-[`dimplex-controller>=0.13.0`](https://pypi.org/project/dimplex-controller/) — the release
-that corrected the `EApplianceModes` flag values, added the dedicated setpoint and setback
-endpoints, the capability matrix, schedule helpers, HTTP retry with timeouts, and T1/T2
-register separation.
+[`dimplex-controller>=0.15.0`](https://pypi.org/project/dimplex-controller/) — 0.13.0 corrected
+the `EApplianceModes` flag values, added the dedicated setpoint and setback endpoints, the
+capability matrix, schedule helpers, HTTP retry with timeouts, and T1/T2 register separation;
+0.14.0 accepts the integer `ErrorCode`/`WarningCode` the cloud sends, which previously failed
+every status poll and left setup stuck (`dimplex-controller-py#127`); and 0.15.0 declares the
+hot-water cylinder status fields and schedule model, and relaxes its own dependency floors back
+to `pydantic>=2.0.0` / `aiohttp>=3.9.0` so the integration can require it at all
+(`dimplex-controller-py#131`).
 
 `custom_components/dimplex/manifest.json` carries the floor. Bump it when adopting a new
 library release.
