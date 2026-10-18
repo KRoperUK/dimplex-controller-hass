@@ -1,5 +1,21 @@
 # Changelog
 
+## [4.3.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.2.0...v4.3.0) (2026-10-18)
+
+
+### Features
+
+* **energy:** publish the unheld lifetime total and warn on a suppressed drop ([#262](https://github.com/KRoperUK/dimplex-controller-hass/issues/262)) ([04cdadb](https://github.com/KRoperUK/dimplex-controller-hass/commit/04cdadb4004a685d2247a40099e7d8aa8e08ea60))
+* **hot-water:** ASHW cylinder support — water heater, holiday and schedule ([#258](https://github.com/KRoperUK/dimplex-controller-hass/issues/258)) ([c504dac](https://github.com/KRoperUK/dimplex-controller-hass/commit/c504dac564c40a768fc1dc5a37cb902879042fed))
+* **select:** per-appliance boost-duration select ([#253](https://github.com/KRoperUK/dimplex-controller-hass/issues/253)) ([ad555ca](https://github.com/KRoperUK/dimplex-controller-hass/commit/ad555ca9847bf44488afe46260fada2055108676)), closes [#252](https://github.com/KRoperUK/dimplex-controller-hass/issues/252)
+
+
+### Bug Fixes
+
+* **api:** report an unexpected payload with the field that failed ([#263](https://github.com/KRoperUK/dimplex-controller-hass/issues/263)) ([f215532](https://github.com/KRoperUK/dimplex-controller-hass/commit/f215532802aa66e51d7027bd79d159e04e083a5b))
+* **api:** require dimplex-controller 0.15.0 and drop the ApplianceStatus shim ([#265](https://github.com/KRoperUK/dimplex-controller-hass/issues/265)) ([810f6db](https://github.com/KRoperUK/dimplex-controller-hass/commit/810f6db544bfb55dc6f0684bf60ce9ff9f4e9b20))
+* **climate:** reject out-of-range temperatures, not just the 0xFF sentinel ([#255](https://github.com/KRoperUK/dimplex-controller-hass/issues/255)) ([bfa85f0](https://github.com/KRoperUK/dimplex-controller-hass/commit/bfa85f0e3730f3efa3a7f245fd148f75c11574a3))
+
 ## [4.2.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.1.1...v4.2.0) (2026-10-09)
 
 
