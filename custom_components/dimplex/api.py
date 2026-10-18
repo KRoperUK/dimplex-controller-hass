@@ -24,7 +24,6 @@ from dimplex_controller import (
     TokenBundle,
     parse_telemetry_points,
 )
-from dimplex_controller.models import ApplianceStatus
 from pydantic import ValidationError
 
 from .capabilities import product_for_appliance, product_lookup
@@ -48,29 +47,6 @@ except ImportError:  # pragma: no cover - older wheels
         "amount",
         "v",
     )
-
-# The cloud sends ErrorCode/WarningCode as integers (0 when healthy), but the
-# library (<= 0.13.1) types them as ``str``, so every status poll fails validation
-# and setup never completes. Coerce numbers to strings until a library release
-# carrying the fix can be required here.
-#
-# 0.14.0 does carry it (dimplex-controller-py#127), but it is not adoptable yet:
-# its metadata demands ``pydantic>=2.13.5`` (raised mechanically by the uv
-# dependency pass, not by need) while Home Assistant's test stack pins pydantic
-# 2.13.4 — so requiring it makes the environment unsatisfiable. Relax the library
-# floor and release, then bump `manifest.json` and delete this shim.
-#
-# Hot-water cylinders also report fields the library model does not declare
-# (Capacity, HeatingUp, IsGreenEnergyActive, HygieneFrequency, HolidayNumOfDays…);
-# keep them as attributes instead of dropping them so the cylinder entities can
-# read them.
-if (
-    not ApplianceStatus.model_config.get("coerce_numbers_to_str")
-    or ApplianceStatus.model_config.get("extra") != "allow"
-):
-    ApplianceStatus.model_config["coerce_numbers_to_str"] = True
-    ApplianceStatus.model_config["extra"] = "allow"
-    ApplianceStatus.model_rebuild(force=True)
 
 
 class CannotConnect(Exception):
