@@ -52,6 +52,23 @@ updates:
       python-minor-patch:
         patterns:
           - "*"
+        exclude-patterns:
+          # The Home Assistant pair moves in its own PR, for two reasons. They are
+          # not low-risk: pytest-homeassistant-custom-component pins an exact
+          # `homeassistant==` build, so the two must move together for the
+          # resolution to be satisfiable (see requirements_dev.txt), and a Home
+          # Assistant typing change can fail `mypy` on its own. #261 grouped an HA
+          # bump with ruff and zensical, and that mypy failure blocked all four —
+          # including two bumps with nothing to do with Home Assistant.
+          - "homeassistant"
+          - "pytest-homeassistant-custom-component"
+        update-types:
+          - minor
+          - patch
+      homeassistant-stack:
+        patterns:
+          - "homeassistant"
+          - "pytest-homeassistant-custom-component"
         update-types:
           - minor
           - patch
