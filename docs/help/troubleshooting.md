@@ -29,6 +29,7 @@ Find your symptom below, or read the section that matches where it went wrong.
 | Energy Dashboard shows far too much energy           | [A window sensor was treated as a meter](#the-energy-dashboard-shows-far-more-than-the-heaters-used)       |
 | Energy total stays above what the cloud is sending   | [The lifetime hold is covering a reduced history](#the-energy-total-stays-above-what-the-cloud-is-sending) |
 | A repair says a sensor "no longer has a state class" | [A 4.1.0 bug — upgrade to 4.1.1](#a-repair-says-a-sensor-no-longer-has-a-state-class)                      |
+| Setup fails with "Unexpected payload"                | [The cloud sent a field the model did not expect](#the-integration-reports-an-unexpected-payload)          |
 | Entities are `unavailable`                           | [Empty cloud overview](#entities-are-unavailable)                                                          |
 | Energy sensor `unavailable` in summer                | [Expected](#energy-sensor-shows-unavailable-in-summer)                                                     |
 | Repeatedly asked to re-authenticate                  | [Token refresh](#tokens-keep-expiring)                                                                     |
@@ -256,6 +257,10 @@ reset, so it keeps reporting the old peak and over-reports.
 2. If using a manual auth code, capture a fresh one (codes expire quickly).
 3. If MFA is enabled, complete the MFA challenge in the browser before copying the redirect URL.
 4. Re-run the config flow or re-authenticate from **Settings** > **Devices & Services**.
+5. If the credentials are definitely right and it still fails, it may not be an authentication
+   problem at all — see
+   [The integration reports an unexpected payload](#the-integration-reports-an-unexpected-payload),
+   which produces the same message for a completely different reason.
 
 ### Setup fails silently
 
@@ -266,6 +271,40 @@ reset, so it keeps reporting the old peak and over-reports.
 1. Restart Home Assistant.
 2. Check the logs for tracebacks related to `custom_components.dimplex`.
 3. Verify that the `custom_components/dimplex` folder is present in your configuration directory and contains all required files.
+
+### The integration reports an unexpected payload
+
+**Symptom:** setup or re-authentication fails with a message naming a field, such as
+
+```
+Unexpected payload from the Dimplex cloud: 2 validation errors for ApplianceStatus
+ErrorCode
+  Input should be a valid string [type=string_type, input_value=0, input_type=int]
+```
+
+On older releases the same failure was vaguer — `Failed setup, will retry: Unexpected error
+fetching status`.
+
+**Cause:** the cloud sent a field as a type the library's model does not expect, so the response
+failed to parse. Nothing to do with your account, your password or MFA — which is exactly why it
+gets its own entry: the message it produced is the one people associate with a wrong password, and
+for a while it was swallowed altogether, leaving only "Unexpected error fetching status" for
+people to search on.
+
+The common instance was `ErrorCode` and `WarningCode`: the cloud sends them as **integers** (`0`
+when the appliance is healthy) where the model expected a string, so _every_ status poll failed
+and the entry never finished setting up. dimplex-controller 0.14.0 fixed that, and a current
+release of the integration requires a library version that carries it.
+
+**Steps to resolve:**
+
+1. **Upgrade the integration** and restart. If you are on 4.2.x or earlier, your library was
+   0.13.x, which cannot parse those integers — the upgrade is the entire fix.
+2. If it still fails, the field named in the message is the useful part. Open an
+   [issue](https://github.com/kroperuk/dimplex-controller-hass/issues) with that message, your
+   Home Assistant and integration versions, and a diagnostics download.
+3. It is a change on Dimplex's side rather than a fault in your setup, so there is nothing to
+   repair locally in the meantime — and the field name usually makes it a quick fix here.
 
 ## Runtime issues
 
