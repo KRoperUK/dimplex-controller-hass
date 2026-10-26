@@ -256,6 +256,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
     return True
 
 
+def _coordinator_error(exception: Exception, context: str) -> Exception:
+    """Translate an adapter failure into the coordinator's own error type.
+
+    One rule, used by both coordinators so reads and writes answer the same way.
+    Only the adapter's :class:`InvalidAuth` — which it raises solely when the
+    library itself reports that a re-login is required — becomes
+    ``ConfigEntryAuthFailed`` and starts the reauth flow. Everything else, the
+    adapter's :class:`CannotConnect` included, becomes ``UpdateFailed`` so polling
+    keeps retrying: a 503 or timeout on the token endpoint says nothing about the
+    stored credential and must not cost the user their session (#276).
+    """
+    if isinstance(exception, InvalidAuth):
+        _LOGGER.warning("Authentication expired — surfacing reauth")
+        return ConfigEntryAuthFailed("Authentication expired")
+    if isinstance(exception, CannotConnect):
+        return UpdateFailed(f"Cannot connect: {exception}")
+    return UpdateFailed(f"Unexpected error {context}: {exception}")
+
+
 class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Poll hubs, zones, and live appliance overview."""
 
@@ -336,13 +355,8 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Update status data via library."""
         try:
             data = await self.api.async_get_status_data()
-        except InvalidAuth as exception:
-            _LOGGER.warning("Authentication expired — surfacing reauth")
-            raise ConfigEntryAuthFailed("Authentication expired") from exception
-        except CannotConnect as exception:
-            raise UpdateFailed("Cannot connect") from exception
         except Exception as exception:
-            raise UpdateFailed(f"Unexpected error fetching status: {exception}") from exception
+            raise _coordinator_error(exception, "fetching status") from exception
 
         # Timer schedules (read-only) are refreshed on a slow cadence and cached
         # in between so the hot status poll stays a single API call. A missing
@@ -455,13 +469,8 @@ class DimplexEnergyCoordinator(TimestampDataUpdateCoordinator[dict[str, Any]]):
 
         try:
             data = await self.api.async_get_energy_for_hubs(hub_ids)
-        except InvalidAuth as exception:
-            _LOGGER.warning("Authentication expired during energy poll — surfacing reauth")
-            raise ConfigEntryAuthFailed("Authentication expired") from exception
-        except CannotConnect as exception:
-            raise UpdateFailed("Cannot connect") from exception
         except Exception as exception:
-            raise UpdateFailed(f"Unexpected error fetching energy: {exception}") from exception
+            raise _coordinator_error(exception, "fetching energy") from exception
 
         _persist_tokens(self.hass, self._entry, self.api)
         self._adapt_interval(data)

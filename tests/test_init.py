@@ -2,13 +2,18 @@
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dimplex import (
+    DimplexEnergyCoordinator,
     DimplexRuntimeData,
+    DimplexStatusCoordinator,
     _persist_tokens,
     async_unload_entry,
 )
+from custom_components.dimplex.api import CannotConnect, InvalidAuth
 from custom_components.dimplex.const import (
     DOMAIN,
 )
@@ -189,6 +194,47 @@ async def test_status_coordinator_raises_auth_failed_on_invalid_auth(hass, bypas
         # _async_update_data must let ConfigEntryAuthFailed propagate so
         # the DataUpdateCoordinator machinery can attach the reauth flow.
         await coordinator._async_update_data()  # noqa: SLF001
+
+    assert await async_unload_entry(hass, config_entry)
+
+
+@pytest.mark.parametrize(
+    ("api_error", "expected"),
+    [
+        # Transient: the credential is untouched, so keep polling.
+        (CannotConnect("503 on the token endpoint"), UpdateFailed),
+        # The one signal that means reauth.
+        (InvalidAuth("invalid_grant"), ConfigEntryAuthFailed),
+    ],
+)
+async def test_both_coordinators_make_the_same_auth_decision(hass, bypass_get_data, api_error, expected):
+    """Reads and writes obey one rule: only InvalidAuth becomes ConfigEntryAuthFailed.
+
+    That distinction is what keeps a flaky cloud from opening a reauth flow the user
+    has to complete (#276). Both coordinators go through the same translation, so
+    the energy poll cannot disagree with the status poll.
+    """
+    from unittest.mock import patch
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+
+    runtime = config_entry.runtime_data
+    status: DimplexStatusCoordinator = runtime.status
+    energy: DimplexEnergyCoordinator = runtime.energy
+
+    with (
+        patch.object(status.api, "async_get_status_data", side_effect=api_error),
+        pytest.raises(expected),
+    ):
+        await status._async_update_data()  # noqa: SLF001
+
+    with (
+        patch.object(energy.api, "async_get_energy_for_hubs", side_effect=api_error),
+        pytest.raises(expected),
+    ):
+        await energy._async_update_data()  # noqa: SLF001
 
     assert await async_unload_entry(hass, config_entry)
 

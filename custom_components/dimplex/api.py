@@ -75,6 +75,27 @@ class InvalidAuth(Exception):
     """Error to indicate there is invalid auth."""
 
 
+def _auth_error(exception: DimplexAuthError) -> InvalidAuth | CannotConnect:
+    """Map a library auth failure onto the adapter's error types.
+
+    ``DimplexAuthError`` covers two very different things: a credential the cloud
+    rejected, and a failure that says nothing at all about the credential — a 503,
+    timeout or DNS failure on the token endpoint arrives as
+    ``DimplexAuthTransientError`` with ``reauth_required=False``. Collapsing both
+    into :class:`InvalidAuth` turned a one-second network blip into a forced
+    re-login, with polling stopped until the user signed in again
+    (dimplex-controller-hass#276).
+
+    The library already makes the distinction, so trust its verdict: only
+    ``reauth_required`` becomes :class:`InvalidAuth`; everything else is
+    :class:`CannotConnect`, which callers retry without involving the user. Kept in
+    one place so every read and write path answers the same way.
+    """
+    if getattr(exception, "reauth_required", False):
+        return InvalidAuth(str(exception) or "authentication failed")
+    return CannotConnect(str(exception) or "authentication temporarily unavailable")
+
+
 # Statuses that mean "this appliance/endpoint will not do this", as opposed to
 # "the request did not get through". 403 is the documented Quantum case; 405 and
 # 501 are the same class of answer from a hub whose firmware lacks the endpoint.
@@ -112,11 +133,15 @@ def _translated_errors() -> Iterator[None]:
     return for writes they do not support) becomes :class:`ControlRejected`, while
     everything else — 5xx, timeouts, dropped connections — stays
     :class:`CannotConnect`.
+
+    Auth failures are split by the library's own verdict (see :func:`_auth_error`):
+    a rejected credential becomes :class:`InvalidAuth`, a transient one
+    :class:`CannotConnect`.
     """
     try:
         yield
     except DimplexAuthError as exception:
-        raise InvalidAuth from exception
+        raise _auth_error(exception) from exception
     except DimplexApiError as exception:
         status = getattr(exception, "status", None)
         if status in REJECTED_STATUSES:
@@ -221,7 +246,7 @@ class DimplexApiClient:
                 await self._client.auth.get_access_token()
                 return
             except DimplexAuthError as exception:
-                raise InvalidAuth from exception
+                raise _auth_error(exception) from exception
             except DimplexConnectionError as exception:
                 raise CannotConnect from exception
 
@@ -249,7 +274,7 @@ class DimplexApiClient:
             await self._client.auth.headless_login(self._username, self._password)
             await self._client.auth.get_access_token()
         except DimplexAuthError as exception:
-            raise InvalidAuth from exception
+            raise _auth_error(exception) from exception
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
 
@@ -259,7 +284,7 @@ class DimplexApiClient:
             await self.async_initialize()
             self._account_id = await self._resolve_account_id()
         except DimplexAuthError as exception:
-            raise InvalidAuth from exception
+            raise _auth_error(exception) from exception
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
         except DimplexApiError as exception:
@@ -278,7 +303,7 @@ class DimplexApiClient:
             await self._client.auth.exchange_code(code)
             self._account_id = await self._resolve_account_id()
         except DimplexAuthError as exception:
-            raise InvalidAuth from exception
+            raise _auth_error(exception) from exception
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
         except DimplexApiError as exception:
@@ -368,7 +393,7 @@ class DimplexApiClient:
 
             return {"appliances": appliance_rows, "hubs": hubs}
         except DimplexAuthError as exception:
-            raise InvalidAuth from exception
+            raise _auth_error(exception) from exception
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
         except DimplexApiError as exception:
@@ -734,7 +759,7 @@ class DimplexApiClient:
                 include_previous_period=True,
             )
         except DimplexAuthError as exception:
-            raise InvalidAuth from exception
+            raise _auth_error(exception) from exception
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
         except DimplexApiError as exception:
