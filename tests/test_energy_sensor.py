@@ -145,6 +145,37 @@ async def test_energy_lifetime_sensor_with_data(hass):
     assert "window_days" not in state.attributes
 
 
+async def test_a_day_with_no_samples_yet_reads_zero_rather_than_unavailable(hass):
+    """An empty day window is 0 kWh when the series itself has points (#281).
+
+    ``available`` required the *current day's* summary to have points, so
+    ``energy_today`` was unavailable from local midnight until the cloud published
+    today's first sample — every night, for every metered appliance. The series is
+    what availability follows: a day with nothing on it is a real reading of zero.
+    """
+    today = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday = today - timedelta(days=1)
+    status_payload, energy_payload = _row(t1=[(yesterday, 5.0)])
+
+    registry = await _setup_row(hass, status_payload, energy_payload)
+
+    daily_id = registry.async_get_entity_id("sensor", DOMAIN, "test_appliance-1_energy_daily")
+    assert daily_id is not None
+    state = hass.states.get(daily_id)
+    assert state is not None
+    assert state.state == "0.0", "an empty day is zero kWh, not unknown"
+    assert state.attributes.get("telemetry_points") == 0
+    # TOTAL with a last_reset at local midnight is what makes the zero legible to
+    # statistics as "this day started", rather than a gap.
+    assert state.attributes.get("last_reset") is not None
+
+    # The cumulative sensor still reports the history it does have.
+    lifetime_id = registry.async_get_entity_id("sensor", DOMAIN, "test_appliance-1_energy")
+    assert lifetime_id is not None
+    lifetime = hass.states.get(lifetime_id)
+    assert lifetime is not None and float(lifetime.state) == 5.0
+
+
 async def test_energy_daily_sensor(hass):
     """Daily sensor only includes points for the local calendar day."""
     today = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -472,16 +503,109 @@ async def test_the_cumulative_peak_survives_a_restart():
     """
     from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+    from custom_components.dimplex.sensor import DimplexEnergyRestoreData
+
     sensor = _energy_sensor("lifetime")
-    restored = SimpleNamespace(native_value=987.5)
+    restored = DimplexEnergyRestoreData(987.5, UnitOfEnergy.KILO_WATT_HOUR, 987.5)
 
     with (
         patch.object(CoordinatorEntity, "async_added_to_hass", new=AsyncMock()),
-        patch.object(sensor, "async_get_last_sensor_data", new=AsyncMock(return_value=restored)),
+        patch.object(sensor, "async_get_last_extra_data", new=AsyncMock(return_value=restored)),
     ):
         await sensor.async_added_to_hass()
 
     assert sensor._peak_total == 987.5
+
+
+async def test_a_restart_with_no_saved_state_still_restores_the_peak():
+    """A saved ``None`` state must not cost the peak (#281).
+
+    The state is ``None`` whenever the series was empty at shutdown — the hub
+    returned nothing, or the appliance had just been re-onboarded. Restoring from
+    ``native_value`` skipped the peak in exactly that case, so the first truncated
+    cloud total after the restart was accepted as the new peak and Home Assistant's
+    statistics added it on top of the old total instead of seeing one meter.
+    """
+    from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+    from custom_components.dimplex.sensor import DimplexEnergyRestoreData
+
+    sensor = _energy_sensor("lifetime")
+    # The state has no value, but the peak was persisted with it.
+    restored = DimplexEnergyRestoreData(None, UnitOfEnergy.KILO_WATT_HOUR, 987.5)
+
+    with (
+        patch.object(CoordinatorEntity, "async_added_to_hass", new=AsyncMock()),
+        patch.object(sensor, "async_get_last_extra_data", new=AsyncMock(return_value=restored)),
+    ):
+        await sensor.async_added_to_hass()
+
+    assert sensor._peak_total == 987.5
+
+    # The truncated total the cloud returns on the first poll after that restart is
+    # held at the restored peak: no drop, so no statistics reset.
+    with patch.object(
+        sensor,
+        "_summary",
+        return_value=SimpleNamespace(total_kwh=12.0, point_count=2, mode="lifetime", start=None, end=None),
+    ):
+        assert sensor.native_value == 987.5
+
+
+async def test_the_persisted_payload_carries_the_peak():
+    """The peak is written to restore data in its own field, whatever the state is."""
+    sensor = _energy_sensor("lifetime")
+
+    with patch.object(
+        sensor,
+        "_summary",
+        return_value=SimpleNamespace(total_kwh=321.5, point_count=4, mode="lifetime", start=None, end=None),
+    ):
+        assert sensor.native_value == 321.5
+        payload = sensor.extra_restore_state_data.as_dict()
+
+    assert payload["peak_total"] == 321.5
+    # Home Assistant's own sensor payload is preserved, so nothing that reads the
+    # stored state loses it.
+    assert payload["native_value"] == 321.5
+
+
+async def test_a_payload_written_before_the_peak_had_its_own_field_still_restores():
+    """Entries stored by an earlier version hold only the state, which was the peak.
+
+    Restore data is not migrated: it is read once, on the first start after the
+    upgrade, and the state written by the old code *was* the held peak.
+    """
+    from homeassistant.helpers.restore_state import RestoredExtraData
+    from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+    sensor = _energy_sensor("lifetime")
+    legacy = RestoredExtraData({"native_value": 654.25, "native_unit_of_measurement": UnitOfEnergy.KILO_WATT_HOUR})
+
+    with (
+        patch.object(CoordinatorEntity, "async_added_to_hass", new=AsyncMock()),
+        patch.object(sensor, "async_get_last_extra_data", new=AsyncMock(return_value=legacy)),
+    ):
+        await sensor.async_added_to_hass()
+
+    assert sensor._peak_total == 654.25
+
+
+async def test_unusable_restore_data_leaves_the_peak_unset():
+    """Anything we did not write is ignored rather than trusted as a peak."""
+    from homeassistant.helpers.restore_state import RestoredExtraData
+    from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+    sensor = _energy_sensor("lifetime")
+    stranger = RestoredExtraData({"peak_total": "not a number", "native_value": None})
+
+    with (
+        patch.object(CoordinatorEntity, "async_added_to_hass", new=AsyncMock()),
+        patch.object(sensor, "async_get_last_extra_data", new=AsyncMock(return_value=stranger)),
+    ):
+        await sensor.async_added_to_hass()
+
+    assert sensor._peak_total is None
 
 
 async def test_a_suppressed_drop_publishes_the_raw_total():

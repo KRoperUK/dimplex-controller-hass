@@ -6,7 +6,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, override
 from zoneinfo import ZoneInfo
 
 from dimplex_controller import summarise_energy
@@ -15,6 +15,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
+    SensorExtraStoredData,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -624,6 +625,49 @@ class DimplexZoneSensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]]
         return info
 
 
+def _restored_peak(value: Any) -> float | None:
+    """Coerce a restored peak to a float, rejecting anything we did not write."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+@dataclass
+class DimplexEnergyRestoreData(SensorExtraStoredData):
+    """Restore payload for the energy sensors.
+
+    The monotonic peak gets a field of its own instead of being read back out of
+    ``native_value``. The state is ``None`` whenever the series was empty at
+    shutdown — a hub that returned nothing, an appliance that had just been
+    re-onboarded — so a restart took the first (possibly truncated) cloud total as
+    the new peak and Home Assistant's statistics saw a meter reset, adding the small
+    total on top of the old one (#281).
+
+    ``native_value`` is kept in the payload because it is the base sensor contract
+    and something else may read it, but nothing here depends on it any more.
+    """
+
+    peak_total: float | None = None
+
+    @override
+    def as_dict(self) -> dict[str, Any]:
+        """Return a dict representation, including the held peak."""
+        return {**super().as_dict(), "peak_total": self.peak_total}
+
+    @classmethod
+    def from_dict(cls, restored: dict[str, Any]) -> DimplexEnergyRestoreData | None:
+        """Rebuild the payload, tolerating one written before the peak existed."""
+        base = SensorExtraStoredData.from_dict(restored)
+        if base is None:
+            return None
+        peak = _restored_peak(restored.get("peak_total"))
+        if peak is None:
+            # Entries stored by an earlier version carry only the state, which *was*
+            # the held peak — the best answer available for them.
+            peak = _restored_peak(base.native_value)
+        return cls(base.native_value, base.native_unit_of_measurement, peak)
+
+
 class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]]], RestoreSensor):
     """Energy sensor backed by the energy coordinator."""
 
@@ -722,11 +766,27 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
 
     @property
     def available(self) -> bool:
-        """Available when the energy coordinator has points for this series."""
+        """Available whenever the appliance has a telemetry series at all.
+
+        Availability used to require the *current window* to have points, so the
+        daily sensor was unavailable from local midnight until the cloud published
+        today's first sample: an appliance that used nothing overnight read
+        ``unavailable`` instead of 0 kWh, and the Energy Dashboard carried a hole
+        through every night (#281). An empty day window is a real answer of zero —
+        only a missing series means there is nothing to report.
+        """
         if not super().available:
             return False
+        if not self._energy_points:
+            return False
         summary = self._summary()
-        return summary is not None and summary.point_count > 0
+        if summary is None:
+            return False
+        if self.entity_description.mode == "daily":
+            return True
+        # The cumulative series drops points it cannot place on the timeline, so
+        # without any timestamped point there is no total to publish.
+        return bool(summary.point_count > 0)
 
     @property
     def _raw_total(self) -> float | None:
@@ -736,9 +796,17 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         so this is the only way to see what the cloud is currently sending. It is
         exposed as an attribute on the cumulative sensors so a suppressed drop is
         inspectable rather than invisible (#234).
+
+        An empty *day* window is 0 kWh, not "unknown": ``summarise_energy`` already
+        totals it as zero, and the point-count gate below only makes sense for the
+        cumulative series, which drops points it cannot place on the timeline (#281).
         """
         summary = self._summary()
-        if summary is None or summary.point_count == 0:
+        if summary is None:
+            return None
+        if self.entity_description.mode == "daily":
+            return float(summary.total_kwh)
+        if summary.point_count == 0:
             return None
         return float(summary.total_kwh)
 
@@ -797,20 +865,32 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
             )
         return peak
 
+    @property
+    def extra_restore_state_data(self) -> DimplexEnergyRestoreData:
+        """Persist the held peak, not just the state it happened to produce.
+
+        Home Assistant restores the state as part of its own payload, but the state
+        is ``None`` whenever the series was empty at shutdown and says nothing about
+        how high the meter had climbed. Storing the peak beside it is what makes the
+        hold survive a restart (#281).
+        """
+        value: Any = self.native_value  # None is a valid stored sensor state
+        return DimplexEnergyRestoreData(value, self.native_unit_of_measurement, self._peak_total)
+
     async def async_added_to_hass(self) -> None:
         """Restore the highest cumulative total across a restart."""
         await super().async_added_to_hass()
         if self.entity_description.mode != "lifetime":
             return
-        last = await self.async_get_last_sensor_data()
-        if last is None:
+        restored = await self.async_get_last_extra_data()
+        if restored is None:
             return
-        # Our own restored value is always a float; anything else means someone
-        # else wrote the attribute, so ignore it rather than guessing.
-        restored = last.native_value
-        if isinstance(restored, bool) or not isinstance(restored, int | float):
+        # ``from_dict`` also covers a payload written before the peak had a field,
+        # where the stored state was the peak.
+        data = DimplexEnergyRestoreData.from_dict(restored.as_dict())
+        if data is None:
             return
-        self._peak_total = float(restored)
+        self._peak_total = data.peak_total
 
     @property
     def last_reset(self) -> datetime | None:
