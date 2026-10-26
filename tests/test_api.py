@@ -576,7 +576,12 @@ async def test_async_get_energy_report_error_mapping(hass, exc, expected):
 
 
 async def test_async_get_energy_report_api_error_returns_empty(hass):
-    """A DimplexApiError (e.g. 404/400 for hubs with no metered appliances) returns {} instead of raising."""
+    """A *non-transient* DimplexApiError (404/400 for a hub with no metres) returns {} instead of raising.
+
+    That answer is a fact about the account — retrying it changes nothing — so it
+    is passed through as an empty report. Transient errors must not take this path;
+    see the test below (#279).
+    """
     api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
     with patch.object(
         api._client,
@@ -585,6 +590,32 @@ async def test_async_get_energy_report_api_error_returns_empty(hass):
     ):
         result = await api.async_get_energy_report("hub-1")
     assert result == {"t1": {}, "t2": {}}
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        DimplexApiError(504, "Gateway Timeout"),
+        DimplexApiError(502, "Bad Gateway", transient=True),
+        DimplexApiError(500, "Internal Server Error", transient=True),
+        DimplexApiError(429, "Too Many Requests"),
+    ],
+)
+async def test_async_get_energy_report_transient_api_error_raises(hass, exc):
+    """A 5xx / 429 must raise, not be reported as an empty history (#279).
+
+    Swallowing it into ``{"t1": {}, "t2": {}}`` told the coordinator the poll had
+    succeeded with no points, which backed polling off to three hours and raised
+    the seasonal repair. ``transient`` is the library's verdict, but the status is
+    classified directly too, so a 504 arriving without the flag is not mistaken for
+    an answer either.
+    """
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with (
+        patch.object(api._client, "get_tsi_energy_report", new=AsyncMock(side_effect=exc)),
+        pytest.raises(CannotConnect),
+    ):
+        await api.async_get_energy_report("hub-1")
 
 
 async def test_control_helpers_delegate_to_library(hass):

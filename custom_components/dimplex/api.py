@@ -128,6 +128,25 @@ def _unexpected_payload(exception: ValidationError) -> CannotConnect:
     return CannotConnect(f"Unexpected payload from the Dimplex cloud: {exception}")
 
 
+def _is_transient_api_error(exception: DimplexApiError) -> bool:
+    """True when the cloud said "try again", not "there is nothing here".
+
+    ``DimplexApiError`` covers both. A hub with no metered appliances answers 400
+    or 404 on the TSI report endpoint, and that answer is a fact about the account
+    — retrying it forever changes nothing. A 500, 504 or 429 is the request not
+    having got through, and the answer to it is to retry, not to record an empty
+    history (dimplex-controller-hass#279).
+
+    The library sets ``transient`` for the statuses it retried internally (5xx and
+    429), which is the authoritative verdict; the status is also checked directly
+    so an error constructed by a caller or an older library still classifies.
+    """
+    if getattr(exception, "transient", False):
+        return True
+    status = getattr(exception, "status", None)
+    return isinstance(status, int) and (status >= 500 or status == 429)
+
+
 @contextmanager
 def _translated_errors() -> Iterator[None]:
     """Map library exceptions onto the adapter's error types.
@@ -769,7 +788,11 @@ class DimplexApiClient:
 
         Empty lists are normal for hubs without metered appliances or when
         heaters have not been running *and* IncludePreviousPeriod returns
-        nothing.
+        nothing. An endpoint that refuses the report outright (400/404) yields an
+        empty report, which is that same non-transient answer. A *transient*
+        failure — a 5xx, a 429, a dropped connection — raises :class:`CannotConnect`
+        instead: it says nothing about the history, so it must not be mistaken for
+        one that is empty (#279).
         """
         try:
             report = await self._client.get_tsi_energy_report(
@@ -784,6 +807,15 @@ class DimplexApiClient:
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
         except DimplexApiError as exception:
+            if _is_transient_api_error(exception):
+                # A 5xx / 429 says the request did not get through, so there is no
+                # answer about this hub's history yet. Returning an empty report
+                # here made the coordinator record a *successful* poll with no
+                # points, which backed polling off to three hours and raised the
+                # "common in summer" repair for what was a one-off failure (#279).
+                # Raising instead keeps the previous data and retries on the next
+                # scheduled poll.
+                raise CannotConnect(str(exception) or "energy report unavailable") from exception
             _LOGGER.warning(
                 "Energy report unavailable for hub %s: %s — skipping.",
                 hub_id,

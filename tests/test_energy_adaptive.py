@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -159,3 +159,117 @@ async def test_energy_update_data_generic_error():
 
     with pytest.raises(UpdateFailed):
         await coord._async_update_data()
+
+
+async def test_a_transient_report_failure_is_a_failed_poll_not_an_empty_history(hass):
+    """A 504 from the report endpoint must raise, not return an empty report (#279).
+
+    The adapter used to turn *every* ``DimplexApiError`` into ``{"t1": {}, "t2": {}}``,
+    so the coordinator recorded a successful poll with no points: the backoff counted
+    it, the interval moved to three hours and the "common in summer" repair was
+    raised — all from one timeout. The real adapter is used here so the swallowing
+    itself is under test; a transient error has to reach the coordinator as a
+    failure, which leaves the previous data in place and the empty counter alone.
+    """
+    from dimplex_controller import DimplexApiError
+    from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+    from custom_components.dimplex.api import DimplexApiClient
+
+    client = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    coord = object.__new__(DimplexEnergyCoordinator)
+    coord._status = MagicMock()
+    coord._status.data = {"hubs": [SimpleNamespace(HubId="h1")]}
+    coord._empty_polls = 0
+    coord._base_interval = timedelta(minutes=30)
+    coord.update_interval = timedelta(minutes=30)
+    coord.api = client
+
+    with (
+        patch.object(
+            client._client,
+            "get_tsi_energy_report",
+            new=AsyncMock(side_effect=DimplexApiError(504, "Gateway Timeout")),
+        ),
+        pytest.raises(UpdateFailed),
+    ):
+        await coord._async_update_data()
+
+    assert coord._empty_polls == 0, "a failed poll must not be counted as an empty history"
+    assert coord.update_interval == timedelta(minutes=30)
+
+
+async def test_a_genuine_empty_report_is_still_a_successful_poll(hass):
+    """A non-transient refusal is an answer about the account, and stays one (#279).
+
+    A hub with no metered appliances answers 404 on the report endpoint. That is
+    not a failure to retry — it is the account saying there is nothing to report —
+    so it must keep flowing through as an empty report and let the seasonal repair
+    do its job.
+    """
+    from dimplex_controller import DimplexApiError
+    from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+    from custom_components.dimplex.api import DimplexApiClient
+
+    client = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    coord = object.__new__(DimplexEnergyCoordinator)
+    coord._status = MagicMock()
+    coord._status.data = {"hubs": [SimpleNamespace(HubId="h1")]}
+    coord._empty_polls = 0
+    coord._base_interval = timedelta(minutes=30)
+    coord.update_interval = timedelta(minutes=30)
+    coord.hass = MagicMock()
+    coord._entry = SimpleNamespace(entry_id="entry-1")
+    coord.api = client
+
+    with (
+        patch.object(
+            client._client,
+            "get_tsi_energy_report",
+            new=AsyncMock(side_effect=DimplexApiError(404, "Not Found")),
+        ),
+        patch("custom_components.dimplex._persist_tokens"),
+    ):
+        data = await coord._async_update_data()
+
+    assert data == {"energy": {"h1": {"t1": {}, "t2": {}}}}
+    assert coord._empty_polls == 1
+
+
+async def test_empty_polls_while_heating_raise_neither_backoff_nor_repair(monkeypatch):
+    """The repair and the backoff read one counter, and heating holds it at zero (#279).
+
+    They used to be two counters with different conditions: the interval's included
+    *not heating*, the repair's did not, so a heater boosting through a quiet spell
+    could get a "common in summer" repair raised about it. Both decisions now read
+    the one count that only increments when nothing is heating.
+    """
+    coord = object.__new__(DimplexEnergyCoordinator)
+    heating = SimpleNamespace(ComfortStatus=True, ApplianceModes=0, BoostDuration=0)
+    coord._status = MagicMock()
+    coord._status.data = {"hubs": [SimpleNamespace(HubId="h1")], "appliances": [{"status": heating}]}
+    coord._empty_polls = 0
+    coord._base_interval = timedelta(minutes=30)
+    coord.update_interval = timedelta(minutes=30)
+    coord.hass = MagicMock()
+    coord._entry = SimpleNamespace(entry_id="entry-1")
+    coord.api = MagicMock()
+    coord.api.async_get_energy_for_hubs = AsyncMock(return_value={"energy": {"h1": {"t1": {}, "t2": {}}}})
+
+    repairs: list[bool] = []
+    monkeypatch.setattr(
+        "custom_components.dimplex.async_update_empty_energy_issue",
+        lambda hass, entry_id, *, empty: repairs.append(empty),
+    )
+    monkeypatch.setattr("custom_components.dimplex._persist_tokens", lambda *args: None)
+
+    for _ in range(ENERGY_EMPTY_BACKOFF_THRESHOLD + 1):
+        await coord._async_update_data()
+
+    assert repairs, "the repair was never evaluated"
+    assert not any(repairs), "a repair was raised while a heater was active"
+    assert coord._empty_polls == 0
+    assert coord.update_interval == timedelta(minutes=30)
