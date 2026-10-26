@@ -40,6 +40,13 @@ jobs:
               - 'blueprints/**'
               - 'pyproject.toml'
               - 'requirements_test.txt'
+              # requirements_test.txt is `-r requirements_dev.txt`, which is `-r
+              # requirements_docs.txt`. The Home Assistant pin lives in
+              # requirements_dev.txt, so a grouped `homeassistant-stack` bump that
+              # touches only that file used to leave component=false: lint, mypy and
+              # test were skipped and CI passed without testing the bump (#287).
+              - 'requirements_dev.txt'
+              - 'requirements_docs.txt'
               - 'hacs.json'
               - '.github/workflows/ci.yml'
               - '.github/workflows/hacs-release-asset-repair.yml'
