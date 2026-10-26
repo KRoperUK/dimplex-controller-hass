@@ -523,3 +523,226 @@ def test_main_rc_release_does_not_roll_over_on_an_unrelated_failure(
     assert result.returncode != 0
     assert not out.exists(), "no tag was created, so nothing may be reported"
     assert _git(origin, "tag", "-l").split() == ["v3.2.0-rc.6"]
+
+
+# ---------------------------------------------------------------------------
+# lint-commits.sh must not pass over an empty range (#288)
+# ---------------------------------------------------------------------------
+#
+# The script feeds `git log BASE..HEAD` to its lint loop. That command exits 0
+# and prints nothing when the range is empty — a shallow checkout, a fetch that
+# did nothing, base == head — so the loop ran zero times and the script printed
+# "All commits are valid." A commit gate that passes on an empty range is worse
+# than no gate: it is the only check that the commit messages are conventional.
+#
+# These tests drive the script against a throwaway repository. The CI checkout
+# exports GITHUB_EVENT_NAME/GITHUB_EVENT_PATH to every process it starts,
+# pytest included, so both are always set explicitly rather than inherited: an
+# unset local run and a pull_request run are different code paths.
+
+
+def _pr_event(tmp_path: Path, *, base_sha: str, head_sha: str) -> dict[str, str]:
+    """Environment for the script's pull_request branch, with explicit shas."""
+    event = tmp_path / "event.json"
+    event.write_text(
+        json.dumps(
+            {
+                "pull_request": {
+                    "title": "fix: keep the commit gate honest",
+                    "base": {"sha": base_sha},
+                    "head": {"sha": head_sha},
+                }
+            }
+        )
+    )
+    return {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": str(event)}
+
+
+_LOCAL_EVENT = {"GITHUB_EVENT_NAME": "", "GITHUB_EVENT_PATH": ""}
+
+
+def test_lint_commits_fails_on_an_empty_pull_request_range(tmp_path: Path) -> None:
+    """base == head means nothing was linted, so the check must not pass."""
+    work, _origin, base_sha = _make_release_repo(tmp_path)
+    result = _run_with_env(
+        "lint-commits.sh",
+        _pr_event(tmp_path, base_sha=base_sha, head_sha=base_sha),
+        cwd=work,
+    )
+
+    assert result.returncode != 0, f"an empty range passed:\n{result.stdout}"
+    assert f"no commits in {base_sha}..{base_sha}" in result.stderr
+    assert "All commits are valid." not in result.stdout
+
+
+def test_lint_commits_fails_on_an_empty_local_range(tmp_path: Path) -> None:
+    """HEAD on the target branch (nothing to compare) is a failure, not a pass."""
+    work, _origin, _base_sha = _make_release_repo(tmp_path)
+    result = _run_with_env("lint-commits.sh", _LOCAL_EVENT, cwd=work)
+
+    assert result.returncode != 0, f"an empty range passed:\n{result.stdout}"
+    assert "no commits in main..HEAD" in result.stderr
+    assert "All local commits follow Conventional Commits." not in result.stdout
+
+
+def test_lint_commits_fails_a_non_conventional_commit(tmp_path: Path) -> None:
+    """The empty-range guard must not have replaced the actual linting."""
+    work, _origin, base_sha = _make_release_repo(tmp_path)
+    _git(work, "commit", "-q", "--allow-empty", "-m", "Add the thing")
+    head_sha = _git(work, "rev-parse", "HEAD")
+    result = _run_with_env(
+        "lint-commits.sh",
+        _pr_event(tmp_path, base_sha=base_sha, head_sha=head_sha),
+        cwd=work,
+    )
+
+    assert result.returncode == 1, result.stdout
+    assert "does not follow Conventional Commits" in result.stdout
+
+
+def test_lint_commits_fetches_a_head_commit_that_is_not_checked_out(tmp_path: Path) -> None:
+    """The range has to be fetched: CI checks out the merge ref, not the head commit.
+
+    actions/checkout leaves `refs/pull/<n>/merge` checked out, so the pull request's
+    head commit is not in the object database and `git log BASE..HEAD` fails outright.
+    A single-branch clone has the same shape — the head commit exists only on the
+    remote. The lint result, rather than a range error, is what this asserts.
+    """
+    work, origin, base_sha = _make_release_repo(tmp_path)
+    _git(work, "checkout", "-q", "-b", "feature")
+    _git(work, "commit", "-q", "--allow-empty", "-m", "Add the thing")
+    head_sha = _git(work, "rev-parse", "HEAD")
+    _git(work, "push", "-q", "origin", "refs/heads/feature")
+
+    clone = tmp_path / "clone"
+    # --no-local so the clone really contains only main's objects: a local-path
+    # clone hardlinks the whole object database and would hide the fetch.
+    subprocess.run(
+        ["git", "clone", "-q", "--no-local", "--single-branch", "--branch", "main", str(origin), str(clone)],
+        check=True,
+        capture_output=True,
+        env=_clean_git_env(_GIT_ENV),
+    )
+
+    result = _run_with_env(
+        "lint-commits.sh",
+        _pr_event(tmp_path, base_sha=base_sha, head_sha=head_sha),
+        cwd=clone,
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "does not follow Conventional Commits" in result.stdout, result.stdout
+
+
+def test_lint_commits_accepts_a_conventional_range(tmp_path: Path) -> None:
+    """The two failures above are about their input, not a script that always fails."""
+    work, _origin, base_sha = _make_release_repo(tmp_path)
+    _git(work, "commit", "-q", "--allow-empty", "-m", "fix: keep the commit gate honest")
+    head_sha = _git(work, "rev-parse", "HEAD")
+    result = _run_with_env(
+        "lint-commits.sh",
+        _pr_event(tmp_path, base_sha=base_sha, head_sha=head_sha),
+        cwd=work,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "All commits are valid." in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Negative cases for the guard scripts (#290)
+# ---------------------------------------------------------------------------
+#
+# Every guard script in this repository was previously asserted only to exit 0 on
+# the current tree. That proves it does not cry wolf; it does not prove it would
+# notice a wolf. A matcher that regressed to matching nothing — a bad regex, a
+# wrong file list, a renamed key — kept every existing test green.
+
+
+def _run_with_args(
+    script: str,
+    *args: str,
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run a script from ``cwd`` (the repo by default) with arguments."""
+    root = cwd or REPO_ROOT
+    return subprocess.run(
+        ["bash", str(root / "scripts" / script), *args],
+        cwd=str(root),
+        capture_output=True,
+        text=True,
+        env=_clean_git_env(),
+    )
+
+
+def test_check_md_alerts_rejects_a_malformed_alert(tmp_path: Path) -> None:
+    """Both shapes of broken callout must fail the guard.
+
+    GitHub renders neither of these as a callout and reports nothing: the marker
+    joined to its body, and the marker with no blockquote at all.
+    """
+    joined = tmp_path / "joined.md"
+    joined.write_text("> [!IMPORTANT]\n> fine\n\n> [!IMPORTANT] joined to the body\n")
+    unquoted = tmp_path / "unquoted.md"
+    unquoted.write_text("[!NOTE]\nthe body\n")
+
+    for path in (joined, unquoted):
+        result = _run_with_args("check-md-alerts.sh", str(path))
+        assert result.returncode != 0, f"{path.name} passed the alert guard:\n{result.stdout}"
+        assert "::error" in result.stdout, result.stdout
+
+
+def test_check_md_alerts_accepts_a_well_formed_alert(tmp_path: Path) -> None:
+    """The failures above must be about the input, not a script that always fails."""
+    good = tmp_path / "good.md"
+    good.write_text("> [!IMPORTANT]\n> body\n")
+    result = _run_with_args("check-md-alerts.sh", str(good))
+
+    assert result.returncode == 0, result.stderr
+    assert "✓" in result.stdout
+
+
+def _copy_docs_tree(tmp_path: Path) -> Path:
+    """A throwaway copy of everything check-docs-coverage.sh reads.
+
+    The script resolves the repository root from its own path, so the copy runs
+    the real logic against a mutable tree instead of the checkout.
+    """
+    root = tmp_path / "tree"
+    shutil.copytree(REPO_ROOT / "scripts", root / "scripts")
+    shutil.copytree(
+        REPO_ROOT / "custom_components" / "dimplex",
+        root / "custom_components" / "dimplex",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    shutil.copytree(REPO_ROOT / "docs" / "reference", root / "docs" / "reference")
+    shutil.copy2(REPO_ROOT / "zensical.toml", root / "zensical.toml")
+    return root
+
+
+def test_check_docs_coverage_passes_on_the_current_tree(tmp_path: Path) -> None:
+    """Baseline for the negative case: the unmodified copy is documented."""
+    root = _copy_docs_tree(tmp_path)
+    result = _run_with_args("check-docs-coverage.sh", cwd=root)
+
+    assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
+    assert "docs coverage OK" in result.stdout
+
+
+def test_check_docs_coverage_rejects_an_undocumented_entity(tmp_path: Path) -> None:
+    """An entity in datetime.py that no reference page mentions must fail.
+
+    The probe is deliberately in datetime.py: the script used to grep a hard-coded
+    list of five platform modules that did not include it, so this file's
+    translation keys were never checked at all. Re-hard-coding the list makes this
+    test fail — which is the point.
+    """
+    root = _copy_docs_tree(tmp_path)
+    module = root / "custom_components" / "dimplex" / "datetime.py"
+    module.write_text(f'{module.read_text()}\n_attr_translation_key = "undocumented_probe"\n')
+
+    result = _run_with_args("check-docs-coverage.sh", cwd=root)
+
+    assert result.returncode != 0, f"an undocumented entity passed the docs gate:\n{result.stdout}"
+    assert "entity 'undocumented_probe' is not mentioned" in result.stdout
+    assert "entities.md" in result.stdout

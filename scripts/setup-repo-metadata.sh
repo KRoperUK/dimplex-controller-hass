@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Apply repository metadata — description, homepage and topics — for the Dimplex
-# repositories.
+# Apply repository metadata — description, homepage, topics and merge settings — for
+# the Dimplex repositories.
 #
 # Requires the GitHub CLI (`gh`) authenticated as an account that can edit the
 # repositories. Usage: scripts/setup-repo-metadata.sh [owner]
@@ -20,6 +20,12 @@
 # two calls are separate for that reason, and the end of the script asserts the result
 # rather than printing it, because a `gh api` call that discards half its input still
 # exits 0.
+#
+# `allow_merge_commit` belongs here for the same reason (#291). It had been switched
+# off on both repositories, so the only way to land a pull request was to squash it —
+# and a squash collapses a branch of deliberately separate fixes into one commit,
+# losing the per-change history and the individual `Closes #n` trailers. Squash stays
+# enabled for single-commit work; merge commits are what a multi-commit PR needs.
 #
 set -euo pipefail
 
@@ -85,7 +91,9 @@ gh api \
   --input - <<'JSON' > /dev/null
 {
   "description": "Home Assistant integration for Dimplex Hub — heat and hot water control for Dimplex appliances",
-  "homepage": "https://dimplex-hass.kroper.uk/"
+  "homepage": "https://dimplex-hass.kroper.uk/",
+  "allow_merge_commit": true,
+  "allow_squash_merge": true
 }
 JSON
 set_topics "${HASS_REPO}" "${HASS_TOPICS[@]}"
@@ -102,7 +110,9 @@ gh api \
   --input - <<'JSON' > /dev/null
 {
   "description": "Unofficial async Python client for Dimplex (GDHV IoT) heating appliances",
-  "homepage": "https://pypi.org/project/dimplex-controller/"
+  "homepage": "https://pypi.org/project/dimplex-controller/",
+  "allow_merge_commit": true,
+  "allow_squash_merge": true
 }
 JSON
 set_topics "${PY_REPO}" "${PY_TOPICS[@]}"
@@ -111,7 +121,7 @@ echo
 echo "Result:"
 for repo in "${HASS_REPO}" "${PY_REPO}"; do
   gh api "repos/${OWNER}/${repo}" \
-    --jq '{name, description, homepage, topics}'
+    --jq '{name, description, homepage, topics, allow_merge_commit, allow_squash_merge}'
 done
 
 status=0
@@ -128,7 +138,24 @@ check_topics() {
 check_topics "${HASS_REPO}" "$(printf '%s\n' "${HASS_TOPICS[@]}" | sort | paste -sd' ' -)"
 check_topics "${PY_REPO}" "$(printf '%s\n' "${PY_TOPICS[@]}" | sort | paste -sd' ' -)"
 
+# A repo PATCH accepts a field, reports it, and still leaves the old value in place in
+# the same way the topics endpoint did, so these are asserted from a fresh read too.
+check_setting() {
+  local repo=$1 field=$2 expected=$3
+  local actual
+  actual=$(gh api "repos/${OWNER}/${repo}" --jq ".${field}")
+  if [ "${actual}" != "${expected}" ]; then
+    echo "error: ${repo} ${field} is '${actual}'" >&2
+    echo "       expected '${expected}'" >&2
+    status=1
+  fi
+}
+for repo in "${HASS_REPO}" "${PY_REPO}"; do
+  check_setting "${repo}" allow_merge_commit true
+  check_setting "${repo}" allow_squash_merge true
+done
+
 if [ "${status}" -ne 0 ]; then
-  echo "One or more repositories do not hold the expected topics." >&2
+  echo "One or more repository settings do not match what this script applies." >&2
 fi
 exit "${status}"

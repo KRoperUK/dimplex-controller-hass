@@ -101,13 +101,19 @@ done <<<"$service_consts"
 # --- 2. Entity translation keys ------------------------------------------
 # Matches both `translation_key="x"` and `_attr_translation_key = "x"`.
 # repairs.py is excluded: its keys are repair issue ids, not entities.
-# Every platform module that creates entities must be listed here, or a new
-# platform's entities would be invisible to this check — which is how the number
-# platform would have shipped undocumented.
-keys=$(grep -rhoE '_?_?attr_?_?translation_key *= *"[a-z0-9_]+"|translation_key="[a-z0-9_]+"' \
-  "$component"/binary_sensor.py "$component"/sensor.py "$component"/switch.py "$component"/climate.py \
-  "$component"/number.py \
-  2>/dev/null | grep -oE '"[a-z0-9_]+"' | tr -d '"' | sort -u)
+#
+# The module list is derived from the component directory rather than hard-coded.
+# It used to name five platform modules, which silently skipped datetime.py and
+# water_heater.py — both ship translation keys today, so neither was ever checked,
+# and the next new platform would have been invisible here for the same reason
+# (#290). A module with no keys contributes none.
+entity_modules=()
+for module in "$component"/*.py; do
+  [[ "$(basename "$module")" == "repairs.py" ]] && continue
+  entity_modules+=("$module")
+done
+keys=$(grep -hoE '_?_?attr_?_?translation_key *= *"[a-z0-9_]+"|translation_key="[a-z0-9_]+"' \
+  "${entity_modules[@]}" 2>/dev/null | grep -oE '"[a-z0-9_]+"' | tr -d '"' | sort -u)
 if [[ -z "$keys" ]]; then
   echo "::error file=$component::found no entity translation keys — has the format changed?"
   status=1

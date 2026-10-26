@@ -20,6 +20,12 @@ jobs:
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3
 
       - name: Approve the PR
+        # The same condition as the auto-merge step below. Approval used to be
+        # unconditional while only auto-merge was limited to minor/patch, so a major
+        # bump got a bot approval it was never meant to have — and with no required
+        # approving reviews configured, that approval was the only review it got
+        # (#289). Majors are left for a human on both steps.
+        if: ${{ steps.meta.outputs.update-type == 'version-update:semver-minor' || steps.meta.outputs.update-type == 'version-update:semver-patch' }}
         run: gh pr review --approve "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
