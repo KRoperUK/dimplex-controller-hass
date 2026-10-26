@@ -523,3 +523,93 @@ def test_main_rc_release_does_not_roll_over_on_an_unrelated_failure(
     assert result.returncode != 0
     assert not out.exists(), "no tag was created, so nothing may be reported"
     assert _git(origin, "tag", "-l").split() == ["v3.2.0-rc.6"]
+
+
+# ---------------------------------------------------------------------------
+# lint-commits.sh must not pass over an empty range (#288)
+# ---------------------------------------------------------------------------
+#
+# The script feeds `git log BASE..HEAD` to its lint loop. That command exits 0
+# and prints nothing when the range is empty — a shallow checkout, a fetch that
+# did nothing, base == head — so the loop ran zero times and the script printed
+# "All commits are valid." A commit gate that passes on an empty range is worse
+# than no gate: it is the only check that the commit messages are conventional.
+#
+# These tests drive the script against a throwaway repository. The CI checkout
+# exports GITHUB_EVENT_NAME/GITHUB_EVENT_PATH to every process it starts,
+# pytest included, so both are always set explicitly rather than inherited: an
+# unset local run and a pull_request run are different code paths.
+
+
+def _pr_event(tmp_path: Path, *, base_sha: str, head_sha: str) -> dict[str, str]:
+    """Environment for the script's pull_request branch, with explicit shas."""
+    event = tmp_path / "event.json"
+    event.write_text(
+        json.dumps(
+            {
+                "pull_request": {
+                    "title": "fix: keep the commit gate honest",
+                    "base": {"sha": base_sha},
+                    "head": {"sha": head_sha},
+                }
+            }
+        )
+    )
+    return {"GITHUB_EVENT_NAME": "pull_request", "GITHUB_EVENT_PATH": str(event)}
+
+
+_LOCAL_EVENT = {"GITHUB_EVENT_NAME": "", "GITHUB_EVENT_PATH": ""}
+
+
+def test_lint_commits_fails_on_an_empty_pull_request_range(tmp_path: Path) -> None:
+    """base == head means nothing was linted, so the check must not pass."""
+    work, _origin, base_sha = _make_release_repo(tmp_path)
+    result = _run_with_env(
+        "lint-commits.sh",
+        _pr_event(tmp_path, base_sha=base_sha, head_sha=base_sha),
+        cwd=work,
+    )
+
+    assert result.returncode != 0, f"an empty range passed:\n{result.stdout}"
+    assert f"no commits in {base_sha}..{base_sha}" in result.stderr
+    assert "All commits are valid." not in result.stdout
+
+
+def test_lint_commits_fails_on_an_empty_local_range(tmp_path: Path) -> None:
+    """HEAD on the target branch (nothing to compare) is a failure, not a pass."""
+    work, _origin, _base_sha = _make_release_repo(tmp_path)
+    result = _run_with_env("lint-commits.sh", _LOCAL_EVENT, cwd=work)
+
+    assert result.returncode != 0, f"an empty range passed:\n{result.stdout}"
+    assert "no commits in main..HEAD" in result.stderr
+    assert "All local commits follow Conventional Commits." not in result.stdout
+
+
+def test_lint_commits_fails_a_non_conventional_commit(tmp_path: Path) -> None:
+    """The empty-range guard must not have replaced the actual linting."""
+    work, _origin, base_sha = _make_release_repo(tmp_path)
+    _git(work, "commit", "-q", "--allow-empty", "-m", "Add the thing")
+    head_sha = _git(work, "rev-parse", "HEAD")
+    result = _run_with_env(
+        "lint-commits.sh",
+        _pr_event(tmp_path, base_sha=base_sha, head_sha=head_sha),
+        cwd=work,
+    )
+
+    assert result.returncode == 1, result.stdout
+    assert "does not follow Conventional Commits" in result.stdout
+
+
+def test_lint_commits_accepts_a_conventional_range(tmp_path: Path) -> None:
+    """The two failures above are about their input, not a script that always fails."""
+    work, _origin, base_sha = _make_release_repo(tmp_path)
+    _git(work, "commit", "-q", "--allow-empty", "-m", "fix: keep the commit gate honest")
+    head_sha = _git(work, "rev-parse", "HEAD")
+    result = _run_with_env(
+        "lint-commits.sh",
+        _pr_event(tmp_path, base_sha=base_sha, head_sha=head_sha),
+        cwd=work,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "All commits are valid." in result.stdout
