@@ -224,7 +224,7 @@ A major release relative to 2.0.0.
 Any recent version needs:
 
 - Home Assistant **2026.9** or later.
-- [`dimplex-controller>=0.15.0`](https://pypi.org/project/dimplex-controller/), installed
+- [`dimplex-controller>=0.15.1`](https://pypi.org/project/dimplex-controller/), installed
   automatically from the integration requirements.
 
 ## If an upgrade goes wrong
