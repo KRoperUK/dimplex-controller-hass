@@ -46,8 +46,14 @@ if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] && [ -n "${GITHUB_EVENT_PATH:-}
 
   echo "Validating commits between $BASE_SHA and $HEAD_SHA..."
 
-  # Ensure we have the base commit fetched
-  git fetch origin "$BASE_SHA" --depth=100 || git fetch origin "$BASE_SHA"
+  # Ensure we have both endpoints of the range. The checkout in CI is the pull
+  # request's *merge* ref, so the head commit is not in the object database at all
+  # and `git log BASE..HEAD` fails with "Invalid revision range" rather than an
+  # empty list — which is why the fetch has to cover the head sha as well (#288).
+  # A failed fetch is left to read_commits to report: it refuses the empty range.
+  for sha in "$BASE_SHA" "$HEAD_SHA"; do
+    git fetch origin "$sha" --depth=100 || git fetch origin "$sha" || true
+  done
 
   if ! COMMITS=$(read_commits "${BASE_SHA}..${HEAD_SHA}" "${BASE_SHA}..${HEAD_SHA}"); then
     exit 1

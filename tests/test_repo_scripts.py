@@ -600,6 +600,40 @@ def test_lint_commits_fails_a_non_conventional_commit(tmp_path: Path) -> None:
     assert "does not follow Conventional Commits" in result.stdout
 
 
+def test_lint_commits_fetches_a_head_commit_that_is_not_checked_out(tmp_path: Path) -> None:
+    """The range has to be fetched: CI checks out the merge ref, not the head commit.
+
+    actions/checkout leaves `refs/pull/<n>/merge` checked out, so the pull request's
+    head commit is not in the object database and `git log BASE..HEAD` fails outright.
+    A single-branch clone has the same shape — the head commit exists only on the
+    remote. The lint result, rather than a range error, is what this asserts.
+    """
+    work, origin, base_sha = _make_release_repo(tmp_path)
+    _git(work, "checkout", "-q", "-b", "feature")
+    _git(work, "commit", "-q", "--allow-empty", "-m", "Add the thing")
+    head_sha = _git(work, "rev-parse", "HEAD")
+    _git(work, "push", "-q", "origin", "refs/heads/feature")
+
+    clone = tmp_path / "clone"
+    # --no-local so the clone really contains only main's objects: a local-path
+    # clone hardlinks the whole object database and would hide the fetch.
+    subprocess.run(
+        ["git", "clone", "-q", "--no-local", "--single-branch", "--branch", "main", str(origin), str(clone)],
+        check=True,
+        capture_output=True,
+        env=_clean_git_env(_GIT_ENV),
+    )
+
+    result = _run_with_env(
+        "lint-commits.sh",
+        _pr_event(tmp_path, base_sha=base_sha, head_sha=head_sha),
+        cwd=clone,
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "does not follow Conventional Commits" in result.stdout, result.stdout
+
+
 def test_lint_commits_accepts_a_conventional_range(tmp_path: Path) -> None:
     """The two failures above are about their input, not a script that always fails."""
     work, _origin, base_sha = _make_release_repo(tmp_path)
