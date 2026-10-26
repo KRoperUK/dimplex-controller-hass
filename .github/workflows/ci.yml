@@ -374,6 +374,7 @@ jobs:
           echo "event: ${event_name}"
           echo "component changes: ${component}"
           echo "docs changes: ${docs}"
+          echo "changes: ${{ needs.changes.result }}"
           echo "docs: ${{ needs.docs.result }}"
           echo "conventional_commits: ${{ needs.conventional_commits.result }}"
           echo "actionlint: ${{ needs.actionlint.result }}"
@@ -387,6 +388,15 @@ jobs:
           echo "hacs_zip_smoke: ${{ needs.hacs_zip_smoke.result }}"
 
           failed=0
+
+          # First, because everything below reads this job's outputs. A failed filter
+          # has empty outputs, so every gated job is skipped with `skipped` (not
+          # `failure`) and the loops below would find nothing to complain about —
+          # the required check would go green having run no checks at all (#286).
+          if [ "${{ needs.changes.result }}" != "success" ]; then
+            echo "::error::changes did not succeed (${{ needs.changes.result }})"
+            failed=1
+          fi
 
           if [ "${event_name}" = "pull_request" ]; then
             if [ "${{ needs.conventional_commits.result }}" != "success" ]; then
