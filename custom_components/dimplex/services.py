@@ -6,7 +6,7 @@ import functools
 import logging
 from typing import Any
 
-import voluptuous as vol
+import probatio as vol
 from dimplex_controller import HygieneFrequency
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
