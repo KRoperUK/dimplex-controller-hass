@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import UnitOfEnergy
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -156,7 +157,13 @@ async def test_energy_daily_sensor(hass):
 
 
 async def test_energy_sensor_t2_with_data(hass):
-    """The secondary energy register is exposed as a separate lifetime sensor."""
+    """The secondary energy register is exposed as a separate lifetime sensor.
+
+    T1 is left empty here, so the two registers cannot be confused: a sensor that
+    read the wrong register, or fell back to T1, would be unavailable instead of
+    reporting the sum of the T2 series. The old assertion compared the config
+    entry's state with itself, so a T2 sensor built from T1 passed (#290).
+    """
     status_payload, energy_payload = _row(
         t2=[
             (dt_util.parse_datetime("2026-06-01T00:00:00+00:00"), 0.1),
@@ -165,6 +172,19 @@ async def test_energy_sensor_t2_with_data(hass):
     )
     config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
+
+    # The T2 lifetime entity is disabled by default: setup registers it and then
+    # skips it, so it never reaches the state machine. Pre-creating the registry
+    # entry enabled, which is what enabling it in the UI leaves behind, makes it
+    # addable while keeping the real setup path under test.
+    registry = er.async_get(hass)
+    registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "test_appliance-1_energy_t2",
+        suggested_object_id="living_room_heater_energy_t2",
+        config_entry=config_entry,
+    )
 
     with (
         patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
@@ -180,9 +200,20 @@ async def test_energy_sensor_t2_with_data(hass):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
 
-    # T2 lifetime is disabled by default in the entity registry; entity may be absent from states.
-    # Assert setup succeeded without error (sensor factory registered both registers).
-    assert config_entry.state == hass.config_entries.async_get_entry(config_entry.entry_id).state
+    entity_id = registry.async_get_entity_id("sensor", DOMAIN, "test_appliance-1_energy_t2")
+    assert entity_id is not None, "setup did not register the T2 lifetime sensor"
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert float(state.state) == pytest.approx(0.35), "0.1 + 0.25 from the T2 series"
+    assert state.attributes.get("register") == "t2"
+
+    # The control: T1 has no points in this payload, so the T1 lifetime entity is
+    # unavailable. A T2 sensor reading the wrong register could not do both.
+    t1_id = registry.async_get_entity_id("sensor", DOMAIN, "test_appliance-1_energy")
+    assert t1_id is not None
+    t1_state = hass.states.get(t1_id)
+    assert t1_state is not None
+    assert t1_state.state == "unavailable"
 
 
 async def test_energy_sensor_unavailable_when_empty(hass):

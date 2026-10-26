@@ -613,3 +613,102 @@ def test_lint_commits_accepts_a_conventional_range(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert "All commits are valid." in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Negative cases for the guard scripts (#290)
+# ---------------------------------------------------------------------------
+#
+# Every guard script in this repository was previously asserted only to exit 0 on
+# the current tree. That proves it does not cry wolf; it does not prove it would
+# notice a wolf. A matcher that regressed to matching nothing — a bad regex, a
+# wrong file list, a renamed key — kept every existing test green.
+
+
+def _run_with_args(
+    script: str,
+    *args: str,
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run a script from ``cwd`` (the repo by default) with arguments."""
+    root = cwd or REPO_ROOT
+    return subprocess.run(
+        ["bash", str(root / "scripts" / script), *args],
+        cwd=str(root),
+        capture_output=True,
+        text=True,
+        env=_clean_git_env(),
+    )
+
+
+def test_check_md_alerts_rejects_a_malformed_alert(tmp_path: Path) -> None:
+    """Both shapes of broken callout must fail the guard.
+
+    GitHub renders neither of these as a callout and reports nothing: the marker
+    joined to its body, and the marker with no blockquote at all.
+    """
+    joined = tmp_path / "joined.md"
+    joined.write_text("> [!IMPORTANT]\n> fine\n\n> [!IMPORTANT] joined to the body\n")
+    unquoted = tmp_path / "unquoted.md"
+    unquoted.write_text("[!NOTE]\nthe body\n")
+
+    for path in (joined, unquoted):
+        result = _run_with_args("check-md-alerts.sh", str(path))
+        assert result.returncode != 0, f"{path.name} passed the alert guard:\n{result.stdout}"
+        assert "::error" in result.stdout, result.stdout
+
+
+def test_check_md_alerts_accepts_a_well_formed_alert(tmp_path: Path) -> None:
+    """The failures above must be about the input, not a script that always fails."""
+    good = tmp_path / "good.md"
+    good.write_text("> [!IMPORTANT]\n> body\n")
+    result = _run_with_args("check-md-alerts.sh", str(good))
+
+    assert result.returncode == 0, result.stderr
+    assert "✓" in result.stdout
+
+
+def _copy_docs_tree(tmp_path: Path) -> Path:
+    """A throwaway copy of everything check-docs-coverage.sh reads.
+
+    The script resolves the repository root from its own path, so the copy runs
+    the real logic against a mutable tree instead of the checkout.
+    """
+    root = tmp_path / "tree"
+    shutil.copytree(REPO_ROOT / "scripts", root / "scripts")
+    shutil.copytree(
+        REPO_ROOT / "custom_components" / "dimplex",
+        root / "custom_components" / "dimplex",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    shutil.copytree(REPO_ROOT / "docs" / "reference", root / "docs" / "reference")
+    shutil.copy2(REPO_ROOT / "zensical.toml", root / "zensical.toml")
+    return root
+
+
+def test_check_docs_coverage_passes_on_the_current_tree(tmp_path: Path) -> None:
+    """Baseline for the negative case: the unmodified copy is documented."""
+    root = _copy_docs_tree(tmp_path)
+    result = _run_with_args("check-docs-coverage.sh", cwd=root)
+
+    assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
+    assert "docs coverage OK" in result.stdout
+
+
+def test_check_docs_coverage_rejects_an_undocumented_entity(tmp_path: Path) -> None:
+    """An entity in datetime.py that no reference page mentions must fail.
+
+    The probe is deliberately in datetime.py: the script used to grep a hard-coded
+    list of five platform modules that did not include it, so this file's
+    translation keys were never checked at all. Re-hard-coding the list makes this
+    test fail — which is the point.
+    """
+    root = _copy_docs_tree(tmp_path)
+    module = root / "custom_components" / "dimplex" / "datetime.py"
+    module.write_text(f'{module.read_text()}\n_attr_translation_key = "undocumented_probe"\n')
+
+    result = _run_with_args("check-docs-coverage.sh", cwd=root)
+
+    assert result.returncode != 0, f"an undocumented entity passed the docs gate:\n{result.stdout}"
+    assert "entity 'undocumented_probe' is not mentioned" in result.stdout
+    assert "entities.md" in result.stdout
