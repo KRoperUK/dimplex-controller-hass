@@ -10,6 +10,8 @@ import pytest
 from dimplex_controller import (
     DimplexApiError,
     DimplexAuthError,
+    DimplexAuthInvalidGrantError,
+    DimplexAuthTransientError,
     DimplexConnectionError,
 )
 from dimplex_controller.models import ApplianceStatus
@@ -122,7 +124,7 @@ async def test_validate_connection_invalid_auth(hass):
         patch.object(
             api._client.auth,
             "headless_login",
-            new=AsyncMock(side_effect=DimplexAuthError("failed")),
+            new=AsyncMock(side_effect=DimplexAuthInvalidGrantError("Invalid email or password")),
         ),
         pytest.raises(InvalidAuth),
     ):
@@ -396,7 +398,7 @@ async def test_initialize_refresh_token_auth_error(hass):
         patch.object(
             api._client.auth,
             "get_access_token",
-            new=AsyncMock(side_effect=DimplexAuthError("nope")),
+            new=AsyncMock(side_effect=DimplexAuthInvalidGrantError("invalid_grant")),
         ),
         pytest.raises(InvalidAuth),
     ):
@@ -461,7 +463,8 @@ def test_get_auth_url_uses_login_url():
 @pytest.mark.parametrize(
     ("exc", "expected"),
     [
-        (DimplexAuthError("a"), InvalidAuth),
+        (DimplexAuthInvalidGrantError("invalid_grant"), InvalidAuth),
+        (DimplexAuthTransientError("HTTP 503"), CannotConnect),
         (DimplexConnectionError("c"), CannotConnect),
         (DimplexApiError(500, "e"), CannotConnect),
     ],
@@ -479,7 +482,8 @@ async def test_get_data_error_mapping(hass, exc, expected):
 @pytest.mark.parametrize(
     ("exc", "expected"),
     [
-        (DimplexAuthError("a"), InvalidAuth),
+        (DimplexAuthInvalidGrantError("invalid_grant"), InvalidAuth),
+        (DimplexAuthTransientError("HTTP 503"), CannotConnect),
         (DimplexConnectionError("c"), CannotConnect),
         (DimplexApiError(500, "e"), CannotConnect),
     ],
@@ -552,7 +556,8 @@ async def test_async_get_energy_report_passes_window_to_library(hass):
 @pytest.mark.parametrize(
     ("exc", "expected"),
     [
-        (DimplexAuthError("a"), InvalidAuth),
+        (DimplexAuthInvalidGrantError("invalid_grant"), InvalidAuth),
+        (DimplexAuthTransientError("HTTP 503"), CannotConnect),
         (DimplexConnectionError("c"), CannotConnect),
     ],
 )
@@ -624,7 +629,7 @@ async def test_setpoint_and_frost_helpers_use_the_dedicated_endpoints(hass):
         (DimplexApiError(405, "Method Not Allowed"), ControlRejected),
         (DimplexApiError(501, "Not Implemented"), ControlRejected),
         (DimplexConnectionError("offline"), CannotConnect),
-        (DimplexAuthError("expired"), InvalidAuth),
+        (DimplexAuthInvalidGrantError("expired"), InvalidAuth),
     ],
 )
 async def test_control_errors_are_translated(hass, library_error, expected):
@@ -639,6 +644,63 @@ async def test_control_errors_are_translated(hass, library_error, expected):
         pytest.raises(expected),
     ):
         await api.async_set_appliance_setpoint("h", "a", 21.0)
+
+
+@pytest.mark.parametrize(
+    ("library_error", "expected"),
+    [
+        # A 503, timeout or DNS failure on the token endpoint: the credential was
+        # never even examined, so asking the user to sign in again is wrong.
+        (DimplexAuthTransientError("Auth endpoint temporarily unavailable (HTTP 503)", status=503), CannotConnect),
+        # The cloud rejected the refresh token: only a fresh login can help.
+        (DimplexAuthInvalidGrantError("Refresh/authorization grant rejected: invalid_grant"), InvalidAuth),
+        # Neither verdict from the library: retry rather than prompt.
+        (DimplexAuthError("Token request failed (HTTP 302)"), CannotConnect),
+    ],
+)
+async def test_a_transient_auth_failure_never_forces_a_relogin(hass, library_error, expected):
+    """Only a re-login the library asks for may become InvalidAuth (#276).
+
+    ``DimplexAuthError`` is raised for both a rejected credential and a token
+    endpoint that was simply unavailable. Mapping every auth error to ``InvalidAuth``
+    turned a one-second network blip into a stopped poll and a reauth flow the user
+    had to complete, so the library's ``reauth_required`` verdict decides instead.
+    """
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with (
+        patch.object(
+            api._client,
+            "set_appliance_setpoint_temperature",
+            new=AsyncMock(side_effect=library_error),
+        ),
+        pytest.raises(expected),
+    ):
+        await api.async_set_appliance_setpoint("h", "a", 21.0)
+
+
+@pytest.mark.parametrize(
+    ("library_error", "expected"),
+    [
+        (DimplexAuthTransientError("Auth endpoint temporarily unavailable (HTTP 503)", status=503), CannotConnect),
+        (DimplexAuthInvalidGrantError("Refresh/authorization grant rejected: invalid_grant"), InvalidAuth),
+    ],
+)
+async def test_the_read_path_makes_the_same_auth_decision(hass, library_error, expected):
+    """A cold start reaches the token endpoint through async_initialize, not a write.
+
+    Both entry points must answer alike, or a transient failure during setup would
+    still park the entry on a reauth prompt (#276).
+    """
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="refresh")
+    with (
+        patch.object(
+            api._client.auth,
+            "get_access_token",
+            new=AsyncMock(side_effect=library_error),
+        ),
+        pytest.raises(expected),
+    ):
+        await api.async_initialize()
 
 
 @pytest.mark.parametrize("status", [500, 502, 503, 400, 404, 429])
@@ -675,6 +737,40 @@ async def test_control_rejected_carries_its_status(hass):
         await api.async_set_appliance_setpoint("h", "a", 21.0)
     assert caught.value.status == 403
     assert isinstance(caught.value, CannotConnect)
+
+
+async def test_the_client_forwards_token_rotations_to_its_caller(hass):
+    """The library's token-update hook is plumbed through as plain token data (#277).
+
+    It fires from inside the request that refreshed — before the caller knows
+    whether that request will succeed — which is exactly the moment the new pair
+    has to be handed over for persistence.
+    """
+    seen: list[dict] = []
+    api = DimplexApiClient(
+        session=async_get_clientsession(hass),
+        refresh_token="old-refresh",
+        on_token_update=seen.append,
+    )
+
+    await api._client.auth._update_tokens(  # noqa: SLF001
+        {"access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600}
+    )
+
+    assert [payload["refresh_token"] for payload in seen] == ["new-refresh"]
+    assert seen[0]["access_token"] == "new-access"
+    assert seen[0]["expires_at"] > 0
+
+
+async def test_a_client_without_a_callback_still_rotates_tokens(hass):
+    """The hook is optional: nothing breaks when no caller wants the payload."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="old-refresh")
+
+    await api._client.auth._update_tokens(  # noqa: SLF001
+        {"access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600}
+    )
+
+    assert api.token_data["refresh_token"] == "new-refresh"
 
 
 async def test_async_get_energy_for_hubs(hass):

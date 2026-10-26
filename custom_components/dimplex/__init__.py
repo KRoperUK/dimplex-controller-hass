@@ -189,6 +189,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
         _LOGGER.info(STARTUP_MESSAGE)
 
     session = async_get_clientsession(hass)
+
+    def _on_token_update(token_data: Mapping[str, Any]) -> None:
+        """Persist rotated tokens the moment the library produces them.
+
+        A refresh happens *inside* a request, so waiting for the poll to succeed
+        threw the new pair away whenever that request then failed. The cloud
+        invalidates the old refresh token as soon as it rotates, so the retry
+        presented one that was already dead and the user had to sign in again
+        (dimplex-controller-hass#277). Writing here covers setup and every poll,
+        including the ones that fail.
+        """
+        _persist_token_data(hass, entry, token_data)
+
     client = DimplexApiClient(
         session=session,
         refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
@@ -196,6 +209,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
         expires_at=entry.data.get(CONF_EXPIRES_AT, 0),
         username=entry.data.get(CONF_USERNAME),
         password=entry.data.get(CONF_PASSWORD),
+        on_token_update=_on_token_update,
     )
 
     try:
@@ -254,6 +268,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     return True
+
+
+def _coordinator_error(exception: Exception, context: str) -> Exception:
+    """Translate an adapter failure into the coordinator's own error type.
+
+    One rule, used by both coordinators so reads and writes answer the same way.
+    Only the adapter's :class:`InvalidAuth` — which it raises solely when the
+    library itself reports that a re-login is required — becomes
+    ``ConfigEntryAuthFailed`` and starts the reauth flow. Everything else, the
+    adapter's :class:`CannotConnect` included, becomes ``UpdateFailed`` so polling
+    keeps retrying: a 503 or timeout on the token endpoint says nothing about the
+    stored credential and must not cost the user their session (#276).
+    """
+    if isinstance(exception, InvalidAuth):
+        _LOGGER.warning("Authentication expired — surfacing reauth")
+        return ConfigEntryAuthFailed("Authentication expired")
+    if isinstance(exception, CannotConnect):
+        detail = f": {exception}" if str(exception) else ""
+        return UpdateFailed(f"Cannot connect to the Dimplex cloud{detail}")
+    return UpdateFailed(f"Unexpected error {context}: {exception}")
 
 
 class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -336,13 +370,8 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Update status data via library."""
         try:
             data = await self.api.async_get_status_data()
-        except InvalidAuth as exception:
-            _LOGGER.warning("Authentication expired — surfacing reauth")
-            raise ConfigEntryAuthFailed("Authentication expired") from exception
-        except CannotConnect as exception:
-            raise UpdateFailed("Cannot connect") from exception
         except Exception as exception:
-            raise UpdateFailed(f"Unexpected error fetching status: {exception}") from exception
+            raise _coordinator_error(exception, "fetching status") from exception
 
         # Timer schedules (read-only) are refreshed on a slow cadence and cached
         # in between so the hot status poll stays a single API call. A missing
@@ -455,13 +484,8 @@ class DimplexEnergyCoordinator(TimestampDataUpdateCoordinator[dict[str, Any]]):
 
         try:
             data = await self.api.async_get_energy_for_hubs(hub_ids)
-        except InvalidAuth as exception:
-            _LOGGER.warning("Authentication expired during energy poll — surfacing reauth")
-            raise ConfigEntryAuthFailed("Authentication expired") from exception
-        except CannotConnect as exception:
-            raise UpdateFailed("Cannot connect") from exception
         except Exception as exception:
-            raise UpdateFailed(f"Unexpected error fetching energy: {exception}") from exception
+            raise _coordinator_error(exception, "fetching energy") from exception
 
         _persist_tokens(self.hass, self._entry, self.api)
         self._adapt_interval(data)
@@ -482,8 +506,20 @@ def _persist_tokens(
     entry: ConfigEntry,
     client: DimplexApiClient,
 ) -> None:
-    """Write current tokens back to the config entry if they changed."""
-    token_data = client.token_data
+    """Write the client's current tokens back to the config entry if they changed."""
+    _persist_token_data(hass, entry, client.token_data)
+
+
+def _persist_token_data(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    token_data: Mapping[str, Any],
+) -> None:
+    """Write a token payload back to the config entry if it changed.
+
+    Split out from :func:`_persist_tokens` because the client's token-update
+    callback hands over the payload directly, without a client to read it from.
+    """
     if not token_data.get(CONF_REFRESH_TOKEN):
         return
     current = {

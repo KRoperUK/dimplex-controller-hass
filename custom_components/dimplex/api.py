@@ -6,7 +6,7 @@ import base64
 import json
 import logging
 import math
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -53,6 +53,11 @@ class CannotConnect(Exception):
     """Error to indicate we cannot connect."""
 
 
+# Receives the token payload — the same shape as ``DimplexApiClient.token_data`` —
+# every time the library rotates an access/refresh token pair.
+type TokenDataListener = Callable[[Mapping[str, Any]], None]
+
+
 class ControlRejected(CannotConnect):
     """The cloud refused this control for this appliance, and a retry will not help.
 
@@ -73,6 +78,27 @@ class ControlRejected(CannotConnect):
 
 class InvalidAuth(Exception):
     """Error to indicate there is invalid auth."""
+
+
+def _auth_error(exception: DimplexAuthError) -> InvalidAuth | CannotConnect:
+    """Map a library auth failure onto the adapter's error types.
+
+    ``DimplexAuthError`` covers two very different things: a credential the cloud
+    rejected, and a failure that says nothing at all about the credential — a 503,
+    timeout or DNS failure on the token endpoint arrives as
+    ``DimplexAuthTransientError`` with ``reauth_required=False``. Collapsing both
+    into :class:`InvalidAuth` turned a one-second network blip into a forced
+    re-login, with polling stopped until the user signed in again
+    (dimplex-controller-hass#276).
+
+    The library already makes the distinction, so trust its verdict: only
+    ``reauth_required`` becomes :class:`InvalidAuth`; everything else is
+    :class:`CannotConnect`, which callers retry without involving the user. Kept in
+    one place so every read and write path answers the same way.
+    """
+    if getattr(exception, "reauth_required", False):
+        return InvalidAuth(str(exception) or "authentication failed")
+    return CannotConnect(str(exception) or "authentication temporarily unavailable")
 
 
 # Statuses that mean "this appliance/endpoint will not do this", as opposed to
@@ -112,11 +138,15 @@ def _translated_errors() -> Iterator[None]:
     return for writes they do not support) becomes :class:`ControlRejected`, while
     everything else — 5xx, timeouts, dropped connections — stays
     :class:`CannotConnect`.
+
+    Auth failures are split by the library's own verdict (see :func:`_auth_error`):
+    a rejected credential becomes :class:`InvalidAuth`, a transient one
+    :class:`CannotConnect`.
     """
     try:
         yield
     except DimplexAuthError as exception:
-        raise InvalidAuth from exception
+        raise _auth_error(exception) from exception
     except DimplexApiError as exception:
         status = getattr(exception, "status", None)
         if status in REJECTED_STATUSES:
@@ -139,13 +169,23 @@ class DimplexApiClient:
         expires_at: float = 0,
         username: str | None = None,
         password: str | None = None,
+        on_token_update: TokenDataListener | None = None,
     ) -> None:
-        """Initialize the API adapter."""
+        """Initialize the API adapter.
+
+        ``on_token_update`` receives the token payload every time the library
+        rotates it, so a caller can persist the new tokens *when they change*
+        rather than after the next successful poll. A refresh happens inside a
+        request, so without this the new tokens are lost if that request then
+        fails — and the cloud has already invalidated the old refresh token
+        (dimplex-controller-hass#277). Called synchronously, on the event loop.
+        """
         self._session = session
         self._username = username
         self._password = password
         self._account_id: str | None = None
         self._product_models: list[Any] | None = None
+        self._on_token_update = on_token_update
         self._client = DimplexControl(
             session=session,
             token_bundle=TokenBundle(
@@ -153,7 +193,13 @@ class DimplexApiClient:
                 refresh_token=refresh_token,
                 expires_at=float(expires_at or 0),
             ),
+            on_token_update=self._notify_token_update,
         )
+
+    def _notify_token_update(self, bundle: TokenBundle) -> None:
+        """Forward a library token rotation to the caller as plain token data."""
+        if self._on_token_update is not None:
+            self._on_token_update(bundle.as_dict())
 
     @property
     def token_data(self) -> dict[str, Any]:
@@ -221,7 +267,7 @@ class DimplexApiClient:
                 await self._client.auth.get_access_token()
                 return
             except DimplexAuthError as exception:
-                raise InvalidAuth from exception
+                raise _auth_error(exception) from exception
             except DimplexConnectionError as exception:
                 raise CannotConnect from exception
 
@@ -249,7 +295,7 @@ class DimplexApiClient:
             await self._client.auth.headless_login(self._username, self._password)
             await self._client.auth.get_access_token()
         except DimplexAuthError as exception:
-            raise InvalidAuth from exception
+            raise _auth_error(exception) from exception
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
 
@@ -259,7 +305,7 @@ class DimplexApiClient:
             await self.async_initialize()
             self._account_id = await self._resolve_account_id()
         except DimplexAuthError as exception:
-            raise InvalidAuth from exception
+            raise _auth_error(exception) from exception
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
         except DimplexApiError as exception:
@@ -278,7 +324,7 @@ class DimplexApiClient:
             await self._client.auth.exchange_code(code)
             self._account_id = await self._resolve_account_id()
         except DimplexAuthError as exception:
-            raise InvalidAuth from exception
+            raise _auth_error(exception) from exception
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
         except DimplexApiError as exception:
@@ -368,7 +414,7 @@ class DimplexApiClient:
 
             return {"appliances": appliance_rows, "hubs": hubs}
         except DimplexAuthError as exception:
-            raise InvalidAuth from exception
+            raise _auth_error(exception) from exception
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
         except DimplexApiError as exception:
@@ -734,7 +780,7 @@ class DimplexApiClient:
                 include_previous_period=True,
             )
         except DimplexAuthError as exception:
-            raise InvalidAuth from exception
+            raise _auth_error(exception) from exception
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
         except DimplexApiError as exception:
