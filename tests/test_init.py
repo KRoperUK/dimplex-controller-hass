@@ -239,6 +239,56 @@ async def test_both_coordinators_make_the_same_auth_decision(hass, bypass_get_da
     assert await async_unload_entry(hass, config_entry)
 
 
+async def test_a_refresh_is_persisted_even_when_the_poll_fails(hass):
+    """A rotated refresh token survives a failed poll (#277).
+
+    Cold start with an expired access token: the refresh succeeds and rotates the
+    refresh token, then the status call returns 504. Setup fails, but the entry must
+    already hold the new pair — otherwise the retry presents a refresh token the
+    cloud has already invalidated, and a transient outage costs the user a re-login.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from dimplex_controller import DimplexApiError, DimplexControl
+    from dimplex_controller.auth import AuthManager
+
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            **MOCK_ENTRY_DATA,
+            "refresh_token": "old-refresh",
+            "access_token": "old-access",
+            "expires_at": 1,
+        },
+        entry_id="test",
+    )
+    config_entry.add_to_hass(hass)
+
+    async def _refresh(self):
+        """Stand in for POST /token, keeping the library's own token-update path.
+
+        ``_update_tokens`` is what the library calls after a successful refresh: it
+        stores the pair and invokes the token-update hook, so the integration sees
+        the rotation exactly as it would on a real 200.
+        """
+        await self._update_tokens({"access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600})
+
+    with (
+        patch.object(AuthManager, "refresh_tokens", new=_refresh),
+        patch.object(
+            DimplexControl,
+            "get_hubs",
+            new=AsyncMock(side_effect=DimplexApiError(504, "Gateway Timeout")),
+        ),
+    ):
+        assert not await hass.config_entries.async_setup(config_entry.entry_id)
+
+    assert config_entry.state is ConfigEntryState.SETUP_RETRY
+    entry = hass.config_entries.async_get_entry(config_entry.entry_id)
+    assert entry.data["refresh_token"] == "new-refresh"
+    assert entry.data["access_token"] == "new-access"
+
+
 async def test_token_expiry_drift_is_persisted(hass):
     """Expiry derived from the access token's JWT is written back to the entry.
 

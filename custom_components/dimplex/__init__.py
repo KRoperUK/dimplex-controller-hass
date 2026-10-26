@@ -189,6 +189,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
         _LOGGER.info(STARTUP_MESSAGE)
 
     session = async_get_clientsession(hass)
+
+    def _on_token_update(token_data: Mapping[str, Any]) -> None:
+        """Persist rotated tokens the moment the library produces them.
+
+        A refresh happens *inside* a request, so waiting for the poll to succeed
+        threw the new pair away whenever that request then failed. The cloud
+        invalidates the old refresh token as soon as it rotates, so the retry
+        presented one that was already dead and the user had to sign in again
+        (dimplex-controller-hass#277). Writing here covers setup and every poll,
+        including the ones that fail.
+        """
+        _persist_token_data(hass, entry, token_data)
+
     client = DimplexApiClient(
         session=session,
         refresh_token=entry.data.get(CONF_REFRESH_TOKEN),
@@ -196,6 +209,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: DimplexConfigEntry) -> b
         expires_at=entry.data.get(CONF_EXPIRES_AT, 0),
         username=entry.data.get(CONF_USERNAME),
         password=entry.data.get(CONF_PASSWORD),
+        on_token_update=_on_token_update,
     )
 
     try:
@@ -271,7 +285,8 @@ def _coordinator_error(exception: Exception, context: str) -> Exception:
         _LOGGER.warning("Authentication expired — surfacing reauth")
         return ConfigEntryAuthFailed("Authentication expired")
     if isinstance(exception, CannotConnect):
-        return UpdateFailed(f"Cannot connect: {exception}")
+        detail = f": {exception}" if str(exception) else ""
+        return UpdateFailed(f"Cannot connect to the Dimplex cloud{detail}")
     return UpdateFailed(f"Unexpected error {context}: {exception}")
 
 
@@ -491,8 +506,20 @@ def _persist_tokens(
     entry: ConfigEntry,
     client: DimplexApiClient,
 ) -> None:
-    """Write current tokens back to the config entry if they changed."""
-    token_data = client.token_data
+    """Write the client's current tokens back to the config entry if they changed."""
+    _persist_token_data(hass, entry, client.token_data)
+
+
+def _persist_token_data(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    token_data: Mapping[str, Any],
+) -> None:
+    """Write a token payload back to the config entry if it changed.
+
+    Split out from :func:`_persist_tokens` because the client's token-update
+    callback hands over the payload directly, without a client to read it from.
+    """
     if not token_data.get(CONF_REFRESH_TOKEN):
         return
     current = {

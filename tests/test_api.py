@@ -739,6 +739,40 @@ async def test_control_rejected_carries_its_status(hass):
     assert isinstance(caught.value, CannotConnect)
 
 
+async def test_the_client_forwards_token_rotations_to_its_caller(hass):
+    """The library's token-update hook is plumbed through as plain token data (#277).
+
+    It fires from inside the request that refreshed — before the caller knows
+    whether that request will succeed — which is exactly the moment the new pair
+    has to be handed over for persistence.
+    """
+    seen: list[dict] = []
+    api = DimplexApiClient(
+        session=async_get_clientsession(hass),
+        refresh_token="old-refresh",
+        on_token_update=seen.append,
+    )
+
+    await api._client.auth._update_tokens(  # noqa: SLF001
+        {"access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600}
+    )
+
+    assert [payload["refresh_token"] for payload in seen] == ["new-refresh"]
+    assert seen[0]["access_token"] == "new-access"
+    assert seen[0]["expires_at"] > 0
+
+
+async def test_a_client_without_a_callback_still_rotates_tokens(hass):
+    """The hook is optional: nothing breaks when no caller wants the payload."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="old-refresh")
+
+    await api._client.auth._update_tokens(  # noqa: SLF001
+        {"access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600}
+    )
+
+    assert api.token_data["refresh_token"] == "new-refresh"
+
+
 async def test_async_get_energy_for_hubs(hass):
     """Energy-for-hubs helper returns t1/t2 maps per hub."""
     api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")

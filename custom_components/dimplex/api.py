@@ -6,7 +6,7 @@ import base64
 import json
 import logging
 import math
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -51,6 +51,11 @@ except ImportError:  # pragma: no cover - older wheels
 
 class CannotConnect(Exception):
     """Error to indicate we cannot connect."""
+
+
+# Receives the token payload — the same shape as ``DimplexApiClient.token_data`` —
+# every time the library rotates an access/refresh token pair.
+type TokenDataListener = Callable[[Mapping[str, Any]], None]
 
 
 class ControlRejected(CannotConnect):
@@ -164,13 +169,23 @@ class DimplexApiClient:
         expires_at: float = 0,
         username: str | None = None,
         password: str | None = None,
+        on_token_update: TokenDataListener | None = None,
     ) -> None:
-        """Initialize the API adapter."""
+        """Initialize the API adapter.
+
+        ``on_token_update`` receives the token payload every time the library
+        rotates it, so a caller can persist the new tokens *when they change*
+        rather than after the next successful poll. A refresh happens inside a
+        request, so without this the new tokens are lost if that request then
+        fails — and the cloud has already invalidated the old refresh token
+        (dimplex-controller-hass#277). Called synchronously, on the event loop.
+        """
         self._session = session
         self._username = username
         self._password = password
         self._account_id: str | None = None
         self._product_models: list[Any] | None = None
+        self._on_token_update = on_token_update
         self._client = DimplexControl(
             session=session,
             token_bundle=TokenBundle(
@@ -178,7 +193,13 @@ class DimplexApiClient:
                 refresh_token=refresh_token,
                 expires_at=float(expires_at or 0),
             ),
+            on_token_update=self._notify_token_update,
         )
+
+    def _notify_token_update(self, bundle: TokenBundle) -> None:
+        """Forward a library token rotation to the caller as plain token data."""
+        if self._on_token_update is not None:
+            self._on_token_update(bundle.as_dict())
 
     @property
     def token_data(self) -> dict[str, Any]:
