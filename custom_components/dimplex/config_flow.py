@@ -6,7 +6,7 @@ import logging
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-import voluptuous as vol
+import probatio as vol
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigEntry, ConfigFlowResult, OptionsFlow
 from homeassistant.core import HomeAssistant, callback
