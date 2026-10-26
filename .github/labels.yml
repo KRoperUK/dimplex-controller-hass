@@ -2,14 +2,15 @@
 # CI status labels are applied/removed by .github/workflows/pr-status-labels.yml.
 #
 # Only labels something actually applies belong here. The stock `duplicate`,
-# `good first issue`, `help wanted`, `invalid` and `wontfix` were removed: nothing
-# set them, a maintainer triaging a one-maintainer repository can label by hand,
-# and they crowded the picker on every new issue (#202). `question` is kept
-# deliberately — Discussions is off, so it is the only way to mark a
-# question-shaped issue as such.
+# `good first issue`, `help wanted` and `invalid` were removed: nothing set them,
+# a maintainer triaging a one-maintainer repository can label by hand, and they
+# crowded the picker on every new issue (#202). `wontfix` was removed for the same
+# reason and is back below only because the triage skill applies it (see the
+# Triage section). `question` is kept deliberately — Discussions is off, so it is
+# the only way to mark a question-shaped issue as such.
 #
 # Note that sync-labels.yml runs with `delete-other-labels: true`, so a label removed
-# here is removed from the repository on the next sync. That is how the five stock
+# here is removed from the repository on the next sync. That is how the four stock
 # labels above actually went away — with it false, pruning this file left them on
 # every issue and PR picker until someone deleted them by hand (dimplex-controller-hass#202).
 
@@ -43,6 +44,26 @@
 - name: "autorelease: tagged"
   color: "ededed"
   description: Release-please has tagged a release
+
+# --- Triage (applied by the triage skill; roles documented in docs/agents/triage-labels.md) ---
+# These are the source of truth for the five canonical triage roles. `wontfix` is
+# back despite #202 because the skill sets it automatically, which is the criterion
+# this file's header applies.
+- name: needs-triage
+  color: "fbca04"
+  description: Maintainer needs to evaluate this issue
+- name: needs-info
+  color: "d876e3"
+  description: Waiting on reporter for more information
+- name: ready-for-agent
+  color: "0e8a16"
+  description: Fully specified, ready for an AFK agent
+- name: ready-for-human
+  color: "1d76db"
+  description: Requires human implementation
+- name: wontfix
+  color: "ffffff"
+  description: Will not be actioned
 
 # --- CI status (managed by pr-status-labels workflow) ---
 - name: ci-success
