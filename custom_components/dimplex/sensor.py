@@ -353,7 +353,14 @@ async def async_setup_entry(
             for description in STATUS_SENSORS
             if description.capability is None or getattr(caps, description.capability, False)
         )
-        devices.extend(DimplexEnergySensor(energy, entry, appliance_row, description) for description in ENERGY_SENSORS)
+        if caps.energy_meter:
+            # Energy history is only meaningful for an appliance the capability
+            # matrix says is metered. Without this gate every appliance got four
+            # entities that could never be anything but unavailable — two of them
+            # enabled by default, and recreated on every reload (#280).
+            devices.extend(
+                DimplexEnergySensor(energy, entry, appliance_row, description) for description in ENERGY_SENSORS
+            )
         if caps.hot_water and caps.heat_pump:
             devices.append(DimplexHotWaterScheduleSensor(status, entry, appliance_row))
         else:

@@ -19,15 +19,34 @@ from .const import MOCK_ENTRY_DATA
 pytestmark = pytest.mark.asyncio
 
 
-def _row(*, t1=None, t2=None):
-    hub = SimpleNamespace(HubId="hub-1")
-    zone = SimpleNamespace(ZoneName="Living Room")
-    appliance = SimpleNamespace(
-        ApplianceId="appliance-1",
-        FriendlyName="Living Room Heater",
-        ApplianceModel="Model X",
-    )
-    status = SimpleNamespace(
+def _metered_appliance(**overrides):
+    """An appliance the capability matrix calls metered.
+
+    ``energy_meter`` is derived by the library from the automatic-provisioning row
+    (a rated power) or a storage family token, which is why the payload carries one:
+    the energy entities are gated on it (#280). The rated power and charge capacity
+    sit behind diagnostic sensors that are disabled by default, so adding it does not
+    add states to these tests.
+    """
+    fields = {
+        "ApplianceId": "appliance-1",
+        "FriendlyName": "Living Room Heater",
+        "ApplianceModel": "Model X",
+        "automatic_provisioning": SimpleNamespace(rated_power=2.0, charge_capacity=None),
+    }
+    fields.update(overrides)
+    return SimpleNamespace(**fields)
+
+
+def _appliance_status():
+    """A live-overview status with the fields the capability matrix reads.
+
+    Every field the library's ``capabilities_for`` reads has to be present, even
+    when it is ``None``: an attribute it cannot read makes the derivation raise, and
+    the adapter then falls back to name-only tokens — which is not what a real
+    payload would do.
+    """
+    return SimpleNamespace(
         EcoStartEnabled=False,
         ComfortStatus=True,
         RoomTemperature=21.5,
@@ -38,7 +57,18 @@ def _row(*, t1=None, t2=None):
         BoostDuration=None,
         AwayDateTime=None,
         ApplianceModes=0,
+        AvailableHotWater=None,
+        OpenWindowEnabled=None,
+        SetbackEnabled=None,
+        SetbackTemperature=None,
     )
+
+
+def _row(*, t1=None, t2=None, appliance=None):
+    hub = SimpleNamespace(HubId="hub-1")
+    zone = SimpleNamespace(ZoneName="Living Room")
+    appliance = appliance if appliance is not None else _metered_appliance()
+    status = _appliance_status()
     status_payload = {
         "appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}],
         "hubs": [hub],
@@ -247,23 +277,8 @@ async def test_energy_sensor_unavailable_when_hub_key_missing(hass):
     """Hubs that do not appear in the energy payload get no sensor data."""
     hub = SimpleNamespace(HubId="hub-1")
     zone = SimpleNamespace(ZoneName="Living Room")
-    appliance = SimpleNamespace(
-        ApplianceId="appliance-1",
-        FriendlyName="Living Room Heater",
-        ApplianceModel="Model X",
-    )
-    status = SimpleNamespace(
-        EcoStartEnabled=False,
-        ComfortStatus=True,
-        RoomTemperature=21.5,
-        ActiveSetPointTemperature=20.0,
-        NormalTemperature=20.0,
-        BoostTemperature=None,
-        AwayTemperature=None,
-        BoostDuration=None,
-        AwayDateTime=None,
-        ApplianceModes=0,
-    )
+    appliance = _metered_appliance()
+    status = _appliance_status()
     status_payload = {
         "appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}],
         "hubs": [hub],
@@ -293,7 +308,80 @@ async def test_energy_sensor_unavailable_when_hub_key_missing(hass):
     assert state.state == "unavailable"
 
 
-async def test_cumulative_sensors_are_rising_meters():
+async def _setup_row(hass, status_payload, energy_payload):
+    """Set up the entry over the given payloads and return the entity registry."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch("custom_components.dimplex.DimplexApiClient.async_get_status_data", return_value=status_payload),
+        patch("custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs", return_value=energy_payload),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+    return er.async_get(hass)
+
+
+async def test_an_unmetered_appliance_gets_no_energy_entities(hass):
+    """No ``energy_meter`` capability means no energy entities at all (#280).
+
+    Every appliance used to get the four energy sensors whether or not the cloud
+    ever returns telemetry for it, so an unmetered heater carried four permanently
+    unavailable entities — two of them enabled by default — recreated on each
+    reload. They are gated on the same capability the rest of the platform uses.
+    """
+    from custom_components.dimplex.sensor import ENERGY_SENSORS
+
+    unmetered = SimpleNamespace(
+        ApplianceId="appliance-1",
+        FriendlyName="Living Room Heater",
+        ApplianceModel="Model X",
+    )
+    status_payload, energy_payload = _row(t1=[(dt_util.now(), 0.5)], appliance=unmetered)
+
+    from custom_components.dimplex.capabilities import capabilities_for_row
+
+    row = status_payload["appliances"][0]
+    assert capabilities_for_row(row["appliance"], row["status"], row.get("product")).energy_meter is False
+
+    registry = await _setup_row(hass, status_payload, energy_payload)
+
+    for description in ENERGY_SENSORS:
+        assert registry.async_get_entity_id("sensor", DOMAIN, f"test_appliance-1_{description.key}") is None, (
+            f"{description.key} was created for an appliance without the energy_meter capability"
+        )
+    # The rest of the appliance's entities are still there, so this is the gate and
+    # not a setup that quietly did nothing.
+    assert registry.async_get_entity_id("sensor", DOMAIN, "test_appliance-1_room_temperature") is not None
+
+
+async def test_a_metered_appliance_gets_all_four_energy_entities(hass):
+    """A metered appliance keeps every energy entity, including the disabled two (#280)."""
+    from homeassistant.config_entries import ConfigEntryState
+
+    from custom_components.dimplex.sensor import ENERGY_SENSORS
+
+    status_payload, energy_payload = _row(t1=[(dt_util.now(), 0.5)])
+
+    from custom_components.dimplex.capabilities import capabilities_for_row
+
+    row = status_payload["appliances"][0]
+    assert capabilities_for_row(row["appliance"], row["status"], row.get("product")).energy_meter is True
+
+    registry = await _setup_row(hass, status_payload, energy_payload)
+
+    for description in ENERGY_SENSORS:
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, f"test_appliance-1_{description.key}")
+        assert entity_id is not None, f"the metered appliance lost {description.key}"
+        entry = registry.async_get(entity_id)
+        assert entry is not None
+        # Two are enabled by default; the T2 pair is opt-in and stays registered but
+        # disabled, which is what makes this an assertion about all four.
+        assert (entry.disabled_by is None) is description.entity_registry_enabled_default
+
+    config_entry = hass.config_entries.async_get_entry("test")
+    assert config_entry is not None and config_entry.state is ConfigEntryState.LOADED
+
     """The cumulative sensors are meters, so they must declare a state class (#227).
 
     4.1.0 removed it on the belief that ``mode="lifetime"`` was a rolling 30-day
