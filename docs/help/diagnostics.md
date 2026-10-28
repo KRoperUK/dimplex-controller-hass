@@ -18,18 +18,19 @@ Home Assistant saves a JSON file. Attach it to your issue.
 
 ## What it contains
 
-| Section                      | Contents                                                                 |
-| ---------------------------- | ------------------------------------------------------------------------ |
-| `entry`                      | Title, version, your options, and the entry data with secrets redacted   |
-| `versions`                   | Integration version and the resolved `dimplex-controller` version        |
-| `hubs`                       | Hub ID, name, connection state, firmware, hub type                       |
-| `appliances`                 | Per appliance: ID, friendly name, model, type, firmware, zone            |
-| `appliances[].status`        | The full status snapshot the cloud returned                              |
-| `appliances[].active_modes`  | **The mode bitfield decoded into names**                                 |
-| `appliances[].provisioning`  | Rated power and charge capacity, where reported                          |
-| `appliances[].capabilities`  | **Every resolved capability flag the controls are gated on**             |
-| `appliances[].product_model` | The catalogue row this appliance was matched to, if any                  |
-| `energy`                     | Point counts and time windows per register — not the readings themselves |
+| Section                      | Contents                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| `entry`                      | Title, version, your options, and the entry data with secrets redacted      |
+| `versions`                   | Integration version and the resolved `dimplex-controller` version           |
+| `hubs`                       | Hub ID, name, connection state, firmware, hub type                          |
+| `appliances`                 | Per appliance: ID, friendly name, model, type, firmware, zone               |
+| `appliances[].status`        | The full status snapshot the cloud returned                                 |
+| `appliances[].active_modes`  | **The mode bitfield decoded into names**                                    |
+| `appliances[].schedule`      | Cached timer schedule: mode, period count and periods (`null` if unfetched) |
+| `appliances[].provisioning`  | Rated power and charge capacity, where reported                             |
+| `appliances[].capabilities`  | **Every resolved capability flag the controls are gated on**                |
+| `appliances[].product_model` | The catalogue row this appliance was matched to, if any                     |
+| `energy`                     | Point counts and time windows per register — not the readings themselves    |
 
 ### `capabilities` is the useful bit when something is missing
 
