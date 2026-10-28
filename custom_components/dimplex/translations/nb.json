@@ -214,6 +214,14 @@
     "select": {
       "boost_duration": {
         "name": "Boost-varighet"
+      },
+      "schedule_profile": {
+        "name": "Tidsplanprofil",
+        "state": {
+          "user_timer": "Brukertimer",
+          "home_all_day": "Hjemme hele dagen",
+          "out_all_day": "Borte hele dagen"
+        }
       }
     },
     "water_heater": {

@@ -228,6 +228,14 @@
     "select": {
       "boost_duration": {
         "name": "Boost duration"
+      },
+      "schedule_profile": {
+        "name": "Schedule profile",
+        "state": {
+          "user_timer": "User timer",
+          "home_all_day": "Home all day",
+          "out_all_day": "Out all day"
+        }
       }
     },
     "water_heater": {
