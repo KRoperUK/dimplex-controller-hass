@@ -190,9 +190,11 @@ use its own duration, and the choice survives a restart.
 
 ## Schedule
 
-Diagnostic **Schedule** sensor per appliance. Its state is the timer mode — `manual`,
-`user_timer`, `frost_protection` or `off` — and its `periods` attribute lists the programme
-as day / start / end / temperature.
+Diagnostic **Schedule** sensor per appliance. While the heater is following its timer
+its state is the active schedule profile — `user_timer`, `home_all_day` or `out_all_day`,
+taken from the live overview exactly as the official app names it — and otherwise it falls
+back to the timer mode (`manual`, `user_timer`, `frost_protection` or `off`). Its `periods`
+attribute lists the programme as day / start / end / temperature.
 
 The sensor is read-only. The programme can be copied to other appliances, and one period's
 target edited, through actions — see
