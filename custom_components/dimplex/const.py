@@ -179,7 +179,7 @@ def has_any_mode(status: Any, flags: int) -> bool:
 
 NAME = "Dimplex Hub"
 DOMAIN = "dimplex"
-VERSION = "4.3.0"  # x-release-please-version
+VERSION = "4.4.0-pr.317.6fec43e"  # x-release-please-version
 DOCS_URL = "https://github.com/kroperuk/dimplex-controller-hass"
 ISSUE_URL = "https://github.com/kroperuk/dimplex-controller-hass/issues"
 
