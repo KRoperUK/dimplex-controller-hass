@@ -31,6 +31,7 @@ from .const import (
     HEAT_DEMAND_FLAGS,
     HOT_WATER_MODES,
     HYGIENE_FREQUENCY_NAMES,
+    TIMER_FLAG,
     has_any_mode,
     hot_water_mode,
     sane_temperature,
@@ -402,6 +403,34 @@ _TIMER_MODE_NAMES = {
     3: "off",
 }
 
+# ``EStatusTwo`` values to the profile names the app shows. Kept beside the
+# timer-mode map because both name "the schedule" from different endpoints.
+_SCHEDULE_PROFILE_NAMES = {
+    0: "user_timer",
+    1: "home_all_day",
+    2: "out_all_day",
+}
+
+
+def _profile_from_status(status: Any) -> str | None:
+    """Name the active schedule profile from the live overview, if known.
+
+    When the TIMER bit is engaged the official app names the schedule from
+    ``StatusTwo`` (0 = user timer, 1 = home all day, 2 = out all day) and never
+    reads ``TimerModeDetails.TimerMode`` — which the cloud leaves at 0 on
+    Quantum no matter which profile is applied, pinning this sensor to
+    ``user_timer`` even after a reload (dimplex-controller-hass#312).
+    """
+    if status is None or not has_any_mode(status, TIMER_FLAG):
+        return None
+    raw = getattr(status, "StatusTwo", None)
+    if raw is None:
+        return None
+    try:
+        return _SCHEDULE_PROFILE_NAMES.get(int(raw))
+    except (TypeError, ValueError):
+        return None
+
 
 class DimplexScheduleSensor(DimplexEntity, SensorEntity):
     """Read-only timer mode / schedule summary (phase 1)."""
@@ -431,6 +460,9 @@ class DimplexScheduleSensor(DimplexEntity, SensorEntity):
 
     @property
     def native_value(self) -> str | None:
+        profile = _profile_from_status(self._status)
+        if profile is not None:
+            return profile
         schedule = self._schedule
         if schedule is None:
             return None
@@ -456,6 +488,7 @@ class DimplexScheduleSensor(DimplexEntity, SensorEntity):
             )
         return {
             "timer_mode": getattr(schedule, "TimerMode", None),
+            "status_two": getattr(self._status, "StatusTwo", None),
             "period_count": len(periods_out),
             "periods": periods_out,
         }

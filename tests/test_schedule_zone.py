@@ -29,6 +29,50 @@ def test_schedule_sensor_native_value_and_periods():
     assert attrs["periods"][0]["temperature"] == 20.0
 
 
+def _schedule_sensor(status_modes, status_two, timer_mode=0):
+    """Build a schedule sensor over the given overview + schedule state."""
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "e1"
+    hub = SimpleNamespace(HubId="h1")
+    zone = SimpleNamespace(ZoneId="z1", ZoneName="Living")
+    appliance = SimpleNamespace(ApplianceId="a1", FriendlyName="Heater", ApplianceModel="X", ApplianceType="Q")
+    status = SimpleNamespace(ApplianceModes=status_modes, StatusTwo=status_two)
+    schedule = SimpleNamespace(TimerMode=timer_mode, TimerPeriods=[])
+    row = {"hub": hub, "zone": zone, "appliance": appliance, "status": status}
+    coord = MagicMock()
+    coord.data = {"appliances": [row], "schedules": {"a1": schedule}}
+    coord.last_update_success = True
+    return DimplexScheduleSensor(coord, entry, row)
+
+
+def test_schedule_sensor_reports_status_two_profile():
+    """The active profile comes from the overview, not the timer details (#312).
+
+    A Quantum with Out All Day applied reports TIMER bit + StatusTwo=2 while the
+    schedule endpoint still returns TimerMode=0; the sensor must follow the app
+    and report out_all_day, not user_timer.
+    """
+    sensor = _schedule_sensor(status_modes=1, status_two=2, timer_mode=0)
+    assert sensor.native_value == "out_all_day"
+    assert sensor.extra_state_attributes["status_two"] == 2
+
+
+def test_schedule_sensor_home_all_day():
+    sensor = _schedule_sensor(status_modes=1, status_two=1, timer_mode=0)
+    assert sensor.native_value == "home_all_day"
+
+
+def test_schedule_sensor_user_timer_when_status_two_zero():
+    sensor = _schedule_sensor(status_modes=1, status_two=0, timer_mode=0)
+    assert sensor.native_value == "user_timer"
+
+
+def test_schedule_sensor_falls_back_to_timer_mode_without_timer_bit():
+    """Without the TIMER bit engaged there is no active profile to name."""
+    sensor = _schedule_sensor(status_modes=128, status_two=2, timer_mode=1)
+    assert sensor.native_value == "manual"
+
+
 def test_zone_sensor_goes_unavailable_when_the_zone_disappears():
     """A zone the cloud stops reporting must not keep a stale anchor alive.
 
