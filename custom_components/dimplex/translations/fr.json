@@ -214,6 +214,14 @@
     "select": {
       "boost_duration": {
         "name": "Durée du boost"
+      },
+      "schedule_profile": {
+        "name": "Profil de programmation",
+        "state": {
+          "user_timer": "Programmation utilisateur",
+          "home_all_day": "Présent toute la journée",
+          "out_all_day": "Absent toute la journée"
+        }
       }
     },
     "water_heater": {

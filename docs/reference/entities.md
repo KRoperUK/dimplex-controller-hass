@@ -178,9 +178,10 @@ app rather than measured — see [appliance support](appliances.md#temperature-r
 
 ## Selects
 
-| Name           | Description                                                                                                                                                                                                                                                         |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Boost duration | How long the `boost` **preset** runs for this appliance. The options are the discrete durations the appliance's capability matrix offers (`boost_durations`, e.g. 30/60/120/180 minutes), matching the official app's own picker. Translation key `boost_duration`. |
+| Name             | Description                                                                                                                                                                                                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Boost duration   | How long the `boost` **preset** runs for this appliance. The options are the discrete durations the appliance's capability matrix offers (`boost_durations`, e.g. 30/60/120/180 minutes), matching the official app's own picker. Translation key `boost_duration`. |
+| Schedule profile | Which schedule programme the heater follows: `user_timer`, `home_all_day` or `out_all_day`. A **control** — choosing a value applies that profile through the API, mirroring the official app's schedule picker. Translation key `schedule_profile`.                |
 
 A configuration entity (not shown by default on the main card), created only for
 boost-capable appliances (`boost` in the capability matrix). It is a **preference** — choosing a

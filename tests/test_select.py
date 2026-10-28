@@ -152,6 +152,78 @@ async def test_invalid_option_is_rejected(hass):
     assert runtime.boost_minutes == {}
 
 
+async def test_profile_select_options_and_current_option(hass):
+    """A timer heater gets a profile select reflecting StatusTwo (#314)."""
+    payload = _payload()
+    payload["appliances"][0]["status"].ApplianceModes = 1
+    payload["appliances"][0]["status"].StatusTwo = 2
+    await _setup(hass, payload, caps=LocalCapabilities(boost=False))
+
+    entity_id = _select_entity_id(hass, "schedule_profile")
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state.attributes.get("options") == ["user_timer", "home_all_day", "out_all_day"]
+    assert state.state == "out_all_day"
+
+
+async def test_no_profile_select_for_cylinders(hass):
+    """Hot-water cylinders have no verified profile support, so no select."""
+    await _setup(hass, _payload(), caps=LocalCapabilities(boost=False, hot_water=True))
+
+    assert _select_entity_id(hass, "schedule_profile") is None
+
+
+async def test_no_profile_select_without_timer(hass):
+    await _setup(hass, _payload(), caps=LocalCapabilities(boost=False, timer=False))
+
+    assert _select_entity_id(hass, "schedule_profile") is None
+
+
+async def test_profile_select_writes_the_chosen_profile(hass):
+    """Choosing a profile writes it via the API and refreshes for readback."""
+    from unittest.mock import AsyncMock
+
+    from custom_components.dimplex.select import DimplexScheduleProfileSelect
+
+    payload = _payload()
+    row = payload["appliances"][0]
+    row["status"].ApplianceModes = 1
+    row["status"].StatusTwo = 0
+    api = SimpleNamespace(async_set_schedule_profile=AsyncMock())
+    coordinator = SimpleNamespace(data=payload, async_request_refresh=AsyncMock())
+    config_entry = SimpleNamespace(entry_id="test", runtime_data=SimpleNamespace())
+    select = DimplexScheduleProfileSelect(coordinator, config_entry, row, api)
+
+    assert select.options == ["user_timer", "home_all_day", "out_all_day"]
+    assert select.current_option == "user_timer"
+
+    await select.async_select_option("home_all_day")
+
+    api.async_set_schedule_profile.assert_awaited_once_with("hub-1", "appliance-1", 1)
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+async def test_profile_select_rejects_unknown_option(hass):
+    """An option outside the EStatusTwo set raises and writes nothing."""
+    from unittest.mock import AsyncMock
+
+    from custom_components.dimplex.select import DimplexScheduleProfileSelect
+
+    payload = _payload()
+    row = payload["appliances"][0]
+    row["status"].ApplianceModes = 128
+    api = SimpleNamespace(async_set_schedule_profile=AsyncMock())
+    coordinator = SimpleNamespace(data=payload, async_request_refresh=AsyncMock())
+    config_entry = SimpleNamespace(entry_id="test", runtime_data=SimpleNamespace())
+    select = DimplexScheduleProfileSelect(coordinator, config_entry, row, api)
+
+    assert select.current_option is None
+
+    with pytest.raises(ValueError, match="not a valid schedule profile"):
+        await select.async_select_option("away")
+    api.async_set_schedule_profile.assert_not_awaited()
+
+
 async def test_restores_last_chosen_duration(hass):
     """The chosen duration survives a restart via RestoreEntity."""
     from unittest.mock import AsyncMock

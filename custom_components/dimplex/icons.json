@@ -105,6 +105,9 @@
     "select": {
       "boost_duration": {
         "default": "mdi:timer-cog-outline"
+      },
+      "schedule_profile": {
+        "default": "mdi:calendar-edit"
       }
     },
     "water_heater": {

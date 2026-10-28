@@ -94,6 +94,29 @@ def hot_water_mode(status: Any) -> str | None:
     return None
 
 
+# ``EStatusTwo`` values, index-aligned: the schedule-profile names the app shows.
+SCHEDULE_PROFILES: tuple[str, ...] = ("user_timer", "home_all_day", "out_all_day")
+
+
+def schedule_profile(status: Any) -> str | None:
+    """Map a heater's overview to the app's active-profile name, if known.
+
+    When the TIMER bit is engaged the official app names the schedule from
+    ``StatusTwo`` (0 = user timer, 1 = home all day, 2 = out all day) and never
+    reads ``TimerModeDetails.TimerMode`` — which the cloud leaves at 0 on
+    Quantum no matter which profile is applied (dimplex-controller-hass#312).
+    """
+    if status is None or not has_any_mode(status, TIMER_FLAG):
+        return None
+    raw = getattr(status, "StatusTwo", None)
+    if raw is None:
+        return None
+    try:
+        return SCHEDULE_PROFILES[int(raw)]
+    except (IndexError, TypeError, ValueError):
+        return None
+
+
 # --- Timer modes -----------------------------------------------------------
 TIMER_USER = int(TimerMode.USER_TIMER)
 TIMER_MANUAL = int(TimerMode.MANUAL)
