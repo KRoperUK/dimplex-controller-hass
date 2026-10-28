@@ -103,6 +103,27 @@ def _energy_meta(energy_data: dict[str, Any] | None) -> dict[str, Any]:
     return meta
 
 
+def _schedule_snapshot(schedule: Any) -> dict[str, Any] | None:
+    """Serialise a cached timer schedule for the diagnostics download.
+
+    The overview alone cannot explain schedule-sensor state: on Quantum the
+    active profile lives in ``StatusTwo`` while this endpoint still answers
+    ``TimerMode=0`` (#312), so the download must show both. A missing schedule
+    (fetch failed) stays an explicit null rather than vanishing (#313).
+    """
+    if schedule is None:
+        return None
+    if isinstance(schedule, dict):
+        # Hot-water cylinders: the adapter already returns the raw cloud dict.
+        return dict(schedule)
+    periods = [_model_snapshot(period) for period in getattr(schedule, "TimerPeriods", None) or []]
+    return {
+        "timer_mode": getattr(schedule, "TimerMode", None),
+        "period_count": len(periods),
+        "periods": periods,
+    }
+
+
 def _lib_version() -> str | None:
     try:
         return version("dimplex-controller")
@@ -157,6 +178,7 @@ async def async_get_config_entry_diagnostics(
             }
         )
 
+    schedules = status_data.get("schedules") or {}
     appliances_out: list[dict[str, Any]] = []
     for row in status_data.get("appliances") or []:
         appliance = row.get("appliance")
@@ -183,6 +205,7 @@ async def async_get_config_entry_diagnostics(
                 "has_status": status is not None,
                 "status": _model_snapshot(status),
                 "active_modes": _active_modes(status),
+                "schedule": _schedule_snapshot(schedules.get(getattr(appliance, "ApplianceId", None))),
                 "provisioning": _model_snapshot(prov),
                 # The flags every control path is gated on, resolved for this
                 # appliance. Docs point at this key (#199).

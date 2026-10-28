@@ -413,6 +413,76 @@ async def test_diagnostics_redacts_tokens_and_summarises_energy(hass: HomeAssist
     assert "energy_summary" in data
 
 
+async def test_diagnostics_include_per_appliance_schedule(hass: HomeAssistant) -> None:
+    """Each appliance row carries its cached timer schedule (#313).
+
+    The overview alone cannot explain schedule-sensor state: on Quantum the
+    active profile lives in ``StatusTwo`` while the schedule endpoint still
+    answers ``TimerMode=0`` (#312), so the download must show both. A missing
+    schedule (fetch failed) is an explicit null, and a cylinder's raw-dict
+    schedule passes through unchanged.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_ENTRY_DATA,
+        options={},
+        entry_id="diag-sched",
+    )
+    entry.add_to_hass(hass)
+
+    hub = SimpleNamespace(HubId="hub-1")
+    zone = SimpleNamespace(ZoneName="Living Room")
+
+    def _appliance(app_id: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            ApplianceId=app_id,
+            FriendlyName="Heater",
+            ApplianceModel="QM100RF",
+            ApplianceType="Quantum",
+            FirmwareVersion="6",
+            automatic_provisioning=None,
+        )
+
+    period = SimpleNamespace(DayOfWeek=1, StartTime="06:00:00", EndTime="09:00:00", Temperature=20.0)
+    status_coord = MagicMock()
+    status_coord.data = {
+        "hubs": [hub],
+        "appliances": [
+            {"hub": hub, "zone": zone, "appliance": _appliance("app-1"), "status": None},
+            {"hub": hub, "zone": zone, "appliance": _appliance("app-2"), "status": None},
+            {"hub": hub, "zone": zone, "appliance": _appliance("app-3"), "status": None},
+        ],
+        "schedules": {
+            "app-1": SimpleNamespace(TimerMode=0, TimerPeriods=[period]),
+            "app-2": None,
+            "app-3": {"TimerPeriods": [{"DayOfWeek": 0, "StartTime": 0, "Mode": 2}]},
+        },
+    }
+    status_coord.last_update_success = True
+    status_coord.last_exception = None
+    status_coord.update_interval = "0:00:30"
+
+    energy_coord = MagicMock()
+    energy_coord.data = {"energy": {}}
+    energy_coord.last_update_success = True
+    energy_coord.last_exception = None
+    energy_coord.update_interval = "0:30:00"
+
+    entry.runtime_data = SimpleNamespace(status=status_coord, energy=energy_coord)
+
+    with patch("custom_components.dimplex.diagnostics.version", return_value="0.9.0"):
+        data = await async_get_config_entry_diagnostics(hass, entry)
+
+    by_id = {row["appliance_id"]: row for row in data["appliances"]}
+    assert by_id["app-1"]["schedule"] == {
+        "timer_mode": 0,
+        "period_count": 1,
+        "periods": [{"DayOfWeek": 1, "StartTime": "06:00:00", "EndTime": "09:00:00", "Temperature": 20.0}],
+    }
+    assert by_id["app-2"]["schedule"] is None
+    assert by_id["app-3"]["schedule"] == {"TimerPeriods": [{"DayOfWeek": 0, "StartTime": 0, "Mode": 2}]}
+
+
 async def test_active_modes_decodes_the_bitfield() -> None:
     """Diagnostics spell out the engaged modes so nobody decodes 0xNN by hand."""
     from custom_components.dimplex.const import ADVANCE_FLAG, BOOST_FLAG, FROST_FLAG
