@@ -15,6 +15,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
+    SensorExtraStoredData,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -39,6 +40,40 @@ from .const import (
 from .entity import DimplexEntity, resolve_via_device_id
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
+class _PeakExtraStoredData(SensorExtraStoredData):
+    """Restore data for a held cumulative total: the state plus the peak itself.
+
+    :class:`SensorExtraStoredData` only carries the reported state, which is
+    unknown whenever the series was empty at shutdown — so restoring from it
+    alone re-accepts a truncated total as growth. The peak rides alongside it
+    instead (#281). The base ``from_dict`` still reads the state half, so the
+    standard sensor-data restore path keeps working.
+    """
+
+    peak_total: float | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Serialise the state and the peak together."""
+        return {**super().as_dict(), "peak_total": self.peak_total}
+
+
+def _restored_peak(last_extra: Any | None) -> float | None:
+    """Read the held peak back out of stored extra restore data."""
+    if last_extra is None:
+        return None
+    try:
+        saved = last_extra.as_dict()
+    except Exception:  # pragma: no cover - unexpected extra shape
+        return None
+    if not isinstance(saved, dict):
+        return None
+    raw_peak = saved.get("peak_total")
+    if isinstance(raw_peak, bool) or not isinstance(raw_peak, int | float):
+        return None
+    return float(raw_peak)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -835,17 +870,7 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         await super().async_added_to_hass()
         if self.entity_description.mode != "lifetime":
             return
-        peak: float | None = None
-        try:
-            last_extra = await self.async_get_last_extra_data()  # type: ignore[attr-defined]
-        except Exception:  # pragma: no cover - storage without extra data
-            last_extra = None
-        if last_extra is not None:
-            raw_peak = last_extra.as_dict().get("peak_total") if hasattr(last_extra, "as_dict") else None
-            if isinstance(raw_peak, bool):
-                raw_peak = None
-            if isinstance(raw_peak, int | float):
-                peak = float(raw_peak)
+        peak = _restored_peak(await self.async_get_last_extra_data())
         if peak is None:
             try:
                 last_state = await self.async_get_last_state()
@@ -867,18 +892,13 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
             self._peak_total = peak
 
     @property
-    def extra_restore_state_data(self) -> Any | None:
-        """Persist the held peak itself, not just the reported state."""
-        if self.entity_description.mode != "lifetime":
-            return None
-        if self._peak_total is None:
-            return None
-        try:
-            from homeassistant.helpers.restore_state import RestoredExtraData as _RestoredExtraData  # type: ignore[import-not-found]
-
-            return _RestoredExtraData({"peak_total": self._peak_total})
-        except Exception:  # pragma: no cover - very old HA without restore extras
-            return None
+    def extra_restore_state_data(self) -> SensorExtraStoredData:
+        """Persist the held peak itself, next to the reported state."""
+        return _PeakExtraStoredData(
+            self.native_value,
+            self.native_unit_of_measurement,
+            self._peak_total,
+        )
 
     @property
     def last_reset(self) -> datetime | None:
