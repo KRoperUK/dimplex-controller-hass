@@ -162,10 +162,10 @@ targeted appliance's timer — the multi-appliance version of picking a profile 
 Give the profile id, or its display name as shown in the app (resolved to the id when the
 action runs).
 
-| Field          | Type   | Default      | Notes                                                              |
-| -------------- | ------ | ------------ | ------------------------------------------------------------------ |
-| `profile_id`   | string | —            | Saved profile id. Exactly one of this or `profile_name`            |
-| `profile_name` | string | —            | Display name in the app. Exactly one of this or `profile_id`       |
+| Field          | Type   | Default      | Notes                                                                      |
+| -------------- | ------ | ------------ | -------------------------------------------------------------------------- |
+| `profile_id`   | string | —            | Saved profile id. Exactly one of this or `profile_name`                    |
+| `profile_name` | string | —            | Display name in the app. Exactly one of this or `profile_id`               |
 | `profile`      | string | `user_timer` | Which day-profile it lands on: `user_timer`, `home_all_day`, `out_all_day` |
 
 ```yaml
