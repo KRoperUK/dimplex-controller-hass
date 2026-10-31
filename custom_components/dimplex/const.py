@@ -55,6 +55,12 @@ BOOST_FLAG = int(ApplianceModeFlag.BOOST)
 AWAY_FLAG = int(ApplianceModeFlag.AWAY)
 ADVANCE_FLAG = int(ApplianceModeFlag.ADVANCE)
 FROST_FLAG = int(ApplianceModeFlag.FROST_PROTECT)
+# Room-heater program bits the climate entity now reads directly. The reporter's
+# QRAD firmware 28 holds Manual as 64 (ECO) while the app shows Manual, and
+# 128 is the library's MANUAL — both mean "not off" to the thermostat, which is
+# why they live here rather than hard-coded in climate.py (#283).
+ECO_FLAG = int(ApplianceModeFlag.ECO)
+MANUAL_FLAG = int(ApplianceModeFlag.MANUAL)
 
 # Modes that mean the appliance is being driven above its schedule, and so is
 # probably drawing power. Used to keep energy polling responsive and to
