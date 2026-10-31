@@ -119,17 +119,19 @@ async def test_model_snapshot_returns_none_for_none_input() -> None:
     assert _model_snapshot(None) is None
 
 
-async def test_hash_identifier_handles_empty_and_none() -> None:
-    """``_hash_identifier`` returns ``None`` for empty/None input."""
-    from custom_components.dimplex.diagnostics import _hash_identifier
+async def test_diagnostics_contain_no_account_email_identifier() -> None:
+    """No value derived from the account email may survive into diagnostics (#296).
 
-    assert _hash_identifier(None) is None
-    assert _hash_identifier("") is None
-    h = _hash_identifier("user@example.com")
-    assert h is not None
-    assert len(h) == 12
-    # Stable: hashing the same value always yields the same digest.
-    assert h == _hash_identifier("user@example.com")
+    The unsalted truncated SHA-256 that used to stand in for the email is
+    reversible over the small email space, so the field is gone entirely rather
+    than re-salted: no per-account identifier is needed.
+    """
+    import custom_components.dimplex.diagnostics as diag
+
+    assert not hasattr(diag, "_hash_identifier")
+    with open(diag.__file__, encoding="utf-8") as handle:
+        src = handle.read()
+    assert "primary_user_email_hash" not in src
 
 
 async def test_energy_meta_handles_empty_hub_and_missing_fields() -> None:
@@ -407,7 +409,7 @@ async def test_diagnostics_redacts_tokens_and_summarises_energy(hass: HomeAssist
     assert "SECRET" not in blob  # hub security code
     assert data["versions"]["dimplex_controller"] == "0.9.0"
     assert data["hubs"][0]["hub_id"] == "hub-1"
-    assert data["hubs"][0]["primary_user_email_hash"] is not None
+    assert "primary_user_email_hash" not in data["hubs"][0]
     assert data["appliances"][0]["appliance_id"] == "app-1"
     assert data["energy_summary"]["hub-1"]["t1"]["app-1"]["point_count"] == 2
     assert "energy_summary" in data
