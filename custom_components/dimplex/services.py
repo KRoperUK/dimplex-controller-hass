@@ -15,7 +15,15 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from .capabilities import capabilities_for_row
-from .const import AWAY_TEMP_MAX, AWAY_TEMP_MIN, DOMAIN, SETPOINT_TEMP_MAX, SETPOINT_TEMP_MIN, TIMER_USER
+from .const import (
+    AWAY_TEMP_MAX,
+    AWAY_TEMP_MIN,
+    DOMAIN,
+    SCHEDULE_PROFILES,
+    SETPOINT_TEMP_MAX,
+    SETPOINT_TEMP_MIN,
+    TIMER_USER,
+)
 from .errors import control_errors
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,6 +39,9 @@ ATTR_DAY = "day"
 ATTR_START_TIME = "start_time"
 ATTR_END_TIME = "end_time"
 ATTR_TARGET_DEVICE_IDS = "target_device_ids"
+ATTR_PROFILE_ID = "profile_id"
+ATTR_PROFILE_NAME = "profile_name"
+ATTR_PROFILE = "profile"
 ATTR_MODE = "mode"
 ATTR_FREQUENCY = "frequency"
 
@@ -43,6 +54,7 @@ SERVICE_CLEAR_ADVANCE = "clear_advance"
 SERVICE_SET_ECO_START = "set_eco_start"
 SERVICE_SET_OPEN_WINDOW = "set_open_window_detection"
 SERVICE_COPY_SCHEDULE = "copy_schedule"
+SERVICE_APPLY_HEATING_PROFILE = "apply_heating_profile"
 SERVICE_SET_PERIOD_SETPOINT = "set_period_setpoint"
 SERVICE_SET_HOT_WATER_TEMPERATURE = "set_hot_water_temperature"
 SERVICE_SET_HOT_WATER_HYGIENE = "set_hot_water_hygiene"
@@ -203,10 +215,17 @@ def _resolve_device_id(hass: HomeAssistant, device_id: str) -> tuple[str, str, s
     """Return (entry_id, hub_id, appliance_id, api) for a device registry id."""
     dev_reg = dr.async_get(hass)
     device = dev_reg.async_get(device_id)
-    if device is None or not device.config_entries:
+    if device is None:
         _LOGGER.error("Unknown device_id for dimplex service: %s", device_id)
         return None
-    config_entry_id = next(iter(device.config_entries))
+    # A device belongs to a single config entry; config_entries is deprecated
+    # (and removed in a future Home Assistant), so prefer config_entry_id.
+    config_entry_id = getattr(device, "config_entry_id", None)
+    if not config_entry_id:
+        if not device.config_entries:
+            _LOGGER.error("Unknown device_id for dimplex service: %s", device_id)
+            return None
+        config_entry_id = next(iter(device.config_entries))
     appliance_id: str | None = None
     for domain, ident in device.identifiers:
         if domain == DOMAIN:
@@ -577,6 +596,44 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         await _refresh_status(hass, entry_id)
 
     @_translated
+    async def handle_apply_heating_profile(call: ServiceCall) -> None:
+        resolved = await _resolve_appliance(hass, call)
+        if resolved is None:
+            return
+        entry_id, hub_id, appliance_id, api = resolved
+        # Profiles are heater timer programmes: the schedule-profile select is
+        # gated the same way (timer schedule, not a cylinder), because a
+        # cylinder's weekly programme lives on its own endpoint (#199).
+        _require_capability(hass, entry_id, appliance_id, "timer", f"{DOMAIN}.{call.service}")
+        caps = _capabilities_for(hass, entry_id, appliance_id)
+        if caps is not None and getattr(caps, "hot_water", False):
+            raise HomeAssistantError(
+                f"{_appliance_name(hass, entry_id, appliance_id)} is a hot-water cylinder; "
+                f"heating profiles apply to room-heater timer schedules, so {DOMAIN}.{call.service} was not sent."
+            )
+        profile_id = call.data.get(ATTR_PROFILE_ID)
+        profile_name = call.data.get(ATTR_PROFILE_NAME)
+        if bool(profile_id) == bool(profile_name):
+            raise HomeAssistantError(
+                f"Give exactly one of {ATTR_PROFILE_ID} or {ATTR_PROFILE_NAME} to {DOMAIN}.{call.service}."
+            )
+        if profile_name and not profile_id:
+            profiles = await api.async_get_heating_profiles()
+            match = next((p for p in profiles if p.ProfileName == profile_name), None)
+            if match is None:
+                available = ", ".join(sorted({p.ProfileName for p in profiles})) or "none saved"
+                raise HomeAssistantError(f'No saved heating profile named "{profile_name}" (available: {available}).')
+            profile_id = match.Id
+        await api.async_apply_heating_profile(
+            hub_id,
+            appliance_id,
+            profile=SCHEDULE_PROFILES.index(str(call.data.get(ATTR_PROFILE, "user_timer"))),
+            profile_id=str(profile_id),
+        )
+        _invalidate_schedules(hass, entry_id)
+        await _refresh_status(hass, entry_id)
+
+    @_translated
     async def handle_set_period_setpoint(call: ServiceCall) -> None:
         resolved = await _resolve_appliance(hass, call)
         if resolved is None:
@@ -611,6 +668,18 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         SERVICE_COPY_SCHEDULE,
         handle_copy_schedule,
         schema=_target_schema().extend({vol.Required(ATTR_TARGET_DEVICE_IDS): vol.All(cv.ensure_list, [cv.string])}),
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_APPLY_HEATING_PROFILE,
+        handle_apply_heating_profile,
+        schema=_target_schema().extend(
+            {
+                vol.Optional(ATTR_PROFILE_ID): cv.string,
+                vol.Optional(ATTR_PROFILE_NAME): cv.string,
+                vol.Optional(ATTR_PROFILE, default="user_timer"): vol.In(list(SCHEDULE_PROFILES)),
+            }
+        ),
     )
     hass.services.async_register(
         DOMAIN,
@@ -742,6 +811,7 @@ async def async_unload_services(hass: HomeAssistant, unloading_entry_id: str | N
         SERVICE_SET_ECO_START,
         SERVICE_SET_OPEN_WINDOW,
         SERVICE_COPY_SCHEDULE,
+        SERVICE_APPLY_HEATING_PROFILE,
         SERVICE_SET_PERIOD_SETPOINT,
         SERVICE_SET_HOT_WATER_TEMPERATURE,
         SERVICE_SET_HOT_WATER_HYGIENE,

@@ -24,6 +24,7 @@ to that appliance.
 | `dimplex.set_eco_start`             | Enable or disable EcoStart                                |
 | `dimplex.set_open_window_detection` | Enable or disable open-window detection                   |
 | `dimplex.copy_schedule`             | Apply one appliance's schedule to others                  |
+| `dimplex.apply_heating_profile`     | Apply a saved app profile to an appliance's timer         |
 | `dimplex.set_period_setpoint`       | Change one schedule period's target temperature           |
 | `dimplex.set_hot_water_temperature` | Set a cylinder's normal or boost target                   |
 | `dimplex.set_hot_water_hygiene`     | Configure a cylinder's anti-legionella cycle              |
@@ -153,6 +154,33 @@ data:
 Every target is checked before anything is written: an unresolvable device, or one on a
 different hub, aborts the whole action rather than copying to some of them. If a target is the
 source appliance it is skipped.
+
+## `dimplex.apply_heating_profile`
+
+Applies one of the saved heating profiles from the official app's Profiles page to the
+targeted appliance's timer — the multi-appliance version of picking a profile in the app.
+Give the profile id, or its display name as shown in the app (resolved to the id when the
+action runs).
+
+| Field          | Type   | Default      | Notes                                                                      |
+| -------------- | ------ | ------------ | -------------------------------------------------------------------------- |
+| `profile_id`   | string | —            | Saved profile id. Exactly one of this or `profile_name`                    |
+| `profile_name` | string | —            | Display name in the app. Exactly one of this or `profile_id`               |
+| `profile`      | string | `user_timer` | Which day-profile it lands on: `user_timer`, `home_all_day`, `out_all_day` |
+
+```yaml
+action: dimplex.apply_heating_profile
+target:
+  entity_id: climate.hallway_heater
+data:
+  profile_name: "Winter weekdays"
+  profile: user_timer
+```
+
+Heaters with a timer schedule only — a cylinder has its own schedule endpoint, so the
+action is refused for one rather than sending a heater payload at it. Applying a profile
+rewrites the timer programme, so the schedule cache is invalidated and the Schedule sensor
+re-fetches on the next poll.
 
 ## `dimplex.set_period_setpoint`
 

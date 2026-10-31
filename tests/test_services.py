@@ -10,6 +10,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.dimplex.const import AWAY_TEMP_MAX, DOMAIN
 from custom_components.dimplex.services import (
+    SERVICE_APPLY_HEATING_PROFILE,
     SERVICE_CLEAR_ADVANCE,
     SERVICE_COPY_SCHEDULE,
     SERVICE_REFRESH,
@@ -772,3 +773,124 @@ async def test_refresh_unknown_target_is_a_noop(hass: HomeAssistant) -> None:
     await hass.services.async_call(DOMAIN, SERVICE_REFRESH, {"device_id": device_id}, blocking=True)
 
     runtime.status.async_refresh.assert_not_awaited()
+
+
+def _make_profile_runtime():
+    """Runtime whose api records a heating-profile apply."""
+    runtime = _make_runtime()
+    runtime.api.async_get_heating_profiles = AsyncMock()
+    runtime.api.async_apply_heating_profile = AsyncMock()
+    runtime.status.invalidate_schedules = MagicMock()
+    return runtime
+
+
+async def test_apply_heating_profile_writes_id_and_refreshes(hass: HomeAssistant) -> None:
+    """A profile id applies to the appliance timer, then schedules re-fetch."""
+    runtime = _make_profile_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_APPLY_HEATING_PROFILE,
+        {"device_id": device_id, "profile_id": "profile-1", "profile": "home_all_day"},
+        blocking=True,
+    )
+
+    runtime.api.async_apply_heating_profile.assert_awaited_once_with(
+        "hub-1", "app-1", profile=1, profile_id="profile-1"
+    )
+    # The timer programme changed, so the cached schedules are stale.
+    runtime.status.invalidate_schedules.assert_called_once()
+    runtime.status.async_request_refresh.assert_awaited_once()
+
+
+async def test_apply_heating_profile_resolves_a_name_to_its_id(hass: HomeAssistant) -> None:
+    """A display name from the app resolves to the profile id at call time."""
+    from dimplex_controller import UserHeatingProfile
+
+    runtime = _make_profile_runtime()
+    runtime.api.async_get_heating_profiles = AsyncMock(
+        return_value=[
+            UserHeatingProfile(Id="id-1", ProfileName="Winter weekdays"),
+            UserHeatingProfile(Id="id-2", ProfileName="Away"),
+        ]
+    )
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_APPLY_HEATING_PROFILE,
+        {"device_id": device_id, "profile_name": "Away"},
+        blocking=True,
+    )
+
+    runtime.api.async_apply_heating_profile.assert_awaited_once_with("hub-1", "app-1", profile=0, profile_id="id-2")
+
+
+async def test_apply_heating_profile_unknown_name_lists_what_exists(hass: HomeAssistant) -> None:
+    """An unknown name fails naming what is saved, instead of sending a guess."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    runtime = _make_profile_runtime()
+    runtime.api.async_get_heating_profiles = AsyncMock(return_value=[])
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with pytest.raises(HomeAssistantError, match='No saved heating profile named "Missing"'):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_APPLY_HEATING_PROFILE,
+            {"device_id": device_id, "profile_name": "Missing"},
+            blocking=True,
+        )
+
+    runtime.api.async_apply_heating_profile.assert_not_awaited()
+
+
+@pytest.mark.parametrize("data", [{}, {"profile_id": "a", "profile_name": "b"}])
+async def test_apply_heating_profile_needs_exactly_one_identifier(hass: HomeAssistant, data: dict) -> None:
+    """Neither or both of profile_id/profile_name is a usage error, not a write."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    runtime = _make_profile_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with pytest.raises(HomeAssistantError, match="exactly one"):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_APPLY_HEATING_PROFILE,
+            {"device_id": device_id, **data},
+            blocking=True,
+        )
+
+    runtime.api.async_apply_heating_profile.assert_not_awaited()
+
+
+async def test_apply_heating_profile_is_refused_without_a_timer(hass: HomeAssistant) -> None:
+    """An appliance with no timer schedule cannot receive a timer programme."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    runtime = _make_profile_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with (
+        patch(
+            "custom_components.dimplex.services.capabilities_for_row",
+            return_value=LocalCapabilities(timer=False),
+        ),
+        pytest.raises(HomeAssistantError, match="does not support this control"),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_APPLY_HEATING_PROFILE,
+            {"device_id": device_id, "profile_id": "profile-1"},
+            blocking=True,
+        )
+
+    runtime.api.async_apply_heating_profile.assert_not_awaited()
