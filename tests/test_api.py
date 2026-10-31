@@ -337,6 +337,16 @@ async def test_set_eco_start_calls_library(hass):
     set_eco_start.assert_awaited_once_with("hub-1", ["appliance-1"], True)
 
 
+async def test_set_schedule_profile_calls_library(hass):
+    """Test schedule-profile control delegates the profile int to the library (#314)."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    with patch.object(api._client, "set_schedule_profile", new=AsyncMock()) as set_profile:
+        await api.async_set_schedule_profile("hub-1", "appliance-1", 2)
+
+    set_profile.assert_awaited_once_with("hub-1", ["appliance-1"], 2)
+
+
 async def test_exchange_code_success(hass):
     """Test auth code exchange returns token payload."""
     api = DimplexApiClient(session=async_get_clientsession(hass))

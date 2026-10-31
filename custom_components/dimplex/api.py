@@ -671,6 +671,17 @@ class DimplexApiClient:
         with _translated_errors():
             await self._client.set_mode(hub_id, appliance_id, mode)
 
+    async def async_set_schedule_profile(self, hub_id: str, appliance_id: str, profile: int) -> None:
+        """Apply a schedule profile: 0 user timer, 1 home all day, 2 out all day.
+
+        The app's schedule picker writes ``ApplianceModes=1`` with the profile
+        in ``StatusTwo`` (Dimplex Control 2.29.1; dimplex-controller-hass#314).
+        Confirmed on Quantum; the other timer families share the same
+        heating-appliance payload.
+        """
+        with _translated_errors():
+            await self._client.set_schedule_profile(hub_id, [appliance_id], profile)
+
     async def async_set_frost_protect(self, hub_id: str, appliance_id: str, *, enable: bool = True) -> None:
         """Engage or clear frost protection — how the app turns a heater off."""
         with _translated_errors():

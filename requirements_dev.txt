@@ -12,7 +12,7 @@
 homeassistant==2026.10.3
 pytest-homeassistant-custom-component==0.13.374
 
-dimplex-controller>=0.15.1
+dimplex-controller>=0.16.0
 
 # Single source of truth for the docs generator; see the file for why it is pinned.
 -r requirements_docs.txt
