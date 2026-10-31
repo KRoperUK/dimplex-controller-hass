@@ -244,7 +244,7 @@ async def _setup_payload(hass, payload) -> None:
         await hass.async_block_till_done()
 
 
-def test_setback_prefers_the_live_frame_bit():
+async def test_setback_prefers_the_live_frame_bit():
     """SetbackEnabledInStatusFrame wins over the SetbackEnabled setting (#295)."""
     from types import SimpleNamespace
 
@@ -259,7 +259,7 @@ def test_setback_prefers_the_live_frame_bit():
     assert _setback_active(SimpleNamespace(SetbackEnabled=False)) is False
 
 
-def test_open_window_sensor_has_no_window_device_class():
+async def test_open_window_sensor_has_no_window_device_class():
     """Detection setting must not present as a physical open/closed state (#295)."""
     from custom_components.dimplex.binary_sensor import APPLIANCE_BINARY_SENSORS
 

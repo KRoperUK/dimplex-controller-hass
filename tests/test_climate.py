@@ -211,33 +211,62 @@ async def test_climate_set_temperature_and_presets(hass):
         assert set_boost.await_args.kwargs["enable"] is True
         assert set_boost.await_args.kwargs["temperature"] == 25.0
 
-
-@pytest.mark.asyncio
-async def test_climate_set_temperature_clamps_to_the_entity_limits(hass):
-    """An out-of-range setpoint is clamped to min/max before the first write (#294)."""
-    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
-    config_entry.add_to_hass(hass)
-    payload = _payload()
-
-    with _api_data(payload):
-        assert await hass.config_entries.async_setup(config_entry.entry_id)
-        await hass.async_block_till_done()
-
-    entity_id = _climate_entity(hass)
     with (
         patch(
-            "custom_components.dimplex.DimplexApiClient.async_set_appliance_setpoint",
+            "custom_components.dimplex.DimplexApiClient.async_set_away",
             new_callable=AsyncMock,
-        ) as set_temp,
+        ) as set_away,
         _api_data(payload),
     ):
         await hass.services.async_call(
             CLIMATE_DOMAIN,
-            SERVICE_SET_TEMPERATURE,
-            {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: 45},
+            SERVICE_SET_PRESET_MODE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_PRESET_MODE: "away"},
             blocking=True,
         )
-        set_temp.assert_awaited_once_with("hub-1", "appliance-1", 30.0)
+        assert set_away.await_count == 1
+        assert set_away.await_args.kwargs["enable"] is True
+
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_eco_start",
+            new_callable=AsyncMock,
+        ) as set_eco,
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_PRESET_MODE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_PRESET_MODE: "eco"},
+            blocking=True,
+        )
+        set_eco.assert_awaited_once_with("hub-1", "appliance-1", True)
+
+
+@pytest.mark.asyncio
+async def test_climate_set_temperature_clamps_to_the_entity_limits(hass):
+    """An out-of-range setpoint is clamped to min/max before the first write (#294).
+
+    Home Assistant's own service layer rejects an out-of-range temperature
+    first, so the clamp is exercised at entity level: defence in depth for
+    any caller that bypasses the service validation.
+    """
+    from unittest.mock import AsyncMock
+
+    from custom_components.dimplex.climate import DimplexClimate
+
+    row = _payload()["appliances"][0]
+    coordinator = SimpleNamespace(data=_payload(), async_request_refresh=AsyncMock())
+    api = SimpleNamespace(async_set_appliance_setpoint=AsyncMock(), async_set_target_temperature=AsyncMock())
+    config_entry = SimpleNamespace(entry_id="test", runtime_data=SimpleNamespace(), options={})
+    climate = DimplexClimate(coordinator, config_entry, row, api)
+    climate.hass = hass
+
+    with patch.object(climate, "async_write_ha_state"):
+        await climate.async_set_temperature(temperature=45)
+
+    api.async_set_appliance_setpoint.assert_awaited_once_with("hub-1", "appliance-1", 30.0)
+    api.async_set_target_temperature.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -270,37 +299,6 @@ async def test_climate_boost_preset_ignores_the_255_sentinel(hass):
         )
         assert set_boost.await_count == 1
         assert set_boost.await_args.kwargs["temperature"] == DEFAULT_BOOST_TEMP
-
-    with (
-        patch(
-            "custom_components.dimplex.DimplexApiClient.async_set_away",
-            new_callable=AsyncMock,
-        ) as set_away,
-        _api_data(payload),
-    ):
-        await hass.services.async_call(
-            CLIMATE_DOMAIN,
-            SERVICE_SET_PRESET_MODE,
-            {ATTR_ENTITY_ID: entity_id, ATTR_PRESET_MODE: "away"},
-            blocking=True,
-        )
-        assert set_away.await_count == 1
-        assert set_away.await_args.kwargs["enable"] is True
-
-    with (
-        patch(
-            "custom_components.dimplex.DimplexApiClient.async_set_eco_start",
-            new_callable=AsyncMock,
-        ) as set_eco,
-        _api_data(payload),
-    ):
-        await hass.services.async_call(
-            CLIMATE_DOMAIN,
-            SERVICE_SET_PRESET_MODE,
-            {ATTR_ENTITY_ID: entity_id, ATTR_PRESET_MODE: "eco"},
-            blocking=True,
-        )
-        set_eco.assert_awaited_once_with("hub-1", "appliance-1", True)
 
 
 @pytest.mark.asyncio

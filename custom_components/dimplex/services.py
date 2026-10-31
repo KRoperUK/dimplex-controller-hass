@@ -223,9 +223,10 @@ def _resolve_device_id(hass: HomeAssistant, device_id: str) -> tuple[str, str, s
     # (and removed in a future Home Assistant), so prefer config_entry_id.
     config_entry_id = getattr(device, "config_entry_id", None)
     if not config_entry_id:
-        if not device.config_entries:
+        entries = getattr(device, "config_entries", None) or set()
+        if not entries:
             raise HomeAssistantError(f"Unknown device_id for dimplex service: {device_id}.")
-        config_entry_id = next(iter(device.config_entries))
+        config_entry_id = next(iter(entries))
     appliance_id: str | None = None
     for domain, ident in device.identifiers:
         if domain == DOMAIN:
@@ -536,13 +537,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         targets: list[str] = []
         for target_device_id in call.data[ATTR_TARGET_DEVICE_IDS]:
-            target = _resolve_device_id(hass, target_device_id)
-            if target is None:
+            try:
+                target = _resolve_device_id(hass, target_device_id)
+            except HomeAssistantError:
                 # Named individually: a silent partial copy would leave some heaters
                 # on the old programme with nothing saying which.
                 raise HomeAssistantError(
                     f"Could not resolve {target_device_id} as a Dimplex appliance; no schedule was copied."
-                )
+                ) from None
             target_hub, target_appliance = target[1], target[2]
             if target_hub != hub_id:
                 # One API call carries one HubId, so a cross-hub target cannot work.
