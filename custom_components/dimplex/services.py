@@ -215,10 +215,17 @@ def _resolve_device_id(hass: HomeAssistant, device_id: str) -> tuple[str, str, s
     """Return (entry_id, hub_id, appliance_id, api) for a device registry id."""
     dev_reg = dr.async_get(hass)
     device = dev_reg.async_get(device_id)
-    if device is None or not device.config_entries:
+    if device is None:
         _LOGGER.error("Unknown device_id for dimplex service: %s", device_id)
         return None
-    config_entry_id = next(iter(device.config_entries))
+    # A device belongs to a single config entry; config_entries is deprecated
+    # (and removed in a future Home Assistant), so prefer config_entry_id.
+    config_entry_id = getattr(device, "config_entry_id", None)
+    if not config_entry_id:
+        if not device.config_entries:
+            _LOGGER.error("Unknown device_id for dimplex service: %s", device_id)
+            return None
+        config_entry_id = next(iter(device.config_entries))
     appliance_id: str | None = None
     for domain, ident in device.identifiers:
         if domain == DOMAIN:
