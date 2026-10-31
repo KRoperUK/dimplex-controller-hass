@@ -14,6 +14,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
+from .boost import clear_boost_start, record_boost_start
 from .capabilities import capabilities_for_row
 from .const import (
     AWAY_TEMP_MAX,
@@ -389,13 +390,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     @_translated
     async def handle_set_boost(call: ServiceCall) -> None:
         entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
+        duration = int(call.data.get(ATTR_DURATION, _DEFAULT_BOOST_MINUTES))
         await api.async_set_boost(
             hub_id,
             appliance_id,
             temperature=_mode_temperature(call, _DEFAULT_BOOST_TEMP),
-            duration_minutes=int(call.data.get(ATTR_DURATION, _DEFAULT_BOOST_MINUTES)),
+            duration_minutes=duration,
             enable=True,
         )
+        # The cloud sends no boost expiry, so the countdown sensor is
+        # synthesised from this engage time and duration (#302).
+        record_boost_start(_runtime_for(hass, entry_id), appliance_id, duration)
         await _refresh_status(hass, entry_id)
 
     @_translated
@@ -407,6 +412,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             temperature=_mode_temperature(call, _DEFAULT_BOOST_TEMP),
             enable=False,
         )
+        clear_boost_start(_runtime_for(hass, entry_id), appliance_id)
         await _refresh_status(hass, entry_id)
 
     @_translated

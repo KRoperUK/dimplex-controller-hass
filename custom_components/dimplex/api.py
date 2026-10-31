@@ -673,6 +673,18 @@ class DimplexApiClient:
         with _translated_errors():
             await self._client.set_mode(hub_id, appliance_id, mode)
 
+    async def async_set_manual(
+        self, hub_id: str, appliance_id: str, *, temperature: float, enable: bool = True
+    ) -> None:
+        """Hold or release a manual setpoint (``ApplianceModes=128``).
+
+        This is the write Home Assistant was missing: in User Timer a QRAD
+        ignores every setpoint and boost, so putting the heater back into
+        Manual is what makes it controllable again (#272, #299).
+        """
+        with _translated_errors():
+            await self._client.set_manual(hub_id, [appliance_id], temperature=temperature, enable=enable)
+
     async def async_set_schedule_profile(self, hub_id: str, appliance_id: str, profile: int) -> None:
         """Apply a schedule profile: 0 user timer, 1 home all day, 2 out all day.
 
