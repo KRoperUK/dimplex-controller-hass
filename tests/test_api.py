@@ -694,6 +694,15 @@ async def test_setpoint_and_frost_helpers_use_the_dedicated_endpoints(hass):
     assert [call.kwargs["enable"] for call in set_frost.await_args_list] == [True, False]
 
 
+async def test_manual_helper_holds_a_setpoint(hass):
+    """The operating-mode Manual write holds a setpoint via ApplianceModes=128 (#299)."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with patch.object(api._client, "set_manual", new=AsyncMock()) as set_manual:
+        await api.async_set_manual("h", "a", temperature=20.0)
+
+    set_manual.assert_awaited_once_with("h", ["a"], temperature=20.0, enable=True)
+
+
 @pytest.mark.parametrize(
     ("library_error", "expected"),
     [

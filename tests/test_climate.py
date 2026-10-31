@@ -302,6 +302,61 @@ async def test_climate_boost_preset_ignores_the_255_sentinel(hass):
 
 
 @pytest.mark.asyncio
+async def test_climate_boost_preset_records_the_engage_time(hass):
+    """A preset boost starts the countdown sensor's engage record (#302)."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload()
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_boost",
+            new_callable=AsyncMock,
+        ),
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_PRESET_MODE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_PRESET_MODE: "boost"},
+            blocking=True,
+        )
+
+    record = config_entry.runtime_data.boost_starts.get("appliance-1")
+    assert record is not None
+    assert record["duration_minutes"] == 60
+
+    # Leaving boost clears the record, so the countdown retires to unknown.
+    # Simulate the cloud having engaged the boost in between.
+    payload["appliances"][0]["status"].BoostDuration = 30
+    payload["appliances"][0]["status"].ApplianceModes = BOOST_FLAG
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_boost",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_away",
+            new_callable=AsyncMock,
+        ),
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_PRESET_MODE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_PRESET_MODE: "comfort"},
+            blocking=True,
+        )
+
+    assert "appliance-1" not in config_entry.runtime_data.boost_starts
+
+
+@pytest.mark.asyncio
 async def test_climate_comfort_clears_modes(hass):
     """Comfort preset clears boost, away, and eco when active."""
     config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")

@@ -2,7 +2,7 @@
 
 from contextlib import ExitStack
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.components.select import DOMAIN as SELECT_DOMAIN
@@ -248,3 +248,101 @@ async def test_restores_last_chosen_duration(hass):
 
     assert runtime.boost_minutes["appliance-1"] == 120
     assert select.current_option == "120"
+
+
+def _operating_mode_select(modes, **overrides):
+    """Build an operating-mode select over a stub coordinator."""
+    from unittest.mock import AsyncMock
+
+    from custom_components.dimplex.select import DimplexOperatingModeSelect
+
+    payload = _payload()
+    payload["appliances"][0]["status"].ApplianceModes = modes
+    row = payload["appliances"][0]
+    api = overrides.pop("api", SimpleNamespace(async_set_manual=AsyncMock(), async_set_schedule_profile=AsyncMock()))
+    coordinator = SimpleNamespace(
+        data=payload,
+        async_request_refresh=overrides.pop("refresh", AsyncMock()),
+        async_add_listener=lambda *a, **k: lambda: None,
+    )
+    config_entry = SimpleNamespace(entry_id="test", runtime_data=SimpleNamespace())
+    return DimplexOperatingModeSelect(coordinator, config_entry, row, api)
+
+
+async def test_operating_mode_reports_manual_timer_and_unknown():
+    """Live bits map to manual/timer; bit 64 is not special-cased (#298, #299)."""
+    assert _operating_mode_select(128).current_option == "manual"
+    assert _operating_mode_select(1).current_option == "timer"
+    # The reporter's firmware-28 Manual-as-64 frame: exposed raw elsewhere, and
+    # not guessed into manual here.
+    assert _operating_mode_select(64).current_option is None
+    assert _operating_mode_select(None).current_option is None
+
+
+async def test_operating_mode_manual_writes_manual_with_current_setpoint():
+    """Selecting manual holds the current setpoint via the Manual write (#299)."""
+
+    select = _operating_mode_select(1)
+    with patch.object(select, "async_write_ha_state", MagicMock()):
+        await select.async_select_option("manual")
+    select._api.async_set_manual.assert_awaited_once_with("hub-1", "appliance-1", temperature=20.0)
+    # Optimistic hold shows the choice before the next poll confirms it.
+    assert select.current_option == "manual"
+
+
+async def test_operating_mode_timer_writes_the_user_timer_profile():
+    """Selecting timer returns the heater to its user-timer schedule (#299)."""
+
+    select = _operating_mode_select(128)
+    with patch.object(select, "async_write_ha_state", MagicMock()):
+        await select.async_select_option("timer")
+    select._api.async_set_schedule_profile.assert_awaited_once_with("hub-1", "appliance-1", 0)
+
+
+async def test_operating_mode_rejects_unknown_option():
+    """An option outside manual/timer raises and writes nothing."""
+    select = _operating_mode_select(1)
+    with pytest.raises(ValueError, match="not a valid operating mode"):
+        await select.async_select_option("away")
+    select._api.async_set_manual.assert_not_awaited()
+    select._api.async_set_schedule_profile.assert_not_awaited()
+
+
+async def test_operating_mode_refusal_surfaces_an_error():
+    """A refused write raises to the caller rather than logging and returning (#299)."""
+    from unittest.mock import AsyncMock
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex.api import ControlRejected
+    from custom_components.dimplex.select import DimplexOperatingModeSelect
+
+    payload = _payload()
+    row = payload["appliances"][0]
+    api = SimpleNamespace(async_set_manual=AsyncMock(side_effect=ControlRejected("Forbidden", status=403)))
+    coordinator = SimpleNamespace(data=payload, async_request_refresh=AsyncMock())
+    config_entry = SimpleNamespace(entry_id="test", runtime_data=SimpleNamespace())
+    select = DimplexOperatingModeSelect(coordinator, config_entry, row, api)
+
+    with pytest.raises(HomeAssistantError):
+        await select.async_select_option("manual")
+
+
+async def test_no_operating_mode_select_for_cylinders(hass):
+    """Hot-water cylinders have no verified Manual support, so no select (#299)."""
+    await _setup(hass, _payload(), caps=LocalCapabilities(boost=False, hot_water=True))
+    assert _select_entity_id(hass, "operating_mode") is None
+
+
+async def test_no_operating_mode_select_without_timer(hass):
+    """Without a timer schedule there is nothing to return to (#299)."""
+    await _setup(hass, _payload(), caps=LocalCapabilities(boost=False, timer=False))
+    assert _select_entity_id(hass, "operating_mode") is None
+
+
+async def test_operating_mode_select_created_for_heaters(hass):
+    """A timer heater gets both the profile and the operating-mode selects."""
+    await _setup(hass, _payload(), caps=LocalCapabilities(boost=False))
+
+    assert _select_entity_id(hass, "schedule_profile") is not None
+    assert _select_entity_id(hass, "operating_mode") is not None
