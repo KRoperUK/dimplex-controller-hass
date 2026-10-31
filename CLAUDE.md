@@ -46,8 +46,13 @@ Coverage threshold (`fail_under`) lives in `pyproject.toml`; keep it green.
 - **Python 3.13**, **ruff** for lint + format (line length 88). All config is in
   `pyproject.toml`. Pre-commit also runs prettier (YAML/JSON/MD) and a manifest
   key-order check.
-- **Conventional Commits** for commits and PR titles — `release-please` builds the
-  changelog and version bumps from them (`fix:` → patch, `feat:` → minor).
+- **Conventional Commits** for every commit and PR title — `type(scope): description`,
+  e.g. `fix(tranche-2): energy data reflects reality`. `type` is one of
+  `feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|deps`, `scope` is
+  optional lowercase (`[a-z0-9_-]+`), `!:` marks a breaking change. Enforced in CI
+  (`scripts/lint-commits.sh`); `release-please` derives versions from them
+  (`fix:` → patch, `feat:` → minor). PR bodies follow
+  `.github/PULL_REQUEST_TEMPLATE.md` (Summary / Type of change / Checklist).
 - Every behaviour change needs tests (`pytest-homeassistant-custom-component`).
   Tests build a fake coordinator payload — see `tests/`.
 
