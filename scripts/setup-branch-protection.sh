@@ -150,7 +150,11 @@ fi
 # `delete_branch_on_merge`, so every squash-merged PR left its branch behind and a
 # manual `git push origin --delete` was refused with "push declined due to
 # repository rule violations". `main` is protected from deletion by its own ruleset
-# above, which is the branch that actually needs it (dimplex-controller-hass#200).
+# It also excludes `release-please--branches--*` from `required_signatures`:
+# release-please (and any automation amending its PR, e.g. a relock job) pushes
+# unsigned bot commits, which a signature rule would reject — reddening the
+# release instead of cutting it. The bot can only touch its own branch, and
+# every merge to `main` still goes through the signed `main` ruleset above.
 if [ -z "${GENERAL_RULESET_ID}" ]; then
   echo "Creating ruleset 'general'..."
   gh api \
@@ -165,7 +169,7 @@ if [ -z "${GENERAL_RULESET_ID}" ]; then
   "conditions": {
     "ref_name": {
       "include": ["~ALL"],
-      "exclude": []
+      "exclude": ["refs/heads/release-please--branches--*"]
     }
   },
   "rules": [
@@ -187,7 +191,7 @@ else
   "conditions": {
     "ref_name": {
       "include": ["~ALL"],
-      "exclude": []
+      "exclude": ["refs/heads/release-please--branches--*"]
     }
   },
   "rules": [
