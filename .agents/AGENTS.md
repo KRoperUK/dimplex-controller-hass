@@ -1,11 +1,10 @@
 # Agent Customization Rules
 
-1. **Conventional Commits**: Every PR title and every commit on a feature
-   branch must follow the Conventional Commits specification. CI lints both
-   (`scripts/lint-commits.sh`, the `conventional_commits` check): the title
-   must match `type(scope): description` — e.g. `fix(tranche-2): energy data
-   reflects reality` — where `type` is one of `feat|fix|docs|style|refactor|
-   perf|test|build|ci|chore|revert|deps`, `scope` is optional lowercase
-   (`[a-z0-9_-]+`), and `!:` marks a breaking change. release-please builds
-   the changelog and version bumps from these titles, so `fix:` vs `feat:`
-   matters.
+Repo: Home Assistant custom integration (`custom_components/dimplex`). Start with
+`CLAUDE.md` (architecture, commands, conventions, workflow, skills) and
+`CONTRIBUTING.md` for the contribution process.
+
+1. **Conventional Commits**: every commit and PR title follows the format in
+   `CLAUDE.md` — enforced in CI (`scripts/lint-commits.sh`).
+2. **PR bodies** follow `.github/PULL_REQUEST_TEMPLATE.md` (Summary / Type of
+   change / Checklist).
