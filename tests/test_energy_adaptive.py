@@ -2,7 +2,7 @@
 
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -148,6 +148,51 @@ async def test_energy_update_data_cannot_connect():
 
     with pytest.raises(UpdateFailed, match="Cannot connect"):
         await coord._async_update_data()
+
+
+async def test_a_failed_poll_neither_backs_off_nor_raises_a_repair():
+    """A transient failure raises before the empty counter, so it cannot back off (#279).
+
+    The failure path raises UpdateFailed out of _async_update_data before
+    _adapt_interval runs: _empty_polls is untouched and no repair decision is
+    made, so the coordinator keeps the previous data and the normal interval.
+    """
+    coord = object.__new__(DimplexEnergyCoordinator)
+    coord._status = MagicMock()
+    coord._status.data = {"hubs": [SimpleNamespace(HubId="h1")]}
+    coord.api = MagicMock()
+    coord.api.async_get_energy_for_hubs = AsyncMock(side_effect=CannotConnect("504"))
+    coord._empty_polls = 0
+    coord._base_interval = timedelta(minutes=30)
+    coord.update_interval = timedelta(minutes=30)
+    coord.hass = MagicMock()
+    coord._entry = SimpleNamespace(entry_id="test-entry")
+
+    with (
+        patch(
+            "custom_components.dimplex.async_update_empty_energy_issue",
+        ) as repair,
+        pytest.raises(UpdateFailed),
+    ):
+        await coord._async_update_data()
+
+    assert coord._empty_polls == 0
+    assert coord.update_interval == timedelta(minutes=30)
+    repair.assert_not_called()
+
+
+async def test_the_repair_shares_the_backoff_counter_while_heating():
+    """One counter drives both decisions, so heating suppresses the repair too (#279)."""
+    coord = object.__new__(DimplexEnergyCoordinator)
+    coord._base_interval = timedelta(minutes=30)
+    coord._empty_polls = ENERGY_EMPTY_BACKOFF_THRESHOLD - 1
+    coord.update_interval = timedelta(minutes=30)
+    status = SimpleNamespace(ComfortStatus=True, ApplianceModes=0, BoostDuration=0)
+    coord._status = MagicMock(data={"appliances": [{"status": status}]})
+
+    coord._adapt_interval({"energy": {"h1": {"t1": {}, "t2": {}}}})  # type: ignore[attr-defined]
+    assert coord._empty_polls == 0
+    assert coord.update_interval == timedelta(minutes=30)
 
 
 async def test_energy_update_data_generic_error():

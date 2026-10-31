@@ -645,6 +645,20 @@ async def test_async_get_energy_report_api_error_returns_empty(hass):
     assert result == {"t1": {}, "t2": {}}
 
 
+async def test_async_get_energy_report_transient_api_error_raises(hass):
+    """A transient 5xx/429 is not an empty history: it must raise so the coordinator keeps old data (#279)."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with (
+        patch.object(
+            api._client,
+            "get_tsi_energy_report",
+            new=AsyncMock(side_effect=DimplexApiError(504, "Gateway Timeout", transient=True)),
+        ),
+        pytest.raises(CannotConnect),
+    ):
+        await api.async_get_energy_report("hub-1")
+
+
 async def test_control_helpers_delegate_to_library(hass):
     """Boost/away/target/OWD helpers wrap library methods."""
     api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")

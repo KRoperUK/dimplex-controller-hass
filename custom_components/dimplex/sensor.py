@@ -354,7 +354,13 @@ async def async_setup_entry(
             for description in STATUS_SENSORS
             if description.capability is None or getattr(caps, description.capability, False)
         )
-        devices.extend(DimplexEnergySensor(energy, entry, appliance_row, description) for description in ENERGY_SENSORS)
+        # Energy history only exists for appliances the cloud meters. Other
+        # appliances would get four permanently unavailable entities, two
+        # enabled by default, recreated on every reload (#280).
+        if getattr(caps, "energy_meter", False):
+            devices.extend(
+                DimplexEnergySensor(energy, entry, appliance_row, description) for description in ENERGY_SENSORS
+            )
         if caps.hot_water and caps.heat_pump:
             devices.append(DimplexHotWaterScheduleSensor(status, entry, appliance_row))
         else:
@@ -631,6 +637,8 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
     _summary_ts: Any | None = None
     # Highest cumulative total reported, so the sensor is a true rising meter.
     _peak_total: float | None = None
+    # Last suppressed raw total already logged, so one ongoing rebase warns once.
+    _last_suppressed_total: float | None = None
 
     def __init__(
         self,
@@ -720,9 +728,16 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
 
     @property
     def available(self) -> bool:
-        """Available when the energy coordinator has points for this series."""
+        """Available when the energy coordinator has points for this series.
+
+        A daily sensor with a non-empty series but no points yet today reports
+        0.0 from local midnight — it must not wait, unavailable, for the
+        cloud to publish today's first sample (#281).
+        """
         if not super().available:
             return False
+        if self.entity_description.mode == "daily":
+            return self._summary() is not None
         summary = self._summary()
         return summary is not None and summary.point_count > 0
 
@@ -736,7 +751,14 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         inspectable rather than invisible (#234).
         """
         summary = self._summary()
-        if summary is None or summary.point_count == 0:
+        if summary is None:
+            return None
+        if summary.point_count == 0:
+            # No points for today's window, but the series itself exists: the
+            # day simply has no consumption yet, so report 0 rather than
+            # unknown (#281). Lifetime sensors stay unknown when empty.
+            if self.entity_description.mode == "daily":
+                return 0.0
             return None
         return float(summary.total_kwh)
 
@@ -781,8 +803,13 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         peak = self._peak_total
         if peak is None or total > peak:
             self._peak_total = total
+            self._last_suppressed_total = None
             return total
-        if total < peak:
+        if total < peak and total != self._last_suppressed_total:
+            # A held value is re-read on every poll, so logging each time spams
+            # thousands of lines for one ongoing rebase. Warn once per distinct
+            # lower total instead (#234).
+            self._last_suppressed_total = total
             drop_percent = round((peak - total) / peak * 100, 1) if peak else 0.0
             log = _LOGGER.warning if drop_percent > 10 else _LOGGER.debug
             log(
@@ -796,19 +823,62 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
         return peak
 
     async def async_added_to_hass(self) -> None:
-        """Restore the highest cumulative total across a restart."""
+        """Restore the highest cumulative total across a restart.
+
+        The peak itself is restored — from extra restore data when present,
+        else from the previous state's ``peak_total`` attribute, else from the
+        stored native value. Restoring from the state value alone re-accepts a
+        truncated total whenever the series was empty at shutdown, because the
+        state is then ``None``/unknown and the next poll's lower total looks
+        like growth (#281).
+        """
         await super().async_added_to_hass()
         if self.entity_description.mode != "lifetime":
             return
-        last = await self.async_get_last_sensor_data()
-        if last is None:
-            return
-        # Our own restored value is always a float; anything else means someone
-        # else wrote the attribute, so ignore it rather than guessing.
-        restored = last.native_value
-        if isinstance(restored, bool) or not isinstance(restored, int | float):
-            return
-        self._peak_total = float(restored)
+        peak: float | None = None
+        try:
+            last_extra = await self.async_get_last_extra_data()  # type: ignore[attr-defined]
+        except Exception:  # pragma: no cover - storage without extra data
+            last_extra = None
+        if last_extra is not None:
+            raw_peak = last_extra.as_dict().get("peak_total") if hasattr(last_extra, "as_dict") else None
+            if isinstance(raw_peak, bool):
+                raw_peak = None
+            if isinstance(raw_peak, int | float):
+                peak = float(raw_peak)
+        if peak is None:
+            try:
+                last_state = await self.async_get_last_state()
+            except Exception:  # pragma: no cover - no state history
+                last_state = None
+            if last_state is not None:
+                attr_peak = last_state.attributes.get("peak_total")
+                if not isinstance(attr_peak, bool) and isinstance(attr_peak, int | float):
+                    peak = float(attr_peak)
+        if peak is None:
+            last = await self.async_get_last_sensor_data()
+            if last is not None:
+                # Our own restored value is always a float; anything else means someone
+                # else wrote the attribute, so ignore it rather than guessing.
+                restored = last.native_value
+                if not isinstance(restored, bool) and isinstance(restored, int | float):
+                    peak = float(restored)
+        if peak is not None:
+            self._peak_total = peak
+
+    @property
+    def extra_restore_state_data(self) -> Any | None:
+        """Persist the held peak itself, not just the reported state."""
+        if self.entity_description.mode != "lifetime":
+            return None
+        if self._peak_total is None:
+            return None
+        try:
+            from homeassistant.helpers.restore_state import RestoredExtraData as _RestoredExtraData  # type: ignore[import-not-found]
+
+            return _RestoredExtraData({"peak_total": self._peak_total})
+        except Exception:  # pragma: no cover - very old HA without restore extras
+            return None
 
     @property
     def last_reset(self) -> datetime | None:

@@ -26,6 +26,7 @@ def _row(*, t1=None, t2=None):
         ApplianceId="appliance-1",
         FriendlyName="Living Room Heater",
         ApplianceModel="Model X",
+        ApplianceType="Quantum",
     )
     status = SimpleNamespace(
         EcoStartEnabled=False,
@@ -251,6 +252,7 @@ async def test_energy_sensor_unavailable_when_hub_key_missing(hass):
         ApplianceId="appliance-1",
         FriendlyName="Living Room Heater",
         ApplianceModel="Model X",
+        ApplianceType="Quantum",
     )
     status = SimpleNamespace(
         EcoStartEnabled=False,
@@ -587,3 +589,142 @@ async def test_the_lifetime_total_covers_all_history_not_a_request_window(hass):
     assert float(state.state) == 43.5  # 12 + 30 + 1.5, nothing dropped
     assert state.attributes["telemetry_points"] == 3
     assert state.attributes["window_start"] is not None
+
+
+async def test_daily_reports_zero_when_today_has_no_points_yet():
+    """From local midnight the daily sensor reads 0, not unavailable (#281).
+
+    The series itself is non-empty (history exists), but the cloud has not
+    published today's first sample yet. The old availability gate required the
+    *day window* to have points, so the sensor stayed unavailable all morning.
+    """
+    sensor = _energy_sensor("daily")
+
+    def empty_today():
+        return SimpleNamespace(
+            total_kwh=0.0,
+            point_count=0,
+            mode="daily",
+            start=None,
+            end=None,
+        )
+
+    with patch.object(sensor, "_summary", return_value=empty_today()):
+        assert sensor.available is True
+        assert sensor.native_value == 0.0
+
+
+async def test_lifetime_stays_unavailable_when_the_series_is_empty():
+    """The 0.0 shortcut is daily-only: an empty lifetime series is unknown (#281)."""
+    sensor = _energy_sensor("lifetime")
+
+    def empty_series():
+        return SimpleNamespace(total_kwh=0.0, point_count=0, mode="lifetime", start=None, end=None)
+
+    with patch.object(sensor, "_summary", return_value=empty_series()):
+        assert sensor.available is False
+        assert sensor.native_value is None
+
+
+async def test_appliance_without_energy_meter_gets_no_energy_entities(hass):
+    """Energy entities are gated on the energy_meter capability (#280).
+
+    A panel heater the cloud never returns telemetry for must not get four
+    permanently unavailable entities (two enabled by default).
+    """
+    status_payload, energy_payload = _row(t1=[(dt_util.now(), 1.0)])
+    status_payload["appliances"][0]["appliance"].ApplianceType = "Panel Heater"
+    status_payload["appliances"][0]["appliance"].ApplianceModel = "GFP500E"
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
+            return_value=status_payload,
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value=energy_payload,
+        ),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    energy_states = [s for s in hass.states.async_all() if "energy" in s.entity_id]
+    assert energy_states == []
+
+
+async def test_appliance_with_energy_meter_gets_all_four_energy_entities(hass):
+    """The gate keeps all four entities for an appliance that meters energy (#280)."""
+    today = dt_util.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    status_payload, energy_payload = _row(
+        t1=[(today, 1.25)],
+        t2=[(today, 0.5)],
+    )
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
+            return_value=status_payload,
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value=energy_payload,
+        ),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    for key in ("energy", "energy_daily", "energy_t2", "energy_t2_daily"):
+        assert registry.async_get_entity_id("sensor", DOMAIN, f"test_appliance-1_{key}") is not None
+
+
+async def test_the_peak_restores_from_extra_data_not_the_emptied_state():
+    """A restart with a saved None state must not accept a lower total (#281).
+
+    Extra restore data carries the peak itself; the state value may be unknown
+    when the series was empty at shutdown.
+    """
+    from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+    sensor = _energy_sensor("lifetime")
+    extra = SimpleNamespace(as_dict=lambda: {"peak_total": 250.0})
+
+    with (
+        patch.object(CoordinatorEntity, "async_added_to_hass", new=AsyncMock()),
+        patch.object(sensor, "async_get_last_extra_data", new=AsyncMock(return_value=extra)),
+        patch.object(sensor, "async_get_last_sensor_data", new=AsyncMock(return_value=None)),
+    ):
+        await sensor.async_added_to_hass()
+
+    assert sensor._peak_total == 250.0
+
+
+async def test_a_held_drop_warns_once_per_rebase_not_every_poll(caplog):
+    """A permanently reduced cloud total must not warn on every poll (#234)."""
+    sensor = _energy_sensor("lifetime")
+
+    def summary(total: float):
+        return SimpleNamespace(
+            total_kwh=total,
+            point_count=3,
+            mode="lifetime",
+            start=None,
+            end=None,
+        )
+
+    with patch.object(sensor, "_summary", return_value=summary(100.0)):
+        assert sensor.native_value == 100.0
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.dimplex.sensor"):
+        with patch.object(sensor, "_summary", return_value=summary(5.0)):
+            assert sensor.native_value == 100.0
+            assert sensor.native_value == 100.0
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1, f"one ongoing rebase must warn once, got {len(warnings)}"
