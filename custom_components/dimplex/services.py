@@ -198,33 +198,33 @@ def _resolve_appliance_id(
     hass: HomeAssistant,
     config_entry_id: str,
     appliance_id: str,
-) -> tuple[str, str, str, Any] | None:
+) -> tuple[str, str, str, Any]:
     """Return (entry_id, hub_id, appliance_id, api) for a known appliance id."""
     runtime = _runtime_for(hass, config_entry_id)
     if runtime is None:
-        _LOGGER.error("No runtime for config entry %s", config_entry_id)
-        return None
+        raise HomeAssistantError(
+            f"No loaded Dimplex entry for {config_entry_id}; cannot resolve appliance {appliance_id}."
+        )
     hub_id = _hub_for_appliance(runtime, appliance_id)
     if not hub_id:
-        _LOGGER.error("Appliance %s not found in coordinator data", appliance_id)
-        return None
+        raise HomeAssistantError(
+            f"Could not resolve appliance {appliance_id} as a Dimplex appliance; check the target and try again."
+        )
     return config_entry_id, hub_id, appliance_id, runtime.api
 
 
-def _resolve_device_id(hass: HomeAssistant, device_id: str) -> tuple[str, str, str, Any] | None:
+def _resolve_device_id(hass: HomeAssistant, device_id: str) -> tuple[str, str, str, Any]:
     """Return (entry_id, hub_id, appliance_id, api) for a device registry id."""
     dev_reg = dr.async_get(hass)
     device = dev_reg.async_get(device_id)
     if device is None:
-        _LOGGER.error("Unknown device_id for dimplex service: %s", device_id)
-        return None
+        raise HomeAssistantError(f"Unknown device_id for dimplex service: {device_id}.")
     # A device belongs to a single config entry; config_entries is deprecated
     # (and removed in a future Home Assistant), so prefer config_entry_id.
     config_entry_id = getattr(device, "config_entry_id", None)
     if not config_entry_id:
         if not device.config_entries:
-            _LOGGER.error("Unknown device_id for dimplex service: %s", device_id)
-            return None
+            raise HomeAssistantError(f"Unknown device_id for dimplex service: {device_id}.")
         config_entry_id = next(iter(device.config_entries))
     appliance_id: str | None = None
     for domain, ident in device.identifiers:
@@ -232,12 +232,11 @@ def _resolve_device_id(hass: HomeAssistant, device_id: str) -> tuple[str, str, s
             appliance_id = ident
             break
     if not appliance_id:
-        _LOGGER.error("Could not resolve an appliance id from device %s", device_id)
-        return None
+        raise HomeAssistantError(f"Could not resolve an appliance id from device {device_id}.")
     return _resolve_appliance_id(hass, config_entry_id, appliance_id)
 
 
-async def _resolve_appliance(hass: HomeAssistant, call: ServiceCall) -> tuple[str, str, str, Any] | None:
+async def _resolve_appliance(hass: HomeAssistant, call: ServiceCall) -> tuple[str, str, str, Any]:
     """Return (entry_id, hub_id, appliance_id, api) from device_id or entity_id."""
     device_id = call.data.get(ATTR_DEVICE_ID)
     entity_id = call.data.get(ATTR_ENTITY_ID)
@@ -246,21 +245,18 @@ async def _resolve_appliance(hass: HomeAssistant, call: ServiceCall) -> tuple[st
         ent_reg = er.async_get(hass)
         entry = ent_reg.async_get(entity_id)
         if entry is None or entry.config_entry_id is None:
-            _LOGGER.error("Unknown entity_id for dimplex service: %s", entity_id)
-            return None
+            raise HomeAssistantError(f"Unknown entity_id for dimplex service: {entity_id}.")
         config_entry_id = entry.config_entry_id
         if entry.device_id:
             device_id = entry.device_id
         else:
             appliance_id = _appliance_id_from_unique_id(config_entry_id, entry.unique_id)
             if not appliance_id:
-                _LOGGER.error("Could not resolve appliance id from service target")
-                return None
+                raise HomeAssistantError(f"Could not resolve appliance id from service target {entity_id}.")
             return _resolve_appliance_id(hass, config_entry_id, appliance_id)
 
     if not device_id:
-        _LOGGER.error("dimplex service requires device_id or entity_id")
-        return None
+        raise HomeAssistantError("dimplex service requires device_id or entity_id.")
 
     return _resolve_device_id(hass, device_id)
 
@@ -391,10 +387,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     @_translated
     async def handle_set_boost(call: ServiceCall) -> None:
-        resolved = await _resolve_appliance(hass, call)
-        if resolved is None:
-            return
-        entry_id, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
         await api.async_set_boost(
             hub_id,
             appliance_id,
@@ -406,10 +399,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     @_translated
     async def handle_clear_boost(call: ServiceCall) -> None:
-        resolved = await _resolve_appliance(hass, call)
-        if resolved is None:
-            return
-        entry_id, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
         await api.async_set_boost(
             hub_id,
             appliance_id,
@@ -420,10 +410,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     @_translated
     async def handle_set_away(call: ServiceCall) -> None:
-        resolved = await _resolve_appliance(hass, call)
-        if resolved is None:
-            return
-        entry_id, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
         await api.async_set_away(
             hub_id,
             appliance_id,
@@ -436,10 +423,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     @_translated
     async def handle_clear_away(call: ServiceCall) -> None:
-        resolved = await _resolve_appliance(hass, call)
-        if resolved is None:
-            return
-        entry_id, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
         await api.async_set_away(
             hub_id,
             appliance_id,
@@ -450,10 +434,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     @_translated
     async def handle_set_advance(call: ServiceCall) -> None:
-        resolved = await _resolve_appliance(hass, call)
-        if resolved is None:
-            return
-        entry_id, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
         # A cylinder has no "next comfort period" to jump to, and the capability
         # matrix says so. Advancing one is meaningless rather than merely refused
         # (#199).
@@ -468,29 +449,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     @_translated
     async def handle_clear_advance(call: ServiceCall) -> None:
-        resolved = await _resolve_appliance(hass, call)
-        if resolved is None:
-            return
-        entry_id, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
         _require_capability(hass, entry_id, appliance_id, "advance", f"{DOMAIN}.{call.service}")
         await api.async_set_advance(hub_id, appliance_id, enable=False)
         await _refresh_status(hass, entry_id)
 
     @_translated
     async def handle_eco(call: ServiceCall) -> None:
-        resolved = await _resolve_appliance(hass, call)
-        if resolved is None:
-            return
-        entry_id, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
         await api.async_set_eco_start(hub_id, appliance_id, bool(call.data.get(ATTR_ENABLE, True)))
         await _refresh_status(hass, entry_id)
 
     @_translated
     async def handle_owd(call: ServiceCall) -> None:
-        resolved = await _resolve_appliance(hass, call)
-        if resolved is None:
-            return
-        entry_id, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
         await api.async_set_open_window_detection(hub_id, appliance_id, bool(call.data.get(ATTR_ENABLE, True)))
         await _refresh_status(hass, entry_id)
 
@@ -560,10 +532,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     @_translated
     async def handle_copy_schedule(call: ServiceCall) -> None:
-        resolved = await _resolve_appliance(hass, call)
-        if resolved is None:
-            return
-        entry_id, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
 
         targets: list[str] = []
         for target_device_id in call.data[ATTR_TARGET_DEVICE_IDS]:
@@ -635,10 +604,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     @_translated
     async def handle_set_period_setpoint(call: ServiceCall) -> None:
-        resolved = await _resolve_appliance(hass, call)
-        if resolved is None:
-            return
-        entry_id, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
         day_of_week = DAY_NAMES[str(call.data[ATTR_DAY]).lower()]
         start_time = _normalise_clock(call.data[ATTR_START_TIME])
         end_time = _normalise_clock(call.data[ATTR_END_TIME]) if call.data.get(ATTR_END_TIME) else None
@@ -697,10 +663,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     @_translated
     async def handle_hot_water_temperature(call: ServiceCall) -> None:
-        resolved = await _resolve_appliance(hass, call)
-        if resolved is None:
-            return
-        entry_id, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
         _require_capability(hass, entry_id, appliance_id, "hot_water", f"{DOMAIN}.{call.service}")
         # The temperature endpoints have no ASHW variant, so unlike the mode and
         # hygiene writes this one needs no heat-pump flag.
@@ -715,10 +678,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     @_translated
     async def handle_hot_water_hygiene(call: ServiceCall) -> None:
-        resolved = await _resolve_appliance(hass, call)
-        if resolved is None:
-            return
-        entry_id, hub_id, appliance_id, api = resolved
+        entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
         caps = _require_capability(hass, entry_id, appliance_id, "hygiene", f"{DOMAIN}.{call.service}")
         # Endpoint selection, not a user choice: SetHygieneSettingsHwc and
         # SetHygieneSettingsHeatPumpHwc are not interchangeable.
@@ -767,10 +727,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # (#198, #210) — the entities retire their own optimistic values once the
         # cloud confirms or the window expires.
         if call.data.get(ATTR_DEVICE_ID) or call.data.get(ATTR_ENTITY_ID):
-            resolved = await _resolve_appliance(hass, call)
-            if resolved is None:
-                return
-            entry_id = resolved[0]
+            entry_id = (await _resolve_appliance(hass, call))[0]
             await _force_refresh(hass, entry_id)
             return
         for entry in hass.config_entries.async_entries(DOMAIN):

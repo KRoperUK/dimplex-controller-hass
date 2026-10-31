@@ -180,19 +180,26 @@ async def test_service_resolves_by_entity_id(hass: HomeAssistant) -> None:
     runtime.api.async_set_boost.assert_awaited_once()
 
 
-async def test_service_unknown_appliance_is_noop(hass: HomeAssistant) -> None:
-    """A device not present in coordinator data resolves to no API call."""
+async def test_service_unknown_appliance_raises(hass: HomeAssistant) -> None:
+    """A device not present in coordinator data fails the call loudly (#293).
+
+    The old silent no-op completed successfully while nothing was written, so
+    an automation proceeded believing the write happened.
+    """
+    from homeassistant.exceptions import HomeAssistantError
+
     runtime = _make_runtime()
     runtime.status.data = {"appliances": []}  # appliance not known to the coordinator
     entry = await _register_entry(hass, runtime)
     device_id = await _device_id(hass, entry)
 
-    await hass.services.async_call(
-        DOMAIN,
-        SERVICE_SET_BOOST,
-        {"device_id": device_id},
-        blocking=True,
-    )
+    with pytest.raises(HomeAssistantError, match="Could not resolve"):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SET_BOOST,
+            {"device_id": device_id},
+            blocking=True,
+        )
     runtime.api.async_set_boost.assert_not_awaited()
     runtime.status.async_request_refresh.assert_not_awaited()
 
@@ -763,14 +770,17 @@ async def test_refresh_does_not_clear_the_optimistic_window(hass: HomeAssistant)
     assert not touched, f"refresh must not touch optimistic state, but called: {touched}"
 
 
-async def test_refresh_unknown_target_is_a_noop(hass: HomeAssistant) -> None:
-    """A targeted refresh for an appliance missing from coordinator data does nothing."""
+async def test_refresh_unknown_target_raises(hass: HomeAssistant) -> None:
+    """A targeted refresh for an appliance missing from coordinator data fails (#293)."""
+    from homeassistant.exceptions import HomeAssistantError
+
     runtime = _make_refresh_runtime()
     runtime.status.data = {"appliances": []}  # device resolves, appliance unknown
     entry = await _register_entry(hass, runtime)
     device_id = await _device_id(hass, entry)
 
-    await hass.services.async_call(DOMAIN, SERVICE_REFRESH, {"device_id": device_id}, blocking=True)
+    with pytest.raises(HomeAssistantError, match="Could not resolve"):
+        await hass.services.async_call(DOMAIN, SERVICE_REFRESH, {"device_id": device_id}, blocking=True)
 
     runtime.status.async_refresh.assert_not_awaited()
 
