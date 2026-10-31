@@ -29,8 +29,8 @@ and ignores the rest.
 | 3   | 8      | `HOLIDAY`                                            | No                                                             |
 | 4   | **16** | **`ADVANCE`**                                        | :material-check: Advance active sensor, `dimplex.set_advance`  |
 | 5   | **32** | **`FROST_PROTECT`**                                  | :material-check: Frost protection sensor, HVAC off             |
-| 6   | 64     | `ECO`                                                | **No** — see [eco is not Eco](#the-eco-preset-is-not-eco-mode) |
-| 7   | 128    | `MANUAL` — holding one target, ignoring the schedule | No                                                             |
+| 6   | 64     | `ECO`                                                | Decoded by the **Operating mode** sensor — see [the bit-64 probe](#the-bit-64-probe) |
+| 7   | 128    | `MANUAL` — holding one target, ignoring the schedule | :material-check: Operating mode sensor, `manual` option of the **Operating mode** select |
 | 8   | 256    | `HYGIENE` — hot water cylinder anti-legionella cycle | No                                                             |
 | 9   | 512    | `STANDALONE`                                         | No                                                             |
 | 10  | 1024   | `SAFE_MODE`                                          | No                                                             |
@@ -88,8 +88,11 @@ The four diagnostic sensors are the lossless view. `preset_mode` is the convenie
 The entity resolves the bitfield to a single preset in a fixed order, and stops at the first
 match:
 
-1. Frost protection engaged, or the timer is in a frost/off mode → **no preset**, and
-   `hvac_mode` is `off`
+1. Frost protection engaged → **no preset**, and
+   `hvac_mode` is `off`. The live bitfield is authoritative: a cached
+   off-like timer schedule no longer forces `off` while the appliance reports
+   a live mode. The schedule is only consulted when the appliance reports no
+   modes at all.
 2. `BOOST` set → `boost`
 3. `AWAY` set → `away`
 4. `EcoStartEnabled` → `eco`
@@ -180,10 +183,28 @@ its schedule:
 | 2     | `FROST_PROTECTION` | The 7 °C floor                                 |
 | 3     | `OFF`              | Off                                            |
 
-The integration exposes this as the diagnostic **Schedule** sensor, and treats modes 2 and 3
-as "off" for `hvac_mode`, because that is how the official app presents them for most
-heaters. Turning a heater back on restores `USER_TIMER` for appliances an earlier release
-left parked in mode 2 or 3.
+The integration exposes this as the diagnostic **Schedule** sensor. An off-like
+`TimerMode` (2 or 3) counts as "off" for `hvac_mode` only when the appliance
+reports no live modes at all — with a bitfield present, the bits win, so a
+heater the app shows as Manual is `heat` even while its cached schedule still
+says frost. Turning a heater back on restores `USER_TIMER`, but only for
+appliances that report no live mode bits: rewriting the schedule over a live
+Manual hold is what kept converting Manual heaters to user timers.
+
+## The bit-64 probe
+
+QRAD firmware 28 reports `ApplianceModes: 64` (`ECO`) while the official app
+shows the heater as **Manual**, with the setpoint behaving as a manual hold.
+The library maps 64 to `ECO` and 128 to `MANUAL`, and the integration follows
+the library rather than special-casing 64 in code: the **Operating mode**
+sensor reports the raw integer and the flag names faithfully, and the
+operating-mode select maps only 128 to `manual`.
+
+If you can test what bit 64 actually drives on real hardware — whether it
+heats like Manual, follows a schedule, or does something else — that result
+belongs here and in
+[#273](https://github.com/KRoperUK/dimplex-controller-hass/issues/273), and
+only then should the mapping change.
 
 ## "Off" is frost protection
 
@@ -202,19 +223,22 @@ Two different things share the name, and the integration uses only one of them.
 | ---------- | ------------------------------------------------------------------------ | ---------------------- |
 | What       | A pre-heat **setting**                                                   | An appliance **mode**  |
 | Does       | Learns the room's warm-up time and starts early so target is met on time | Unknown — never tested |
-| Exposed as | The `eco` preset, the **EcoStart** switch, `dimplex.set_eco_start`       | Nothing                |
+| Exposed as | The `eco` preset, the **EcoStart** switch, `dimplex.set_eco_start`       | The **Operating mode** sensor (read-only) |
 
 The `eco` preset drives **EcoStart**. The cloud's separate Eco _mode_ bit is read but never
-written and has no entity, because its behaviour on real hardware has not been established.
+written: the operating-mode select deliberately does not offer it, because its behaviour
+on real hardware has not been established — see [the bit-64 probe](#the-bit-64-probe).
 
 This ambiguity is worth knowing about precisely because the new mode sensors sit next to a
 preset called `eco` that has nothing to do with the `ECO` bit.
 
 ## Seeing the real state
 
-Three ways, in increasing detail:
+Four ways, in increasing detail:
 
-1. **The four diagnostic binary sensors** — boost, away, frost protection, advance. Disabled
+1. **The Operating mode sensor** — the live bitfield decoded to flag names, with
+   the raw integer alongside. The lossless view that never guesses.
+2. **The four diagnostic binary sensors** — boost, away, frost protection, advance. Disabled
    by default; enable them in the entity registry.
 2. **A diagnostics download** — decodes `ApplianceModes` into mode names, so you do not have
    to do the arithmetic. See

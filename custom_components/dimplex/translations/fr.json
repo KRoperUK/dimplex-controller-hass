@@ -101,8 +101,23 @@
       "last_telem": {
         "name": "Dernière télémétrie"
       },
+      "operating_mode": {
+        "name": "Operating mode"
+      },
+      "status_two": {
+        "name": "Status two"
+      },
+      "boost_remaining": {
+        "name": "Boost remaining"
+      },
       "rated_power": {
         "name": "Puissance nominale"
+      },
+      "top_element_power": {
+        "name": "Top element power"
+      },
+      "bottom_element_power": {
+        "name": "Bottom element power"
       },
       "charge_capacity": {
         "name": "Capacité de charge"
@@ -214,6 +229,13 @@
     "select": {
       "boost_duration": {
         "name": "Durée du boost"
+      },
+      "operating_mode": {
+        "name": "Operating mode",
+        "state": {
+          "manual": "Manual",
+          "timer": "Timer"
+        }
       },
       "schedule_profile": {
         "name": "Profil de programmation",

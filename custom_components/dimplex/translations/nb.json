@@ -101,8 +101,23 @@
       "last_telem": {
         "name": "Siste telemetri"
       },
+      "operating_mode": {
+        "name": "Operating mode"
+      },
+      "status_two": {
+        "name": "Status two"
+      },
+      "boost_remaining": {
+        "name": "Boost remaining"
+      },
       "rated_power": {
         "name": "Nominell effekt"
+      },
+      "top_element_power": {
+        "name": "Top element power"
+      },
+      "bottom_element_power": {
+        "name": "Bottom element power"
       },
       "charge_capacity": {
         "name": "Ladekapasitet"
@@ -214,6 +229,13 @@
     "select": {
       "boost_duration": {
         "name": "Boost-varighet"
+      },
+      "operating_mode": {
+        "name": "Operating mode",
+        "state": {
+          "manual": "Manual",
+          "timer": "Timer"
+        }
       },
       "schedule_profile": {
         "name": "Tidsplanprofil",

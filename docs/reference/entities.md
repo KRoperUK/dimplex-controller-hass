@@ -55,11 +55,16 @@ Full field reference: [Actions](actions.md).
 | Energy T2 lifetime  | kWh       | energy         | As **Energy lifetime**, for register **T2** (peak / more expensive; disabled by default). Translation key stays `energy_t2_lifetime`.                                     |
 | Energy T2 today     | kWh       | energy         | T2 (peak) kWh for the current local calendar day (disabled by default).                                                                                                   |
 | Rated power         | kW        | power          | Static nameplate power from product provisioning (_disabled by default_).                                                                                                 |
+| Top element power   | kW        | power          | Static top-element rating from product provisioning (_diagnostic, disabled by default_). Translation key `top_element_power`.                                             |
+| Bottom element power | kW       | power          | Static bottom-element rating from product provisioning (_diagnostic, disabled by default_). Translation key `bottom_element_power`.                                       |
 | Estimated power     | kW        | power          | Heuristic `rated_power` when boost or advance is engaged, else `0` (_diagnostic, disabled by default; not a live meter_).                                                 |
+| Operating mode      | —         | —              | Live `ApplianceModes` decoded to flag names (e.g. `TIMER_MODE`, `ECO`), with `active_modes`, `raw_modes` and `appliance_modes_known` attributes (_diagnostic_). The raw integer is reported faithfully — bit 64 stays `ECO` even though QRAD firmware 28 shows Manual in the app while reporting it, until a hardware probe settles the name. Translation key `operating_mode`. |
+| Status two          | —         | —              | Raw `StatusTwo` integer from the status frame (_diagnostic_). No read meaning is known, so no heating implication is drawn from it. Translation key `status_two`.        |
+| Boost remaining     | min       | duration       | Minutes of boost left, synthesised from the engage time and duration of a boost **started by Home Assistant**; counts down to zero (_diagnostic_). A boost begun on the heater or in the app has no recorded start and reads unknown. Translation key `boost_remaining`. |
 | Charge capacity     | kWh       | energy         | Static storage capacity from provisioning (_disabled by default_).                                                                                                        |
 | Error code          | —         | —              | Appliance error code (_disabled by default_).                                                                                                                             |
 | Warning code        | —         | —              | Appliance warning code (_disabled by default_).                                                                                                                           |
-| Last telemetry      | timestamp | timestamp      | Last cloud telemetry time (_disabled by default_).                                                                                                                        |
+| Last telemetry      | timestamp | timestamp      | The appliance's `LastTelemDate` — the last time the cloud heard from it, used to tell stale data from a failed poll. An unset date reads unknown, never year 1 (_diagnostic_). |
 | Hot water available | L         | volume_storage | Usable hot water, as the app's "336 L Hot water" — cylinders only.                                                                                                        |
 
 ### Energy attributes
@@ -84,12 +89,12 @@ tariff mapping, and the automatic poll back-off when history stays empty.
 
 ## Binary sensors
 
-| Name        | Device class | Description                                                 |
-| ----------- | ------------ | ----------------------------------------------------------- |
-| Comfort     | —            | Comfort status from overview.                               |
-| Open window | window       | Open-window detection **status** (enabled flag from cloud). |
-| Setback     | —            | Setback mode active.                                        |
-| Connected   | connectivity | Hub connection (one per hub).                               |
+| Name        | Device class | Description                                                                                                     |
+| ----------- | ------------ | --------------------------------------------------------------------------------------------------------------- |
+| Comfort     | —            | Comfort status from overview.                                                                                   |
+| Open window | —            | Whether open-window **detection is enabled** — the writable setting, not a physical open/closed event (a `window` device class would read permanently open while enabled). |
+| Setback     | —            | Setback currently in effect: `SetbackEnabledInStatusFrame` when the cloud sends it, else the `SetbackEnabled` setting. |
+| Connected   | connectivity | Hub connection (one per hub).                                                                                   |
 
 The appliance mode bitfield is also broken out as four **diagnostic** binary
 sensors — Boost active, Away active, Frost protection, Advance active.
@@ -181,6 +186,7 @@ app rather than measured — see [appliance support](appliances.md#temperature-r
 | Name             | Description                                                                                                                                                                                                                                                         |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Boost duration   | How long the `boost` **preset** runs for this appliance. The options are the discrete durations the appliance's capability matrix offers (`boost_durations`, e.g. 30/60/120/180 minutes), matching the official app's own picker. Translation key `boost_duration`. |
+| Operating mode   | A **control**: `manual` holds a manual setpoint through the dedicated Manual write, `timer` returns the heater to its user-timer schedule. Without this, Home Assistant could never put a QRAD back into Manual itself — in User Timer the heater ignores every setpoint and boost. A refused write surfaces an error. Translation key `operating_mode`. |
 | Schedule profile | Which schedule programme the heater follows: `user_timer`, `home_all_day` or `out_all_day`. A **control** — choosing a value applies that profile through the API, mirroring the official app's schedule picker. Translation key `schedule_profile`.                |
 
 A configuration entity (not shown by default on the main card), created only for
