@@ -211,6 +211,66 @@ async def test_climate_set_temperature_and_presets(hass):
         assert set_boost.await_args.kwargs["enable"] is True
         assert set_boost.await_args.kwargs["temperature"] == 25.0
 
+
+@pytest.mark.asyncio
+async def test_climate_set_temperature_clamps_to_the_entity_limits(hass):
+    """An out-of-range setpoint is clamped to min/max before the first write (#294)."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload()
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_appliance_setpoint",
+            new_callable=AsyncMock,
+        ) as set_temp,
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_TEMPERATURE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: 45},
+            blocking=True,
+        )
+        set_temp.assert_awaited_once_with("hub-1", "appliance-1", 30.0)
+
+
+@pytest.mark.asyncio
+async def test_climate_boost_preset_ignores_the_255_sentinel(hass):
+    """A BoostTemperature of 255 (no target) falls back to the default boost temp (#294)."""
+    from custom_components.dimplex.climate import DEFAULT_BOOST_TEMP
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload()
+    payload["appliances"][0]["status"].BoostTemperature = 255
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_boost",
+            new_callable=AsyncMock,
+        ) as set_boost,
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_PRESET_MODE,
+            {ATTR_ENTITY_ID: entity_id, ATTR_PRESET_MODE: "boost"},
+            blocking=True,
+        )
+        assert set_boost.await_count == 1
+        assert set_boost.await_args.kwargs["temperature"] == DEFAULT_BOOST_TEMP
+
     with (
         patch(
             "custom_components.dimplex.DimplexApiClient.async_set_away",
