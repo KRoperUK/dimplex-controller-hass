@@ -8,11 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from dimplex_controller import (
+    ApplyProfileToTimerResult,
     DimplexApiError,
     DimplexAuthError,
     DimplexAuthInvalidGrantError,
     DimplexAuthTransientError,
     DimplexConnectionError,
+    UserHeatingProfile,
 )
 from dimplex_controller.models import ApplianceStatus
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -345,6 +347,52 @@ async def test_set_schedule_profile_calls_library(hass):
         await api.async_set_schedule_profile("hub-1", "appliance-1", 2)
 
     set_profile.assert_awaited_once_with("hub-1", ["appliance-1"], 2)
+
+
+async def test_get_heating_profiles_returns_library_models(hass):
+    """Saved profiles pass through the adapter untouched (dimplex-controller-py#148)."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    profiles = [
+        UserHeatingProfile(Id="11111111-1111-1111-1111-111111111111", ProfileName="Winter weekdays"),
+        UserHeatingProfile(Id="22222222-2222-2222-2222-222222222222", ProfileName="Away"),
+    ]
+
+    with patch.object(api._client, "get_profiles", new=AsyncMock(return_value=profiles)) as get_profiles:
+        assert await api.async_get_heating_profiles() == profiles
+
+    get_profiles.assert_awaited_once_with()
+
+
+async def test_apply_heating_profile_success(hass):
+    """A Successful answer applies the profile and returns normally."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    with patch.object(
+        api._client,
+        "apply_profile_to_timer",
+        new=AsyncMock(return_value=ApplyProfileToTimerResult.SUCCESSFUL),
+    ) as apply:
+        await api.async_apply_heating_profile("hub-1", "app-1", profile=0, profile_id="profile-1")
+
+    apply.assert_awaited_once_with("hub-1", ["app-1"], 0, "profile-1")
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        ApplyProfileToTimerResult.PROFILE_DOES_NOT_EXIST,
+        ApplyProfileToTimerResult.ERROR,
+    ],
+)
+async def test_apply_heating_profile_non_success_is_refused(hass, result):
+    """A gone or errored profile refuses the write — retrying cannot help."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    with (
+        patch.object(api._client, "apply_profile_to_timer", new=AsyncMock(return_value=result)),
+        pytest.raises(ControlRejected, match="profile-1"),
+    ):
+        await api.async_apply_heating_profile("hub-1", "app-1", profile=0, profile_id="profile-1")
 
 
 async def test_exchange_code_success(hass):

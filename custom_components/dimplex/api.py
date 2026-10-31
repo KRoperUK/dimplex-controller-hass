@@ -15,6 +15,7 @@ import aiohttp
 from dimplex_controller import (
     VALUE_KEY_T2,
     ApplianceModeFlag,
+    ApplyProfileToTimerResult,
     DimplexApiError,
     DimplexAuthError,
     DimplexConnectionError,
@@ -22,6 +23,7 @@ from dimplex_controller import (
     HygieneFrequency,
     SetbackStatus,
     TokenBundle,
+    UserHeatingProfile,
     parse_telemetry_points,
 )
 from pydantic import ValidationError
@@ -681,6 +683,42 @@ class DimplexApiClient:
         """
         with _translated_errors():
             await self._client.set_schedule_profile(hub_id, [appliance_id], profile)
+
+    async def async_get_heating_profiles(self) -> list[UserHeatingProfile]:
+        """List the account's saved heating profiles (``GetProfiles``).
+
+        Profiles are the named multi-day programmes from the official app's
+        Profiles page. Returned as-is; callers match by ``ProfileName`` or pass
+        ``Id`` straight through to :meth:`async_apply_heating_profile`
+        (dimplex-controller-py#148).
+        """
+        with _translated_errors():
+            return await self._client.get_profiles()
+
+    async def async_apply_heating_profile(
+        self,
+        hub_id: str,
+        appliance_id: str,
+        *,
+        profile: int,
+        profile_id: str,
+    ) -> None:
+        """Apply a saved heating profile to an appliance's timer.
+
+        ``profile`` is the 0/1/2 selector (user timer / home all day / out all
+        day) sent in the request's ``TimerMode`` field — the name collides with
+        ``TimerModeSettings.TimerMode`` but the value domain is the profile
+        selector, not an operation mode. A non-successful answer becomes
+        :class:`ControlRejected`: the profile is gone or the cloud refused it,
+        so retrying the same call will not help.
+        """
+        with _translated_errors():
+            result = await self._client.apply_profile_to_timer(hub_id, [appliance_id], profile, profile_id)
+        if result == ApplyProfileToTimerResult.SUCCESSFUL:
+            return
+        if result == ApplyProfileToTimerResult.PROFILE_DOES_NOT_EXIST:
+            raise ControlRejected(f"Heating profile {profile_id!r} does not exist on the Dimplex cloud.")
+        raise ControlRejected(f"The Dimplex cloud reported an error applying heating profile {profile_id!r}.")
 
     async def async_set_frost_protect(self, hub_id: str, appliance_id: str, *, enable: bool = True) -> None:
         """Engage or clear frost protection — how the app turns a heater off."""

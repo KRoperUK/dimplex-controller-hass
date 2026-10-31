@@ -240,6 +240,45 @@ copy_schedule:
           integration: dimplex
           multiple: true
 
+apply_heating_profile:
+  name: Apply heating profile
+  description: >-
+    Apply one of the saved heating profiles from the Dimplex app's Profiles page
+    to an appliance's timer. Give the profile id or its display name, and
+    optionally which day-profile it lands on. Only heaters with a timer schedule
+    accept it — cylinders programme their own schedule elsewhere.
+  fields:
+    device_id:
+      name: Device
+      selector:
+        device:
+          integration: dimplex
+    entity_id:
+      name: Entity
+      selector:
+        entity:
+          integration: dimplex
+    profile_id:
+      name: Profile ID
+      description: Saved profile id to apply. Give exactly one of this or profile name.
+      selector:
+        text:
+    profile_name:
+      name: Profile name
+      description: Display name of the saved profile, as shown in the app. Give exactly one of this or profile ID.
+      selector:
+        text:
+    profile:
+      name: Day profile
+      description: Which day-profile the programme lands on.
+      default: user_timer
+      selector:
+        select:
+          options:
+            - user_timer
+            - home_all_day
+            - out_all_day
+
 set_period_setpoint:
   name: Set schedule period setpoint
   description: >-
