@@ -277,5 +277,64 @@
       "title": "Tous les appareils sont indisponibles",
       "description": "Le hub a été trouvé mais la vue d'ensemble des appareils est vide. Vérifiez l'alimentation, le réseau et l'application officielle Dimplex."
     }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Impossible de joindre le cloud Dimplex pour contrôler {target}. Le service est peut-être temporairement indisponible ; rien n'a été modifié."
+    },
+    "control_rejected": {
+      "message": "Le cloud Dimplex a refusé ce contrôle pour {target}. L'appareil ne le prend peut-être pas en charge à distance — certains radiateurs à accumulation Quantum refusent les modifications d'arrêt ou de consigne —, donc réessayer ne servira à rien."
+    },
+    "cylinder_unavailable": {
+      "message": "Ce ballon d'eau chaude n'est pas disponible pour le moment."
+    },
+    "holiday_end_in_past": {
+      "message": "La fin des vacances doit être dans le futur."
+    },
+    "invalid_auth": {
+      "message": "L'authentification Dimplex a échoué lors du contrôle de {target}."
+    },
+    "missing_target": {
+      "message": "L'action dimplex nécessite un device_id ou un entity_id."
+    },
+    "no_appliance_on_device": {
+      "message": "Impossible de déterminer un identifiant d'appareil à partir du périphérique {device_id}."
+    },
+    "no_appliance_on_entity": {
+      "message": "Impossible de déterminer un identifiant d'appareil à partir de la cible de service {entity_id}."
+    },
+    "no_loaded_entry": {
+      "message": "Aucune entrée Dimplex chargée pour {entry_id} ; impossible de résoudre l'appareil {appliance_id}."
+    },
+    "profile_not_found": {
+      "message": "Aucun profil de chauffage enregistré nommé « {profile_name} » (disponibles : {available})."
+    },
+    "profile_on_cylinder": {
+      "message": "{name} est un ballon d'eau chaude ; les profils de chauffage s'appliquent aux programmations du minuteur des radiateurs, donc {target} n'a pas été envoyé."
+    },
+    "profile_target_required": {
+      "message": "Indiquez exactement l'un de {id_key} ou {name_key} pour {target}."
+    },
+    "schedule_copy_different_hub": {
+      "message": "Tous les appareils cibles doivent se trouver sur le même hub que la source ; aucune programmation n'a été copiée."
+    },
+    "schedule_copy_unresolved": {
+      "message": "Impossible de résoudre {target_device_id} comme appareil Dimplex ; aucune programmation n'a été copiée."
+    },
+    "schedule_period_not_found": {
+      "message": "{name} n'a aucune période de programmation commençant à {start_time} le {day}. Consultez le capteur Schedule de cet appareil pour connaître ses périodes réelles — cette action modifie une période existante, elle n'en crée pas."
+    },
+    "unknown_appliance": {
+      "message": "Impossible de résoudre l'appareil {appliance_id} comme appareil Dimplex ; vérifiez la cible et réessayez."
+    },
+    "unknown_device": {
+      "message": "device_id inconnu pour le service dimplex : {device_id}."
+    },
+    "unknown_entity": {
+      "message": "entity_id inconnu pour le service dimplex : {entity_id}."
+    },
+    "unsupported_control": {
+      "message": "{name} ne prend pas en charge ce contrôle ({capability} est faux pour lui), donc {target} n'a pas été envoyé."
+    }
   }
 }
