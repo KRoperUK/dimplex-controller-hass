@@ -57,8 +57,9 @@ have to decode a bitfield by hand. See [Modes & presets](../use/modes.md).
 Removed or hashed before the file is written:
 
 - `access_token`, `refresh_token`, `password`
-- `username`, `email`, `PrimaryUserEmail` — the hub's primary email appears only as a
-  truncated SHA-256 hash, so two hubs can be told apart without exposing the address
+- `username`, `email`, `PrimaryUserEmail` — removed entirely, with no hashed
+  stand-in: the unsalted truncated hash that used to be published is reversible
+  over the small email space (#296)
 - `SecurityCode`
 
 Appliance IDs, hub IDs, model names and firmware versions **are** included — they are needed

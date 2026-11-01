@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
@@ -33,13 +32,6 @@ TO_REDACT = {
     "PrimaryUserEmail",
     "SecurityCode",
 }
-
-
-def _hash_identifier(value: str | None) -> str | None:
-    if not value:
-        return None
-    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
-    return digest[:12]
 
 
 def _model_snapshot(obj: Any) -> dict[str, Any] | None:
@@ -164,7 +156,10 @@ async def async_get_config_entry_diagnostics(
     hubs_out: list[dict[str, Any]] = []
     for hub in status_data.get("hubs") or []:
         snap = _model_snapshot(hub) or {}
-        email = snap.pop("PrimaryUserEmail", None) or getattr(hub, "PrimaryUserEmail", None)
+        # The account email is identifying and the unsalted hash that used to
+        # stand in for it is reversible over the small email space, so neither
+        # is published — no per-account identifier is needed (#296).
+        snap.pop("PrimaryUserEmail", None)
         snap.pop("SecurityCode", None)
         hubs_out.append(
             {
@@ -173,7 +168,6 @@ async def async_get_config_entry_diagnostics(
                 "connection_state": getattr(hub, "ConnectionState", None),
                 "firmware": getattr(hub, "FirmwareVersion", None),
                 "hub_type": getattr(hub, "HubType", None),
-                "primary_user_email_hash": _hash_identifier(email if isinstance(email, str) else None),
                 "raw_keys": sorted(snap.keys()),
             }
         )

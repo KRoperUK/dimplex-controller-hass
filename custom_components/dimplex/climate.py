@@ -461,6 +461,21 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
             return
+        # Clamp to the entity's own advertised limits before the first write:
+        # an unclamped value would either be refused or, on appliances without
+        # setpoint support, rewrite every schedule period with it (#294).
+        requested = float(temperature)
+        clamped = min(max(requested, self.min_temp), self.max_temp)
+        if clamped != requested:
+            _LOGGER.warning(
+                "Requested %.1f °C is outside the %.0f-%.0f °C range for %s; using %.1f °C",
+                requested,
+                self.min_temp,
+                self.max_temp,
+                self._appliance.FriendlyName,
+                clamped,
+            )
+        temperature = clamped
         hub_id = self._hub.HubId
         appliance_id = self._appliance.ApplianceId
         if not self._caps.setpoint_write:
@@ -596,9 +611,16 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
                 _LOGGER.debug("Appliance %s does not support %s", self._appliance.FriendlyName, state)
                 continue
             if state == _MODE_BOOST:
+                # The 0xFF (255) sentinel means "no boost target", not 255 °C —
+                # run it through the same sanity helper the read path uses, or
+                # the boost write would target an impossible temperature (#294).
                 boost_temp = (
-                    float(status.BoostTemperature) if status and status.BoostTemperature else DEFAULT_BOOST_TEMP
+                    sane_temperature(status.BoostTemperature, lo=SETPOINT_TEMP_MIN, hi=SETPOINT_TEMP_MAX)
+                    if status
+                    else None
                 )
+                if boost_temp is None:
+                    boost_temp = DEFAULT_BOOST_TEMP
                 await self._api.async_set_boost(
                     hub_id,
                     appliance_id,

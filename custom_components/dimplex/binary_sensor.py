@@ -39,6 +39,22 @@ class DimplexBinarySensorEntityDescription(BinarySensorEntityDescription):
     """Capability flag that must be true for the entity to be created, if any."""
 
 
+def _setback_active(status: Any) -> bool:
+    """True when setback is actually in effect, not just enabled.
+
+    ``SetbackEnabled`` is the writable setting (the same flag the number
+    entity edits); ``SetbackEnabledInStatusFrame`` reports whether the
+    appliance is currently holding the setback temperature. Prefer the live
+    frame bit when the cloud sends it, falling back to the setting (#295).
+    """
+    if status is None:
+        return False
+    frame = getattr(status, "SetbackEnabledInStatusFrame", None)
+    if frame is not None:
+        return bool(frame)
+    return bool(getattr(status, "SetbackEnabled", False))
+
+
 APPLIANCE_BINARY_SENSORS: tuple[DimplexBinarySensorEntityDescription, ...] = (
     DimplexBinarySensorEntityDescription(
         key="comfort",
@@ -48,10 +64,13 @@ APPLIANCE_BINARY_SENSORS: tuple[DimplexBinarySensorEntityDescription, ...] = (
         icon_on="mdi:sofa",
         icon_off="mdi:sofa-outline",
     ),
+    # Whether open-window *detection* is enabled — the writable setting, not a
+    # physical open/closed event. Previously exposed with the window device
+    # class, so with detection enabled it read permanently "open" and any
+    # "window opened" automation fired forever (#295).
     DimplexBinarySensorEntityDescription(
         key="open_window",
         translation_key="open_window",
-        device_class=BinarySensorDeviceClass.WINDOW,
         capability="open_window",
         is_on_fn=lambda status: bool(status and getattr(status, "OpenWindowEnabled", False)),
         icon_on="mdi:window-open",
@@ -61,7 +80,7 @@ APPLIANCE_BINARY_SENSORS: tuple[DimplexBinarySensorEntityDescription, ...] = (
         key="setback",
         translation_key="setback",
         capability="setback_read",
-        is_on_fn=lambda status: bool(status and getattr(status, "SetbackEnabled", False)),
+        is_on_fn=_setback_active,
         icon_on="mdi:thermometer-chevron-down",
         icon_off="mdi:thermometer",
     ),
@@ -130,6 +149,7 @@ APPLIANCE_BINARY_SENSORS: tuple[DimplexBinarySensorEntityDescription, ...] = (
         icon_off="mdi:airplane-off",
     ),
 )
+
 
 HUB_CONNECTED_DESCRIPTION = DimplexBinarySensorEntityDescription(
     key="connected",

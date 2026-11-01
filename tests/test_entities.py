@@ -100,6 +100,8 @@ async def test_sensor_and_binary_sensor_entities(hass):
     open_window_state = _find("binary_sensor.", "open_window")
     assert open_window_state is not None
     assert open_window_state.state == "on"
+    # The detection setting, not a physical event: no window device class (#295).
+    assert open_window_state.attributes.get("device_class") != "window"
 
     setback_state = _find("binary_sensor.", "setback")
     assert setback_state is not None
@@ -240,6 +242,29 @@ async def _setup_payload(hass, payload) -> None:
     ):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
         await hass.async_block_till_done()
+
+
+async def test_setback_prefers_the_live_frame_bit():
+    """SetbackEnabledInStatusFrame wins over the SetbackEnabled setting (#295)."""
+    from types import SimpleNamespace
+
+    from custom_components.dimplex.binary_sensor import _setback_active
+
+    assert _setback_active(None) is False
+    # Frame bit present: it decides, even against the setting.
+    assert _setback_active(SimpleNamespace(SetbackEnabled=True, SetbackEnabledInStatusFrame=False)) is False
+    assert _setback_active(SimpleNamespace(SetbackEnabled=False, SetbackEnabledInStatusFrame=True)) is True
+    # No frame bit: fall back to the setting.
+    assert _setback_active(SimpleNamespace(SetbackEnabled=True)) is True
+    assert _setback_active(SimpleNamespace(SetbackEnabled=False)) is False
+
+
+async def test_open_window_sensor_has_no_window_device_class():
+    """Detection setting must not present as a physical open/closed state (#295)."""
+    from custom_components.dimplex.binary_sensor import APPLIANCE_BINARY_SENSORS
+
+    description = next(d for d in APPLIANCE_BINARY_SENSORS if d.key == "open_window")
+    assert description.device_class is None
 
 
 async def test_a_panel_heater_gets_no_hot_water_sensor(hass):
