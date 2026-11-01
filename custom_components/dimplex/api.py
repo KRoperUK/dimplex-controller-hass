@@ -818,7 +818,11 @@ class DimplexApiClient:
 
         Empty lists are normal for hubs without metered appliances or when
         heaters have not been running *and* IncludePreviousPeriod returns
-        nothing.
+        nothing. Only a successful response counts as empty: a transient
+        failure (5xx/429 after retries, flagged by the library) raises
+        ``CannotConnect`` so the coordinator records ``UpdateFailed`` and keeps
+        the previous data instead of backing off and raising a false repair
+        (#279).
         """
         try:
             report = await self._client.get_tsi_energy_report(
@@ -833,8 +837,10 @@ class DimplexApiClient:
         except DimplexConnectionError as exception:
             raise CannotConnect from exception
         except DimplexApiError as exception:
+            if getattr(exception, "transient", True):
+                raise CannotConnect(f"Energy report unavailable for hub {hub_id}: {exception}") from exception
             _LOGGER.warning(
-                "Energy report unavailable for hub %s: %s — skipping.",
+                "Energy report unavailable for hub %s: %s — treating as empty.",
                 hub_id,
                 exception,
             )

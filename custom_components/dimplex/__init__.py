@@ -413,8 +413,12 @@ class DimplexEnergyCoordinator(TimestampDataUpdateCoordinator[dict[str, Any]]):
         self.api = client
         self._entry = entry
         self._status = status_coordinator
-        self._empty_successes = 0
         self._base_interval = update_interval
+        # Single counter for both the backoff and the repair decision: a failed
+        # report raises UpdateFailed and never reaches here, so only a
+        # genuinely empty (but successful) result increments it (#279).
+        # Heating resets it, so neither backoff nor the repair fires while a
+        # heater is boosting.
         self._empty_polls = 0
         super().__init__(
             hass,
@@ -489,14 +493,10 @@ class DimplexEnergyCoordinator(TimestampDataUpdateCoordinator[dict[str, Any]]):
 
         _persist_tokens(self.hass, self._entry, self.api)
         self._adapt_interval(data)
-        if self._energy_is_empty(data):
-            self._empty_successes += 1
-        else:
-            self._empty_successes = 0
         async_update_empty_energy_issue(
             self.hass,
             self._entry.entry_id,
-            empty=self._empty_successes >= ENERGY_EMPTY_BACKOFF_THRESHOLD,
+            empty=self._empty_polls >= ENERGY_EMPTY_BACKOFF_THRESHOLD,
         )
         return data
 
