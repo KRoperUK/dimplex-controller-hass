@@ -143,6 +143,25 @@ def _timer_mode_from_schedule(schedule: Any) -> int | None:
         return None
 
 
+def _live_modes(status: Any) -> int | None:
+    """Return the live ``ApplianceModes`` bitfield, or ``None`` when unknown.
+
+    The schedule cache refreshes every 15 minutes and holds the mode the user
+    left behind, so it must not overrule the status frame the cloud just sent.
+    A heater switched to Manual in the app reports ``off`` while it heats when
+    the cached schedule is authoritative (#272, #283).
+    """
+    if status is None:
+        return None
+    modes = getattr(status, "ApplianceModes", None)
+    if modes is None:
+        return None
+    try:
+        return int(modes)
+    except (TypeError, ValueError):
+        return None
+
+
 def _is_timer_off_like(timer_mode: int | None) -> bool:
     """True for frost protection / off timer modes (app 'off' for most heaters)."""
     return timer_mode in TIMER_OFF_LIKE
@@ -368,9 +387,19 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         status = self._status
         if status is None:
             return HVACMode.OFF
-        # Frost protection is the app's "off". Appliances left in the legacy
-        # frost/off *timer* mode by earlier releases must still read as off.
-        if _is_frost_protect_active(status) or _is_timer_off_like(self._timer_mode):
+        modes = _live_modes(status)
+        if modes is not None:
+            # Live bits win: frost protection is the app's "off", anything else
+            # with a known mode field is heat — including a heater the app
+            # shows as Manual while the cached schedule still says off (#283).
+            # The schedule is only consulted when modes are absent.
+            if modes & FROST_FLAG:
+                return HVACMode.OFF
+            return HVACMode.HEAT
+        # Legacy fallback: no live mode field, so read the cached schedule.
+        # Appliances left in the frost/off *timer* mode by earlier releases
+        # still read as off here.
+        if _is_timer_off_like(self._timer_mode):
             return HVACMode.OFF
         # Without a clear "off" bit in overview, treat missing temps as off.
         if status.RoomTemperature is None and status.ActiveSetPointTemperature is None:
@@ -380,7 +409,13 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
     @property
     def hvac_action(self) -> HVACAction | None:
         status = self._status
-        if status is None or _is_frost_protect_active(status) or _is_timer_off_like(self._timer_mode):
+        if status is None:
+            return HVACAction.OFF
+        modes = _live_modes(status)
+        if modes is not None:
+            if modes & FROST_FLAG:
+                return HVACAction.OFF
+        elif _is_timer_off_like(self._timer_mode):
             return HVACAction.OFF
         if status.ComfortStatus:
             return HVACAction.HEATING
@@ -398,8 +433,12 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         status = self._status
         if status is None:
             return None
-        # Frost/off is expressed as HVACMode.OFF — do not also surface away/boost.
-        if _is_frost_protect_active(status) or _is_timer_off_like(self._timer_mode):
+        modes = _live_modes(status)
+        if modes is not None:
+            # Frost/off is expressed as HVACMode.OFF — do not also surface away/boost.
+            if modes & FROST_FLAG:
+                return None
+        elif _is_timer_off_like(self._timer_mode):
             return None
         if _is_boost_active(status):
             return PRESET_BOOST
@@ -493,10 +532,14 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
             if _is_frost_protect_active(status):
                 await self._api.async_set_frost_protect(hub_id, appliance_id, enable=False)
             if _is_timer_off_like(self._timer_mode):
-                # Legacy state: an earlier release wrote the frost/off timer
-                # mode, so the schedule needs restoring as well.
-                await self._api.async_set_timer_mode(hub_id, appliance_id, TIMER_USER)
-                self._invalidate_schedules()
+                # Legacy restore: only when the appliance reports no live mode
+                # bits at all. A heater in Manual whose cached schedule still
+                # says off must be left alone — writing USER_TIMER over it is
+                # what converted Manual heaters to user timers (#272, #284).
+                live = _live_modes(status)
+                if live is None or live == 0:
+                    await self._api.async_set_timer_mode(hub_id, appliance_id, TIMER_USER)
+                    self._invalidate_schedules()
             self._hold_optimistic(hvac_mode=HVACMode.HEAT)
 
         await self.coordinator.async_request_refresh()

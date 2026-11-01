@@ -42,7 +42,7 @@ from custom_components.dimplex.const import (
 from .const import MOCK_ENTRY_DATA
 
 
-def _payload(*, boost=False, away=False, eco=False, frost=False, room=21.5, target=20, timer_mode=1):
+def _payload(*, boost=False, away=False, eco=False, frost=False, room=21.5, target=20, timer_mode=1, modes=None):
     hub = SimpleNamespace(HubId="hub-1")
     zone = SimpleNamespace(ZoneName="Living Room")
     appliance = SimpleNamespace(
@@ -53,6 +53,8 @@ def _payload(*, boost=False, away=False, eco=False, frost=False, room=21.5, targ
         FirmwareVersion="6",
         SeriesIdentifier="G12",
     )
+    if modes is None:
+        modes = (BOOST_FLAG if boost else 0) | (AWAY_FLAG if away else 0) | (FROST_FLAG if frost else 0)
     status = SimpleNamespace(
         EcoStartEnabled=eco,
         ComfortStatus=True,
@@ -63,7 +65,7 @@ def _payload(*, boost=False, away=False, eco=False, frost=False, room=21.5, targ
         AwayTemperature=15.0,
         BoostDuration=30 if boost else 0,
         AwayDateTime="2026-07-01T00:00:00" if away else None,
-        ApplianceModes=((BOOST_FLAG if boost else 0) | (AWAY_FLAG if away else 0) | (FROST_FLAG if frost else 0)),
+        ApplianceModes=modes,
         OpenWindowEnabled=False,
         SetbackEnabled=False,
     )
@@ -331,11 +333,15 @@ async def test_climate_turn_off_clears_boost_and_away(hass):
 
 @pytest.mark.asyncio
 async def test_climate_frost_timer_reports_hvac_off(hass):
-    """Frost protection timer mode surfaces as HVAC off (issue #149)."""
+    """A frost/off schedule with no live modes still surfaces as HVAC off (issue #149).
+
+    The schedule is only authoritative when the appliance reports no
+    ApplianceModes at all (#283); with live bits present they win instead.
+    """
     config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
     config_entry.add_to_hass(hass)
-    # Away flag still present must not keep HVAC in heat when timer is frost.
-    payload = _payload(away=True, timer_mode=2)
+    payload = _payload(timer_mode=2, modes=None)
+    payload["appliances"][0]["status"].ApplianceModes = None
 
     with _api_data(payload):
         assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -347,6 +353,33 @@ async def test_climate_frost_timer_reports_hvac_off(hass):
     assert state.state == "off"
     assert state.attributes.get("hvac_action") == "off"
     assert state.attributes.get("preset_mode") is None
+
+
+@pytest.mark.asyncio
+async def test_live_modes_win_over_a_stale_off_like_schedule(hass):
+    """A Manual heater with a cached off-like schedule reports heat, not off (#283).
+
+    Fixture: live ECO bit (64, what QRAD firmware 28 reports for Manual) with a
+    frost-protection schedule left behind. The old code read the schedule as
+    "off" while the heater heated; the mode, action and preset must now agree
+    on heat.
+    """
+    from custom_components.dimplex.const import ECO_FLAG
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload(modes=ECO_FLAG, timer_mode=2)
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == "heat"
+    assert state.attributes.get("hvac_action") != "off"
+    assert state.attributes.get("preset_mode") is not None
 
 
 @pytest.mark.asyncio
@@ -604,6 +637,47 @@ async def test_climate_turn_on_restores_legacy_frost_timer_mode(hass):
         # Mode bit is clear, so only the legacy schedule needs restoring.
         set_frost.assert_not_awaited()
         set_timer.assert_awaited_once_with("hub-1", "appliance-1", 0)
+
+
+@pytest.mark.asyncio
+async def test_climate_turn_on_leaves_a_live_manual_mode_alone(hass):
+    """Pressing "heat" must not overwrite live Manual with User Timer (#284).
+
+    Fixture: live MANUAL bit with a stale off-like schedule — the heater the
+    app shows as Manual. The old code rewrote the schedule to USER_TIMER on
+    every turn-on, which is the integration's half of the #272 "returns to
+    User Timer" symptom.
+    """
+    from custom_components.dimplex.const import MANUAL_FLAG
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+    payload = _payload(modes=MANUAL_FLAG, timer_mode=TIMER_FROST)
+
+    with _api_data(payload):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = _climate_entity(hass)
+    with (
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_frost_protect",
+            new_callable=AsyncMock,
+        ) as set_frost,
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_set_timer_mode",
+            new_callable=AsyncMock,
+        ) as set_timer,
+        _api_data(payload),
+    ):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_TURN_ON,
+            {ATTR_ENTITY_ID: entity_id},
+            blocking=True,
+        )
+        set_frost.assert_not_awaited()
+        set_timer.assert_not_awaited()
 
 
 @pytest.mark.asyncio
