@@ -277,5 +277,64 @@
         "name": "Holiday ends"
       }
     }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Could not reach the Dimplex cloud to control {target}. The service may be temporarily unavailable; nothing was changed."
+    },
+    "control_rejected": {
+      "message": "The Dimplex cloud rejected this control for {target}. The appliance may not support it remotely — some Quantum storage heaters reject off/setpoint changes — so retrying will not help."
+    },
+    "cylinder_unavailable": {
+      "message": "That hot-water cylinder is not available right now."
+    },
+    "holiday_end_in_past": {
+      "message": "The holiday end must be in the future."
+    },
+    "invalid_auth": {
+      "message": "Dimplex authentication failed while controlling {target}."
+    },
+    "missing_target": {
+      "message": "The dimplex action requires a device_id or entity_id."
+    },
+    "no_appliance_on_device": {
+      "message": "Could not resolve an appliance id from device {device_id}."
+    },
+    "no_appliance_on_entity": {
+      "message": "Could not resolve an appliance id from service target {entity_id}."
+    },
+    "no_loaded_entry": {
+      "message": "No loaded Dimplex entry for {entry_id}; cannot resolve appliance {appliance_id}."
+    },
+    "profile_not_found": {
+      "message": "No saved heating profile named \"{profile_name}\" (available: {available})."
+    },
+    "profile_on_cylinder": {
+      "message": "{name} is a hot-water cylinder; heating profiles apply to room-heater timer schedules, so {target} was not sent."
+    },
+    "profile_target_required": {
+      "message": "Give exactly one of {id_key} or {name_key} to {target}."
+    },
+    "schedule_copy_different_hub": {
+      "message": "Every target appliance must be on the same hub as the source; no schedule was copied."
+    },
+    "schedule_copy_unresolved": {
+      "message": "Could not resolve {target_device_id} as a Dimplex appliance; no schedule was copied."
+    },
+    "schedule_period_not_found": {
+      "message": "{name} has no schedule period starting {start_time} on {day}. Check that appliance's Schedule sensor for its actual periods — this action edits an existing period, it does not create one."
+    },
+    "unknown_appliance": {
+      "message": "Could not resolve appliance {appliance_id} as a Dimplex appliance; check the target and try again."
+    },
+    "unknown_device": {
+      "message": "Unknown device_id for dimplex service: {device_id}."
+    },
+    "unknown_entity": {
+      "message": "Unknown entity_id for dimplex service: {entity_id}."
+    },
+    "unsupported_control": {
+      "message": "{name} does not support this control ({capability} is false for it), so {target} was not sent."
+    }
   }
 }

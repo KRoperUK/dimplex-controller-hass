@@ -19,6 +19,9 @@ from .entity import DimplexEntity
 from .errors import control_errors
 from .holiday import HolidayManager
 
+# Switch commands hit the cloud one at a time.
+PARALLEL_UPDATES = 1
+
 
 @dataclass(frozen=True, kw_only=True)
 class DimplexSwitchEntityDescription(SwitchEntityDescription):

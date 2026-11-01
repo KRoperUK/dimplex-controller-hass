@@ -510,3 +510,315 @@ async def test_options_flow(hass):
 
     assert result["type"] == data_entry_flow.FlowResultType.CREATE_ENTRY
     assert dict(config_entry.options) == user_input
+
+
+# ── helper functions ────────────────────────────────────────────
+
+
+async def test_extract_auth_code_from_a_redirect_url():
+    """A pasted redirect URL yields only its ``code`` parameter."""
+    from custom_components.dimplex.config_flow import _extract_auth_code
+
+    assert _extract_auth_code("http://localhost/?code=abc123&state=xyz") == "abc123"
+
+
+async def test_extract_auth_code_handles_a_malformed_url():
+    """A URL ``urlparse`` rejects falls back to "no code" rather than raising."""
+    from custom_components.dimplex.config_flow import _extract_auth_code
+
+    assert _extract_auth_code("http://[::1?code=abc") == ""
+
+
+async def test_extract_auth_code_strips_a_raw_code():
+    """A bare code is returned without surrounding whitespace."""
+    from custom_components.dimplex.config_flow import _extract_auth_code
+
+    assert _extract_auth_code("  raw-code  ") == "raw-code"
+
+
+async def test_validate_auth_code_rejects_an_empty_code(hass):
+    """A blank paste fails before any network call."""
+    from custom_components.dimplex.config_flow import validate_auth_code
+
+    with pytest.raises(InvalidAuth):
+        await validate_auth_code(hass, "   ")
+
+
+async def test_validate_auth_code_returns_tokens_and_account(hass):
+    """The helper exchanges the code and returns the adapter's account id."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from custom_components.dimplex.config_flow import validate_auth_code
+
+    client = MagicMock()
+    client.async_exchange_code = AsyncMock(return_value={"refresh_token": "rt"})
+    client.account_id = "acct-1"
+
+    with (
+        patch("custom_components.dimplex.config_flow.async_create_clientsession"),
+        patch("custom_components.dimplex.config_flow.DimplexApiClient", return_value=client),
+    ):
+        token_data, account_id = await validate_auth_code(hass, "abc123")
+
+    client.async_exchange_code.assert_awaited_once_with("abc123")
+    assert token_data == {"refresh_token": "rt"}
+    assert account_id == "acct-1"
+
+
+async def test_validate_credentials_returns_tokens_and_account(hass):
+    """The password helper builds a client and validates the connection."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from custom_components.dimplex.config_flow import validate_credentials
+
+    client = MagicMock()
+    client.async_validate_connection = AsyncMock(return_value={"refresh_token": "rt"})
+    client.account_id = "acct-1"
+
+    with (
+        patch("custom_components.dimplex.config_flow.async_create_clientsession"),
+        patch("custom_components.dimplex.config_flow.DimplexApiClient", return_value=client) as factory,
+    ):
+        token_data, account_id = await validate_credentials(hass, "user@example.com", "secret")
+
+    factory.assert_called_once()
+    client.async_validate_connection.assert_awaited_once()
+    assert token_data == {"refresh_token": "rt"}
+    assert account_id == "acct-1"
+
+
+# ── setup: remaining error branches ─────────────────────────────
+
+
+async def test_credentials_rejects_blank_fields(hass):
+    """A blank username or password is an authentication error, not a crash."""
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"username": "  ", "password": ""},
+    )
+
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_credentials_cannot_connect(hass):
+    """A connectivity failure during password login is reported, not raised."""
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+
+    with patch(
+        "custom_components.dimplex.config_flow.validate_credentials",
+        side_effect=CannotConnect,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CREDENTIALS,
+        )
+
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_auth_code_rejects_blank_input(hass):
+    """An empty auth-code submission is reported as invalid authentication."""
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "auth_code"},
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_code": "   "},
+    )
+
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_unexpected_auth_code_error_is_logged(hass, caplog):
+    """An unexpected exchange failure is logged and reported as ``unknown``."""
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "auth_code"},
+    )
+
+    with (
+        caplog.at_level(logging.ERROR, logger="custom_components.dimplex.config_flow"),
+        patch(
+            "custom_components.dimplex.config_flow.validate_auth_code",
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CONFIG,
+        )
+
+    assert result["errors"] == {"base": "unknown"}
+    assert "Unexpected error exchanging the Dimplex auth code" in caplog.text
+
+
+# ── reauth: remaining error branches ────────────────────────────
+
+
+async def test_reauth_credentials_rejects_blank_fields(hass):
+    """A blank reauth username or password is an authentication error."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": config_entry.entry_id},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"username": "", "password": ""},
+    )
+
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+async def test_reauth_credentials_cannot_connect(hass):
+    """A connectivity failure during reauth is reported, not raised."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": config_entry.entry_id},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+
+    with patch(
+        "custom_components.dimplex.config_flow.validate_credentials",
+        side_effect=CannotConnect,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CREDENTIALS,
+        )
+
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+
+
+async def test_unexpected_reauth_credentials_error_is_logged(hass, caplog):
+    """An unexpected reauth failure is logged and reported as ``unknown``."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": config_entry.entry_id},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "credentials"},
+    )
+
+    with (
+        caplog.at_level(logging.ERROR, logger="custom_components.dimplex.config_flow"),
+        patch(
+            "custom_components.dimplex.config_flow.validate_credentials",
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CREDENTIALS,
+        )
+
+    assert result["errors"] == {"base": "unknown"}
+    assert "Unexpected error re-authenticating Dimplex credentials" in caplog.text
+
+
+async def test_reauth_code_rejects_blank_input(hass):
+    """An empty reauth auth code is reported as invalid authentication."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": config_entry.entry_id},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "auth_code"},
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_code": "  "},
+    )
+
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_auth"}
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (InvalidAuth, "invalid_auth"),
+        (CannotConnect, "cannot_connect"),
+        (RuntimeError, "unknown"),
+    ],
+)
+async def test_reauth_code_reports_failures(hass, error, expected):
+    """Every reauth auth-code failure maps to a form error."""
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": config_entry.entry_id},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"auth_method": "auth_code"},
+    )
+
+    with patch(
+        "custom_components.dimplex.config_flow.validate_auth_code",
+        side_effect=error,
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input=MOCK_CONFIG,
+        )
+
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["errors"] == {"base": expected}
+
+
+async def test_finish_reauth_aborts_when_the_entry_is_gone(hass):
+    """A reauth that outlived its config entry aborts instead of crashing."""
+    from custom_components.dimplex.config_flow import DimplexFlowHandler
+
+    flow = DimplexFlowHandler()
+    flow.hass = hass
+    flow.context = {"entry_id": "no-such-entry"}
+
+    result = await flow._finish_reauth({"refresh_token": "rt"}, "acct-1")
+
+    assert result["type"] == data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"

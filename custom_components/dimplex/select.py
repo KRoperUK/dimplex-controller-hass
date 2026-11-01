@@ -48,6 +48,9 @@ from .const import (
 from .entity import DimplexEntity
 from .errors import control_errors
 
+# Select writes hit the cloud one at a time.
+PARALLEL_UPDATES = 1
+
 _LOGGER = logging.getLogger(__name__)
 
 BOOST_DURATION_KEY = "boost_duration"

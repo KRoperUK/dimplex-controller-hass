@@ -30,6 +30,9 @@ from .const import (
 )
 from .entity import DimplexEntity
 
+# The coordinator fetches the data; entity updates need no limit.
+PARALLEL_UPDATES = 0
+
 
 @dataclass(frozen=True, kw_only=True)
 class DimplexBinarySensorEntityDescription(BinarySensorEntityDescription):

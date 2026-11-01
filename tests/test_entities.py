@@ -478,3 +478,252 @@ async def test_new_state_sensors_are_registered(hass):
         "boost_remaining",
     ):
         assert registry.async_get_entity_id("sensor", DOMAIN, f"test_appliance-1_{key}") is not None, key
+
+
+# ---------------------------------------------------------------------------
+# Remaining helper and entity branches
+# ---------------------------------------------------------------------------
+
+
+async def test_extra_stored_data_serialises_the_held_values():
+    """Both restore payloads carry their extra field alongside the state."""
+    from custom_components.dimplex.sensor import _BoostExtraStoredData, _PeakExtraStoredData
+
+    peak = _PeakExtraStoredData(12.5, "kWh", 42.0)
+    assert peak.as_dict()["peak_total"] == 42.0
+
+    boost = _BoostExtraStoredData(30.0, "min", "2026-01-01T00:00:00+00:00", 60)
+    saved = boost.as_dict()
+    assert saved["started_at"] == "2026-01-01T00:00:00+00:00"
+    assert saved["duration_minutes"] == 60
+
+
+async def test_restored_peak_ignores_unusable_shapes():
+    """Only a finite number in ``peak_total`` is restored."""
+    from custom_components.dimplex.sensor import _restored_peak
+
+    class NotADict:
+        def as_dict(self):
+            return []
+
+    class BooleanPeak:
+        def as_dict(self):
+            return {"peak_total": True}
+
+    assert _restored_peak(None) is None
+    assert _restored_peak(NotADict()) is None
+    assert _restored_peak(BooleanPeak()) is None
+    assert _restored_peak(SimpleNamespace(as_dict=lambda: {"peak_total": 3})) == 3.0
+
+
+async def test_value_helpers_handle_missing_status():
+    """The status readers answer None rather than raising without a status frame."""
+    from custom_components.dimplex.sensor import (
+        _operating_mode_names,
+        _status_attr,
+        _status_temp,
+    )
+
+    assert _status_attr("RoomTemperature")(None, None) is None
+    assert _status_temp("RoomTemperature")(None, None) is None
+    assert _operating_mode_names(None) is None
+    assert _operating_mode_names("not-a-bitfield") is None
+    assert _operating_mode_names(1 << 20) == []
+
+
+async def test_provisioning_helper_reads_a_property_and_tolerates_missing_values():
+    """Provisioning values come from a property or attribute, or read None."""
+    from custom_components.dimplex.sensor import _provisioning_attr
+
+    class WithProperty:
+        @property
+        def automatic_provisioning(self):
+            return SimpleNamespace(rated_power=2.5)
+
+    assert _provisioning_attr("rated_power")(None, WithProperty()) == 2.5
+    assert _provisioning_attr("rated_power")(None, SimpleNamespace(automatic_provisioning=None)) is None
+    assert (
+        _provisioning_attr("rated_power")(
+            None, SimpleNamespace(automatic_provisioning=SimpleNamespace(rated_power=None))
+        )
+        is None
+    )
+
+
+async def test_estimated_power_covers_each_heating_signal():
+    """The estimate returns the rated power only while a heating signal is set."""
+    from custom_components.dimplex.const import BOOST_FLAG
+    from custom_components.dimplex.sensor import _estimated_power_kw
+
+    no_rating = SimpleNamespace(automatic_provisioning=SimpleNamespace(rated_power=None))
+    rated = SimpleNamespace(automatic_provisioning=SimpleNamespace(rated_power=2.0))
+
+    assert _estimated_power_kw(None, no_rating) is None
+    assert _estimated_power_kw(None, rated) == 0.0
+    assert _estimated_power_kw(SimpleNamespace(ComfortStatus=True, ApplianceModes=0), rated) == 2.0
+    assert _estimated_power_kw(SimpleNamespace(ComfortStatus=False, ApplianceModes=BOOST_FLAG), rated) == 2.0
+    assert _estimated_power_kw(SimpleNamespace(ComfortStatus=False, ApplianceModes=0, BoostDuration=15), rated) == 2.0
+
+
+async def test_operating_mode_sensor_tolerates_a_missing_or_unparseable_mode():
+    """An absent or non-numeric mode reads unknown instead of raising."""
+    from custom_components.dimplex.sensor import DimplexOperatingModeSensor
+
+    coordinator, config_entry, row = _status_row(modes="not-a-number")
+    sensor = DimplexOperatingModeSensor(coordinator, config_entry, row)
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes["raw_modes"] is None
+
+    row["status"] = None
+    assert sensor.native_value is None
+
+
+async def test_schedule_sensor_handles_missing_schedule_and_timer_mode():
+    """The schedule sensor is unavailable without a schedule and reads unknown without a mode."""
+    from custom_components.dimplex.sensor import DimplexScheduleSensor
+
+    coordinator, config_entry, row = _status_row()
+    coordinator.last_update_success = True
+    sensor = DimplexScheduleSensor(coordinator, config_entry, row)
+
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+    coordinator.data["schedules"] = {"appliance-1": SimpleNamespace(TimerMode=None)}
+    assert sensor.native_value is None
+
+    coordinator.last_update_success = False
+    assert sensor.available is False
+
+
+async def test_hot_water_schedule_sensor_handles_missing_and_malformed_schedules():
+    """A cylinder schedule that is absent, empty or malformed never raises."""
+    from custom_components.dimplex.sensor import DimplexHotWaterScheduleSensor, _clock
+
+    coordinator, config_entry, row = _status_row()
+    coordinator.last_update_success = True
+    sensor = DimplexHotWaterScheduleSensor(coordinator, config_entry, row)
+
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+    coordinator.data["schedules"] = {"appliance-1": {"TimerPeriods": []}}
+    assert sensor.native_value == "no periods"
+
+    coordinator.data["schedules"] = {"appliance-1": {"TimerPeriods": [{"DayOfWeek": "bad", "StartTime": 0}]}}
+    assert sensor.native_value == "no periods"
+
+    coordinator.last_update_success = False
+    assert sensor.available is False
+    assert _clock("noon") is None
+
+
+async def test_boost_remaining_handles_missing_and_malformed_records():
+    """A missing, malformed or expired boost record reads unknown or zero."""
+    from custom_components.dimplex.sensor import DimplexBoostRemainingSensor
+
+    coordinator, config_entry, row = _status_row()
+    sensor = DimplexBoostRemainingSensor(coordinator, config_entry, row)
+
+    config_entry.runtime_data.boost_starts = None
+    assert sensor.native_value is None
+
+    config_entry.runtime_data.boost_starts = {"appliance-1": {"duration_minutes": "x"}}
+    assert sensor.native_value is None
+
+    config_entry.runtime_data.boost_starts = {"appliance-1": {"duration_minutes": 30, "started_at": "not-a-date"}}
+    assert sensor.native_value is None
+
+    config_entry.runtime_data.boost_starts = {
+        "appliance-1": {"duration_minutes": 1, "started_at": "2020-01-01T00:00:00+00:00"}
+    }
+    row["status"] = None
+    assert sensor.native_value == 0.0
+
+
+async def test_boost_remaining_restores_a_recorded_start():
+    """A stored engage record is restored unless one is already in runtime data."""
+    from unittest.mock import AsyncMock
+
+    from custom_components.dimplex.sensor import DimplexBoostRemainingSensor
+
+    sensor = object.__new__(DimplexBoostRemainingSensor)
+    sensor._appliance = SimpleNamespace(ApplianceId="appliance-1")
+    sensor.coordinator = SimpleNamespace(async_add_listener=lambda *a, **k: lambda: None)
+    sensor.coordinator_context = None
+    sensor.async_on_remove = lambda func: None
+    sensor.async_get_last_extra_data = AsyncMock(
+        return_value=SimpleNamespace(
+            as_dict=lambda: {
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "duration_minutes": "60",
+            }
+        )
+    )
+
+    # No runtime data at all: nothing to restore into.
+    sensor.config_entry = SimpleNamespace(runtime_data=None)
+    await sensor.async_added_to_hass()
+
+    # A record already present wins over the stored one.
+    runtime = SimpleNamespace(boost_starts={"appliance-1": {"duration_minutes": 30}})
+    sensor.config_entry = SimpleNamespace(runtime_data=runtime)
+    await sensor.async_added_to_hass()
+    assert runtime.boost_starts["appliance-1"]["duration_minutes"] == 30
+
+    # Otherwise the stored record is adopted.
+    runtime.boost_starts = {}
+    await sensor.async_added_to_hass()
+    assert runtime.boost_starts["appliance-1"]["duration_minutes"] == 60
+
+
+async def test_energy_sensor_falls_back_to_utc_without_a_configured_time_zone():
+    """A missing default time zone must not break the summary."""
+    from unittest.mock import patch
+
+    from custom_components.dimplex.sensor import DimplexEnergySensor
+
+    sensor = object.__new__(DimplexEnergySensor)
+    with patch(
+        "custom_components.dimplex.sensor.dt_util.get_default_time_zone",
+        side_effect=RuntimeError("no tz"),
+    ):
+        assert str(sensor._local_tz()) == "UTC"
+
+
+async def test_lifetime_sensor_restores_the_peak_from_the_previous_state():
+    """The held peak comes from the state's ``peak_total`` attribute as a fallback."""
+    from unittest.mock import AsyncMock
+
+    from homeassistant.components.sensor import SensorStateClass
+    from homeassistant.core import State
+
+    from custom_components.dimplex.sensor import DimplexEnergySensor
+
+    sensor = object.__new__(DimplexEnergySensor)
+    sensor.entity_description = SimpleNamespace(mode="lifetime", state_class=SensorStateClass.TOTAL)
+    sensor._peak_total = 0.0
+    sensor.coordinator = SimpleNamespace(async_add_listener=lambda *a, **k: lambda: None)
+    sensor.coordinator_context = None
+    sensor.async_on_remove = lambda func: None
+    sensor.async_get_last_extra_data = AsyncMock(return_value=None)
+    sensor.async_get_last_state = AsyncMock(return_value=State("sensor.energy", "12.5", {"peak_total": 12.5}))
+    sensor.async_get_last_sensor_data = AsyncMock(return_value=None)
+
+    await sensor.async_added_to_hass()
+
+    assert sensor._peak_total == 12.5
+
+
+async def test_energy_sensor_without_a_summary_has_no_window_metadata():
+    """An unavailable series reports no reset point and no attributes."""
+    from homeassistant.components.sensor import SensorStateClass
+
+    from custom_components.dimplex.sensor import DimplexEnergySensor
+
+    sensor = object.__new__(DimplexEnergySensor)
+    sensor.entity_description = SimpleNamespace(mode="daily", state_class=SensorStateClass.TOTAL, register="t1")
+    sensor._summary = lambda: None
+
+    assert sensor.last_reset is None
+    assert sensor.extra_state_attributes == {}

@@ -23,6 +23,7 @@ from contextlib import contextmanager
 from homeassistant.exceptions import HomeAssistantError
 
 from .api import CannotConnect, ControlRejected, InvalidAuth
+from .const import DOMAIN
 
 
 @contextmanager
@@ -38,15 +39,20 @@ def control_errors(target: str) -> Iterator[None]:
     try:
         yield
     except InvalidAuth as err:
-        raise HomeAssistantError(f"Dimplex authentication failed while controlling {target}.") from err
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="invalid_auth",
+            translation_placeholders={"target": target},
+        ) from err
     except ControlRejected as err:
         raise HomeAssistantError(
-            f"The Dimplex cloud rejected this control for {target}. The appliance may not "
-            "support it remotely — some Quantum storage heaters reject off/setpoint "
-            "changes — so retrying will not help."
+            translation_domain=DOMAIN,
+            translation_key="control_rejected",
+            translation_placeholders={"target": target},
         ) from err
     except CannotConnect as err:
         raise HomeAssistantError(
-            f"Could not reach the Dimplex cloud to control {target}. The service may be "
-            "temporarily unavailable; nothing was changed."
+            translation_domain=DOMAIN,
+            translation_key="cannot_connect",
+            translation_placeholders={"target": target},
         ) from err

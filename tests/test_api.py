@@ -14,6 +14,7 @@ from dimplex_controller import (
     DimplexAuthInvalidGrantError,
     DimplexAuthTransientError,
     DimplexConnectionError,
+    SetbackStatus,
     UserHeatingProfile,
 )
 from dimplex_controller.models import ApplianceStatus
@@ -1062,3 +1063,208 @@ async def test_a_rejected_payload_during_a_control_call_is_readable(hass):
         await api.async_set_eco_start("hub-1", "appliance-1", True)
 
     assert "Unexpected payload" in str(caught.value)
+
+
+# ---------------------------------------------------------------------------
+# Remaining branches: expiry, setup failures, and the hot-water helpers
+# ---------------------------------------------------------------------------
+
+
+def _jwt_without_exp() -> str:
+    """A well-formed JWT whose payload carries no ``exp`` claim."""
+    payload = base64.urlsafe_b64encode(json.dumps({"sub": "user"}).encode()).decode().rstrip("=")
+    return f"header.{payload}.signature"
+
+
+def test_extract_expiry_without_an_exp_claim_returns_zero():
+    """A parseable token with no ``exp`` reports "unknown" rather than raising."""
+    assert DimplexApiClient._extract_expiry(_jwt_without_exp()) == 0  # noqa: SLF001
+
+
+async def test_initialize_refresh_token_connection_error(hass):
+    """A connectivity failure while refreshing maps to CannotConnect."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="refresh")
+    with (
+        patch.object(
+            api._client.auth,
+            "get_access_token",
+            new=AsyncMock(side_effect=DimplexConnectionError("offline")),
+        ),
+        pytest.raises(CannotConnect),
+    ):
+        await api.async_initialize()
+
+
+async def test_initialize_headless_login_path(hass):
+    """With no tokens, the stored username/password performs a headless login."""
+    api = DimplexApiClient(
+        session=async_get_clientsession(hass),
+        username="user@example.com",
+        password="password",
+    )
+    with (
+        patch.object(api._client.auth, "headless_login", new=AsyncMock()) as login,
+        patch.object(api._client.auth, "get_access_token", new=AsyncMock()) as get_token,
+    ):
+        await api.async_initialize()
+
+    login.assert_awaited_once_with("user@example.com", "password")
+    get_token.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("library_error", "expected"),
+    [
+        (DimplexAuthInvalidGrantError("expired"), InvalidAuth),
+        (DimplexConnectionError("offline"), CannotConnect),
+        (DimplexApiError(500, "boom"), CannotConnect),
+    ],
+)
+async def test_validate_connection_maps_account_lookup_failures(hass, library_error, expected):
+    """A failure resolving the account is translated like the login itself."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    with (
+        patch.object(api, "async_initialize", new=AsyncMock()),
+        patch.object(api, "_resolve_account_id", new=AsyncMock(side_effect=library_error)),
+        pytest.raises(expected),
+    ):
+        await api.async_validate_connection()
+
+
+async def test_validate_connection_reports_a_rejected_account_payload(hass):
+    """A payload-shape change during setup names the offending field."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    with (
+        patch.object(api, "async_initialize", new=AsyncMock()),
+        patch.object(api, "_resolve_account_id", new=AsyncMock(side_effect=_rejected_payload())),
+        pytest.raises(CannotConnect) as caught,
+    ):
+        await api.async_validate_connection()
+
+    assert "Unexpected payload" in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    ("library_error", "expected"),
+    [
+        (DimplexAuthInvalidGrantError("expired"), InvalidAuth),
+        (DimplexConnectionError("offline"), CannotConnect),
+        (DimplexApiError(500, "boom"), CannotConnect),
+    ],
+)
+async def test_exchange_code_maps_failures(hass, library_error, expected):
+    """Every exchange failure maps to an adapter error the flow understands."""
+    api = DimplexApiClient(session=async_get_clientsession(hass))
+
+    with (
+        patch.object(
+            api._client.auth,
+            "exchange_code",
+            new=AsyncMock(side_effect=library_error),
+        ),
+        pytest.raises(expected),
+    ):
+        await api.async_exchange_code("code")
+
+
+async def test_exchange_code_reports_a_rejected_account_payload(hass):
+    """A payload-shape change during the exchange names the offending field."""
+    api = DimplexApiClient(session=async_get_clientsession(hass))
+
+    with (
+        patch.object(api._client.auth, "exchange_code", new=AsyncMock()),
+        patch.object(api, "_resolve_account_id", new=AsyncMock(side_effect=_rejected_payload())),
+        pytest.raises(CannotConnect) as caught,
+    ):
+        await api.async_exchange_code("code")
+
+    assert "Unexpected payload" in str(caught.value)
+
+
+async def test_async_get_data_individual_overview_failure_is_logged(hass, caplog):
+    """When bulk and the per-appliance retry both fail, the row stays without status."""
+    import logging
+
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+
+    hub = SimpleNamespace(HubId="hub-1")
+    appliance = SimpleNamespace(ApplianceId="appliance-1")
+    zone = SimpleNamespace(ZoneName="Living Room", Appliances=[appliance])
+
+    with (
+        caplog.at_level(logging.ERROR, logger="custom_components.dimplex.api"),
+        patch.object(api._client, "get_hubs", new=AsyncMock(return_value=[hub])),
+        patch.object(api._client, "get_product_models", new=AsyncMock(return_value=[])),
+        patch.object(api._client, "get_hub_zones", new=AsyncMock(return_value=[zone])),
+        patch.object(
+            api._client,
+            "get_appliance_overview",
+            new=AsyncMock(side_effect=DimplexApiError(500, "boom")),
+        ),
+    ):
+        data = await api.async_get_status_data()
+
+    assert data["appliances"][0]["status"] is None
+    assert "Failed to fetch overview for appliance appliance-1" in caplog.text
+
+
+async def test_set_setback_temperature_calls_library(hass):
+    """The setback write delegates with the appliance list and status byte."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with patch.object(api._client, "set_setback_temperature", new=AsyncMock()) as setback:
+        await api.async_set_setback_temperature("h", "a", 17.5)
+
+    setback.assert_awaited_once()
+    assert setback.await_args.args == ("h", ["a"])
+    assert setback.await_args.kwargs == {"temperature": 17.5, "status": SetbackStatus.ACTIVE}
+
+
+async def test_get_schedule_falls_back_to_appliance_features(hass):
+    """A library without ``get_schedule`` uses the features endpoint instead."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    features = AsyncMock(return_value={"TimerMode": 1})
+    api._client = SimpleNamespace(get_appliance_features=features)
+
+    assert await api.async_get_schedule("h", "a") == {"TimerMode": 1}
+    features.assert_awaited_once_with("h", "a")
+
+
+async def test_set_hot_water_temperature_picks_the_mode_endpoint(hass):
+    """``boost`` and ``normal`` reach their own library endpoints."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with (
+        patch.object(api._client, "set_hot_water_boost_temperature", new=AsyncMock()) as boost,
+        patch.object(api._client, "set_hot_water_normal_temperature", new=AsyncMock()) as normal,
+    ):
+        await api.async_set_hot_water_temperature("h", "a", mode="boost", temperature=60.0, enable=True)
+        await api.async_set_hot_water_temperature("h", "a", mode="normal", temperature=45.0, enable=False)
+
+    boost.assert_awaited_once_with("h", ["a"], 60.0, enable=True)
+    normal.assert_awaited_once_with("h", ["a"], 45.0, enable=False)
+
+
+async def test_set_hot_water_hygiene_calls_library(hass):
+    """The hygiene write forwards every argument to the library."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with patch.object(api._client, "set_hot_water_hygiene", new=AsyncMock()) as hygiene:
+        await api.async_set_hot_water_hygiene("h", "a", temperature=65.0, frequency=2, enable=True, heat_pump=True)
+
+    hygiene.assert_awaited_once_with(
+        "h",
+        ["a"],
+        temperature=65.0,
+        frequency=2,
+        enable=True,
+        heat_pump=True,
+    )
+
+
+async def test_set_timer_mode_calls_library(hass):
+    """The timer-mode write delegates to the library's set_mode."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with patch.object(api._client, "set_mode", new=AsyncMock()) as set_mode:
+        await api.async_set_timer_mode("h", "a", 3)
+
+    set_mode.assert_awaited_once_with("h", "a", 3)

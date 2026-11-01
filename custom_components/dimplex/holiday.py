@@ -13,14 +13,14 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .api import DimplexApiClient
 from .capabilities import capabilities_for_row
-from .const import HOLIDAY_FLAG, has_any_mode
+from .const import DOMAIN, HOLIDAY_FLAG, has_any_mode
 from .errors import control_errors
 
 DEFAULT_HOLIDAY = timedelta(days=7)
@@ -66,7 +66,10 @@ class HolidayManager:
         """Choose when Holiday ends; re-sends the holiday if one is running."""
         end = dt_util.as_utc(end)
         if end <= dt_util.utcnow():
-            raise HomeAssistantError("The holiday end must be in the future.")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="holiday_end_in_past",
+            )
         self.ends[appliance_id] = end
         self._notify(appliance_id)
         if self.is_active(appliance_id):
@@ -102,7 +105,10 @@ class HolidayManager:
     async def _send(self, appliance_id: str, enable: bool, end: datetime | None) -> None:
         row = self._row(appliance_id)
         if row is None:
-            raise HomeAssistantError("That hot-water cylinder is not available right now.")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="cylinder_unavailable",
+            )
         caps = capabilities_for_row(row["appliance"], row.get("status"), row.get("product"))
         name = getattr(row["appliance"], "FriendlyName", None) or "hot-water cylinder"
         with control_errors(name):
