@@ -21,23 +21,23 @@ advance, and the dashboard had no way to say so.
 The full bitfield, as recovered from the official app. The integration reads four of these
 and ignores the rest.
 
-| Bit | Value  | Mode                                                 | Used by the integration                                        |
-| --- | ------ | ---------------------------------------------------- | -------------------------------------------------------------- |
-| 0   | 1      | `TIMER_MODE` — following the schedule                | Implicitly, as "not overridden"                                |
-| 1   | **2**  | **`BOOST`**                                          | :material-check: Boost active sensor, `boost` preset           |
-| 2   | **4**  | **`AWAY`**                                           | :material-check: Away active sensor, `away` preset             |
-| 3   | 8      | `HOLIDAY`                                            | No                                                             |
-| 4   | **16** | **`ADVANCE`**                                        | :material-check: Advance active sensor, `dimplex.set_advance`  |
-| 5   | **32** | **`FROST_PROTECT`**                                  | :material-check: Frost protection sensor, HVAC off             |
-| 6   | 64     | `ECO`                                                | Decoded by the **Operating mode** sensor — see [the bit-64 probe](#the-bit-64-probe) |
+| Bit | Value  | Mode                                                 | Used by the integration                                                                  |
+| --- | ------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| 0   | 1      | `TIMER_MODE` — following the schedule                | Implicitly, as "not overridden"                                                          |
+| 1   | **2**  | **`BOOST`**                                          | :material-check: Boost active sensor, `boost` preset                                     |
+| 2   | **4**  | **`AWAY`**                                           | :material-check: Away active sensor, `away` preset                                       |
+| 3   | 8      | `HOLIDAY`                                            | No                                                                                       |
+| 4   | **16** | **`ADVANCE`**                                        | :material-check: Advance active sensor, `dimplex.set_advance`                            |
+| 5   | **32** | **`FROST_PROTECT`**                                  | :material-check: Frost protection sensor, HVAC off                                       |
+| 6   | 64     | `ECO`                                                | Decoded by the **Operating mode** sensor — see [the bit-64 probe](#the-bit-64-probe)     |
 | 7   | 128    | `MANUAL` — holding one target, ignoring the schedule | :material-check: Operating mode sensor, `manual` option of the **Operating mode** select |
-| 8   | 256    | `HYGIENE` — hot water cylinder anti-legionella cycle | No                                                             |
-| 9   | 512    | `STANDALONE`                                         | No                                                             |
-| 10  | 1024   | `SAFE_MODE`                                          | No                                                             |
-| 11  | 2048   | `SHUTDOWN`                                           | No                                                             |
-| 12  | 4096   | `COMMS`                                              | No                                                             |
-| 13  | 8192   | `NORMAL`                                             | No                                                             |
-| 14  | 16384  | `STANDBY`                                            | No                                                             |
+| 8   | 256    | `HYGIENE` — hot water cylinder anti-legionella cycle | No                                                                                       |
+| 9   | 512    | `STANDALONE`                                         | No                                                                                       |
+| 10  | 1024   | `SAFE_MODE`                                          | No                                                                                       |
+| 11  | 2048   | `SHUTDOWN`                                           | No                                                                                       |
+| 12  | 4096   | `COMMS`                                              | No                                                                                       |
+| 13  | 8192   | `NORMAL`                                             | No                                                                                       |
+| 14  | 16384  | `STANDBY`                                            | No                                                                                       |
 
 !!! danger "Before 4.1.0 these values were wrong"
 
@@ -219,10 +219,10 @@ So after `climate.turn_off` the entity reports a **7 °C target**, `hvac_mode: o
 
 Two different things share the name, and the integration uses only one of them.
 
-|            | `EcoStartEnabled`                                                        | `ECO` (bit 64)         |
-| ---------- | ------------------------------------------------------------------------ | ---------------------- |
-| What       | A pre-heat **setting**                                                   | An appliance **mode**  |
-| Does       | Learns the room's warm-up time and starts early so target is met on time | Unknown — never tested |
+|            | `EcoStartEnabled`                                                        | `ECO` (bit 64)                            |
+| ---------- | ------------------------------------------------------------------------ | ----------------------------------------- |
+| What       | A pre-heat **setting**                                                   | An appliance **mode**                     |
+| Does       | Learns the room's warm-up time and starts early so target is met on time | Unknown — never tested                    |
 | Exposed as | The `eco` preset, the **EcoStart** switch, `dimplex.set_eco_start`       | The **Operating mode** sensor (read-only) |
 
 The `eco` preset drives **EcoStart**. The cloud's separate Eco _mode_ bit is read but never
@@ -240,10 +240,10 @@ Four ways, in increasing detail:
    the raw integer alongside. The lossless view that never guesses.
 2. **The four diagnostic binary sensors** — boost, away, frost protection, advance. Disabled
    by default; enable them in the entity registry.
-2. **A diagnostics download** — decodes `ApplianceModes` into mode names, so you do not have
+3. **A diagnostics download** — decodes `ApplianceModes` into mode names, so you do not have
    to do the arithmetic. See
    [diagnostics & bug reports](../help/diagnostics.md#active_modes-is-the-useful-bit).
-3. **The raw value** — `ApplianceModes` appears in diagnostics as an integer. `8198` is
+4. **The raw value** — `ApplianceModes` appears in diagnostics as an integer. `8198` is
    `BOOST | AWAY | NORMAL` (2 + 4 + 8192)… which is exactly the sort of sum nobody should
    have to do by hand, hence the decoding above.
 
