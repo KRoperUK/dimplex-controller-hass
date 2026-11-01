@@ -39,6 +39,19 @@ check_untyped_defs = true
 # Scope to our own package; Home Assistant is imported for types only.
 files = ["custom_components/dimplex"]
 
+[[tool.mypy.overrides]]
+# These platforms re-export their enums from the package root without declaring
+# them in `__all__`, so `strict`'s implicit-reexport check rejects the only import
+# path that works across our supported range: the enum lives in the package
+# `__init__` on 2026.9 but in `const.py` from 2026.10, and `binary_sensor.const`
+# does not exist on the declared floor at all. Import from the package root.
+module = [
+    "homeassistant.components.binary_sensor",
+    "homeassistant.components.climate",
+    "homeassistant.components.water_heater",
+]
+implicit_reexport = true
+
 [tool.pytest.ini_options]
 addopts = "-qq --cov=custom_components.dimplex --cov-report=term-missing"
 console_output_style = "count"
