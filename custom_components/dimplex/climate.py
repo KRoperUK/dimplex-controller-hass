@@ -19,6 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .api import ControlRejected, DimplexApiClient
+from .boost import clear_boost_start, record_boost_start
 from .capabilities import capabilities_for_row
 from .const import (
     AWAY_FLAG,
@@ -601,6 +602,7 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
         # Clear first, so the appliance never holds two conflicting modes at once.
         if _MODE_BOOST not in wanted and _is_boost_active(status):
             await self._api.async_set_boost(hub_id, appliance_id, temperature=fallback_temp, enable=False)
+            clear_boost_start(self.config_entry.runtime_data, appliance_id)
         if _MODE_AWAY not in wanted and _is_away_active(status):
             await self._api.async_set_away(hub_id, appliance_id, temperature=fallback_temp, enable=False)
         if _MODE_ECO_START not in wanted and status and status.EcoStartEnabled:
@@ -628,6 +630,9 @@ class DimplexClimate(DimplexEntity, ClimateEntity):
                     duration_minutes=self._boost_minutes,
                     enable=True,
                 )
+                # The cloud sends no boost expiry, so the countdown sensor is
+                # synthesised from this engage time and duration (#302).
+                record_boost_start(self.config_entry.runtime_data, appliance_id, self._boost_minutes)
             elif state == _MODE_AWAY:
                 away_temp = float(status.AwayTemperature) if status and status.AwayTemperature else DEFAULT_AWAY_TEMP
                 # Away tops out well below the setpoint range (#174).

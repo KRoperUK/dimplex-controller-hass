@@ -46,7 +46,17 @@ appliance loses the ability to set a target, but on everything that accepts the 
 endpoint your schedule now survives a temperature change.
 
 The accepted range comes from the appliance capability matrix, normally **7–30 °C**. Seven
-is the frost-protection floor; the cloud's own pickers will not go below it.
+is the frost-protection floor; the cloud's own pickers will not go below it. A setpoint
+outside the entity's own limits is clamped to them before the first write (with a log
+warning), and the boost preset's temperature goes through the same sanity check as the
+read path, so the cloud's 255 "no target" sentinel becomes the default boost temperature
+rather than a 255 °C write.
+
+!!! warning "7 °C in Manual can drop a QRAD into User Timer"
+On observed QRAD firmware, setting exactly 7 °C while in Manual moves the heater
+into User Timer on the next poll — where it then ignores setpoints and boost until
+Manual is set again (in the app, or via the **Operating mode** select). Prefer 8 °C
+and above for a low Manual hold.
 
 ## Why "off" reports 7 °C
 
@@ -58,8 +68,9 @@ So `climate.turn_off` engages frost protection, and the entity then reports a 7 
 That is correct, not a bug. `climate.turn_on` clears it again.
 
 Turning off also clears boost and away first, so the appliance is not left holding a
-conflicting mode. And if an earlier release parked your appliance in the legacy frost/off
-_timer_ mode, turning on restores user-timer mode as well.
+conflicting mode. And if an appliance reports no live mode bits and an earlier release
+parked it in the legacy frost/off _timer_ mode, turning on restores user-timer mode as
+well — a live Manual hold is never rewritten.
 
 ## Advance vs boost
 

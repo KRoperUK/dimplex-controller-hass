@@ -81,6 +81,14 @@ class DimplexRuntimeData:
     # ``CONF_BOOST_DURATION`` option so each appliance can use its own duration
     # from the discrete set the cloud offers (#252).
     boost_minutes: dict[str, int] = field(default_factory=dict)
+    # HA-initiated boost engagements, keyed by ApplianceId, feeding the
+    # boost-remaining countdown sensor. The cloud exposes no expiry field —
+    # BoostDuration is a configured length, not a countdown — so the start
+    # time and chosen duration are recorded here when Home Assistant starts a
+    # boost and restored across restarts by the sensor itself. A boost begun
+    # on the heater or in the app has no start time here and reads unknown
+    # (#302).
+    boost_starts: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Hot-water holiday end times and the timers that clear Holiday at them.
     holiday: HolidayManager | None = None
 

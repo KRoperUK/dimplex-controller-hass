@@ -13,10 +13,17 @@ prefers it over the entry-wide ``CONF_BOOST_DURATION`` option.
 The schedule-profile select is a *control* entity: choosing a value applies
 that schedule profile (user timer / home all day / out all day) to the heater
 through the API, mirroring the official app's schedule picker (#314).
+
+The operating-mode select is a *control* entity too: choosing ``manual`` holds
+a manual setpoint and choosing ``timer`` returns the heater to its user-timer
+schedule. In User Timer a QRAD ignores every setpoint and boost the
+integration sends, so without this Home Assistant could never put a heater
+back into Manual itself — only the app could (#272, #299).
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
@@ -29,12 +36,25 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .api import DimplexApiClient
 from .capabilities import capabilities_for_row
-from .const import SCHEDULE_PROFILES, schedule_profile
+from .const import (
+    MANUAL_FLAG,
+    OPTIMISTIC_UPDATES,
+    SCHEDULE_PROFILES,
+    TIMER_FLAG,
+    has_any_mode,
+    sane_temperature,
+    schedule_profile,
+)
 from .entity import DimplexEntity
 from .errors import control_errors
 
+_LOGGER = logging.getLogger(__name__)
+
 BOOST_DURATION_KEY = "boost_duration"
 SCHEDULE_PROFILE_KEY = "schedule_profile"
+OPERATING_MODE_KEY = "operating_mode"
+
+OPERATING_MODES: tuple[str, ...] = ("manual", "timer")
 
 
 async def async_setup_entry(
@@ -56,6 +76,10 @@ async def async_setup_entry(
         # app's picker covers; cylinders have neither (#314).
         if getattr(caps, "timer", False) and not getattr(caps, "hot_water", False):
             entities.append(DimplexScheduleProfileSelect(runtime.status, entry, row, runtime.api))
+            # Home Assistant could never put a heater back into Manual itself —
+            # only the app could — which left QRADs stuck ignoring setpoints
+            # in User Timer (#272, #299). Same gate: a heater, not a cylinder.
+            entities.append(DimplexOperatingModeSelect(runtime.status, entry, row, runtime.api))
     async_add_entities(entities)
 
 
@@ -155,4 +179,96 @@ class DimplexScheduleProfileSelect(DimplexEntity, SelectEntity):
             await self._api.async_set_schedule_profile(
                 self._hub.HubId, self._appliance.ApplianceId, SCHEDULE_PROFILES.index(option)
             )
+        await self.coordinator.async_request_refresh()
+
+
+class DimplexOperatingModeSelect(DimplexEntity, SelectEntity):
+    """Put a heater into Manual or back to its user-timer schedule.
+
+    A refusal surfaces as an error to the caller rather than a log line:
+    silently staying in User Timer is exactly how heaters became
+    uncontrollable in the first place (#272).
+    """
+
+    entity_description: SelectEntityDescription
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+        api: DimplexApiClient,
+    ) -> None:
+        super().__init__(
+            coordinator,
+            config_entry,
+            appliance_row,
+            SelectEntityDescription(key=OPERATING_MODE_KEY, translation_key=OPERATING_MODE_KEY),
+        )
+        self._attr_options = list(OPERATING_MODES)
+        self._api = api
+        # Value written but not yet confirmed by a poll, like the climate
+        # entity's optimistic hold (#198, #210).
+        self._pending: str | None = None
+        self._pending_updates_left = 0
+
+    @property
+    def current_option(self) -> str | None:
+        """Manual/timer from the live mode bits, preferring a pending write."""
+        if self._pending is not None:
+            return self._pending
+        return self._live_option
+
+    @property
+    def _live_option(self) -> str | None:
+        """Map the live ``ApplianceModes`` bitfield, or ``None`` when unknown."""
+        status = self._status
+        if status is None:
+            return None
+        if has_any_mode(status, MANUAL_FLAG):
+            return "manual"
+        if has_any_mode(status, TIMER_FLAG):
+            return "timer"
+        return None
+
+    def _handle_coordinator_update(self) -> None:
+        """Retire the pending write once the cloud confirms it or it expires."""
+        if self._pending is not None:
+            if self._live_option == self._pending:
+                self._pending = None
+            else:
+                self._pending_updates_left -= 1
+                if self._pending_updates_left <= 0:
+                    _LOGGER.debug(
+                        "%s never confirmed the operating mode %s; falling back to what it reports",
+                        self._appliance.FriendlyName,
+                        self._pending,
+                    )
+                    self._pending = None
+        super()._handle_coordinator_update()
+
+    async def async_select_option(self, option: str) -> None:
+        """Apply the chosen operating mode to the appliance."""
+        name = getattr(self._appliance, "FriendlyName", None) or "Dimplex appliance"
+        if option not in OPERATING_MODES:
+            raise ValueError(f"{option} is not a valid operating mode for {name}")
+        status = self._status
+        if option == "manual":
+            temperature = sane_temperature(getattr(status, "ActiveSetPointTemperature", None)) if status else None
+            if temperature is None and status is not None:
+                temperature = sane_temperature(getattr(status, "NormalTemperature", None))
+            if temperature is None:
+                temperature = 21.0
+            with control_errors(name):
+                await self._api.async_set_manual(self._hub.HubId, self._appliance.ApplianceId, temperature=temperature)
+        else:
+            with control_errors(name):
+                await self._api.async_set_schedule_profile(
+                    self._hub.HubId,
+                    self._appliance.ApplianceId,
+                    SCHEDULE_PROFILES.index("user_timer"),
+                )
+        self._pending = option
+        self._pending_updates_left = OPTIMISTIC_UPDATES
+        self.async_write_ha_state()
         await self.coordinator.async_request_refresh()

@@ -25,7 +25,22 @@
       "last_telem": {
         "default": "mdi:clock-outline"
       },
+      "operating_mode": {
+        "default": "mdi:cog"
+      },
+      "status_two": {
+        "default": "mdi:numeric-2-box-outline"
+      },
+      "boost_remaining": {
+        "default": "mdi:timer-outline"
+      },
       "rated_power": {
+        "default": "mdi:flash"
+      },
+      "top_element_power": {
+        "default": "mdi:flash"
+      },
+      "bottom_element_power": {
         "default": "mdi:flash"
       },
       "charge_capacity": {
@@ -105,6 +120,13 @@
     "select": {
       "boost_duration": {
         "default": "mdi:timer-cog-outline"
+      },
+      "operating_mode": {
+        "default": "mdi:cog",
+        "state": {
+          "manual": "mdi:hand-back-right",
+          "timer": "mdi:calendar-clock"
+        }
       },
       "schedule_profile": {
         "default": "mdi:calendar-edit"

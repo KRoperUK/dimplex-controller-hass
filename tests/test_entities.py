@@ -292,3 +292,189 @@ async def test_a_cylinder_gets_a_diagnostic_hot_water_sensor(hass):
     await _setup_payload(hass, payload)
 
     assert _hot_water_keys(hass) == {"test_appliance-1_hot_water_available"}
+
+
+def _status_row(*, modes=None, status_two=None, last_telem=None, prov=None, status_extra=None):
+    """Build a status-backed row for direct sensor unit tests."""
+    hub = SimpleNamespace(HubId="hub-1")
+    zone = SimpleNamespace(ZoneName="Living Room")
+    appliance = SimpleNamespace(
+        ApplianceId="appliance-1",
+        FriendlyName="Heater",
+        ApplianceModel="QRAD200E",
+        ApplianceType="QRad",
+        LastTelemDate=last_telem,
+        automatic_provisioning=prov,
+    )
+    status_kwargs = {
+        "ApplianceModes": modes,
+        "StatusTwo": status_two,
+        "RoomTemperature": 20.0,
+        "ComfortStatus": False,
+        "BoostDuration": 0,
+    }
+    if status_extra:
+        status_kwargs.update(status_extra)
+    status = SimpleNamespace(**status_kwargs)
+    coordinator = SimpleNamespace(
+        data={"appliances": [{"hub": hub, "zone": zone, "appliance": appliance, "status": status}]}
+    )
+    config_entry = SimpleNamespace(entry_id="test", runtime_data=SimpleNamespace(boost_starts={}))
+    return coordinator, config_entry, {"hub": hub, "zone": zone, "appliance": appliance, "status": status}
+
+
+async def test_operating_mode_sensor_reports_flag_name_and_raw():
+    """A known mode bit reports its flag name plus the raw integer (#298)."""
+    from custom_components.dimplex.sensor import DimplexOperatingModeSensor
+
+    coordinator, config_entry, row = _status_row(modes=128)
+    sensor = DimplexOperatingModeSensor(coordinator, config_entry, row)
+
+    assert sensor.native_value == "MANUAL"
+    assert sensor.extra_state_attributes == {
+        "active_modes": ["MANUAL"],
+        "raw_modes": 128,
+        "appliance_modes_known": True,
+    }
+
+
+async def test_operating_mode_sensor_exposes_unknown_bits_raw():
+    """An unknown bit reports the raw value without inventing a name (#298)."""
+    from custom_components.dimplex.sensor import DimplexOperatingModeSensor
+
+    coordinator, config_entry, row = _status_row(modes=1 << 20)
+    sensor = DimplexOperatingModeSensor(coordinator, config_entry, row)
+
+    assert sensor.native_value == str(1 << 20)
+    assert sensor.extra_state_attributes["active_modes"] == []
+    assert sensor.extra_state_attributes["raw_modes"] == 1 << 20
+    assert sensor.extra_state_attributes["appliance_modes_known"] is True
+
+
+async def test_operating_mode_sensor_unknown_when_modes_absent():
+    """None modes report unknown rather than a fabricated state (#298)."""
+    from custom_components.dimplex.sensor import DimplexOperatingModeSensor
+
+    coordinator, config_entry, row = _status_row(modes=None)
+    sensor = DimplexOperatingModeSensor(coordinator, config_entry, row)
+
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes["appliance_modes_known"] is False
+
+
+async def test_operating_mode_does_not_special_case_bit_64():
+    """Firmware-28 Manual-as-64 decodes as ECO, exactly like the library (#298)."""
+    from custom_components.dimplex.sensor import DimplexOperatingModeSensor
+
+    coordinator, config_entry, row = _status_row(modes=64)
+    sensor = DimplexOperatingModeSensor(coordinator, config_entry, row)
+
+    assert sensor.native_value == "ECO"
+    assert sensor.extra_state_attributes["raw_modes"] == 64
+
+
+async def test_last_telem_reads_the_appliance_field_and_filters_year_one():
+    """The appliance LastTelemDate renders; the .NET unset date reads unknown (#301)."""
+    from datetime import datetime
+
+    from custom_components.dimplex.sensor import STATUS_SENSORS
+
+    description = next(d for d in STATUS_SENSORS if d.key == "last_telem")
+    real = datetime(2026, 10, 20, 12, 0, 0)
+    _, _, row = _status_row(last_telem=real)
+    assert description.value_fn(row["status"], row["appliance"]) == real
+
+    _, _, row = _status_row(last_telem=datetime(1, 1, 1))
+    assert description.value_fn(row["status"], row["appliance"]) is None
+
+
+async def test_element_power_sensors_read_provisioning(hass):
+    """Top/bottom element ratings appear next to rated_power (#300)."""
+    from custom_components.dimplex.sensor import STATUS_SENSORS
+
+    prov = SimpleNamespace(rated_power=2.0, top_element_power_rating=1.66, bottom_element_power_rating=0.34)
+    _, _, row = _status_row(prov=prov)
+    by_key = {d.key: d for d in STATUS_SENSORS}
+    assert by_key["rated_power"].value_fn(None, row["appliance"]) == 2.0
+    assert by_key["top_element_power"].value_fn(None, row["appliance"]) == 1.66
+    assert by_key["bottom_element_power"].value_fn(None, row["appliance"]) == 0.34
+
+
+async def test_boost_remaining_unknown_without_a_recorded_start():
+    """A boost begun outside Home Assistant reads unknown, by design (#302)."""
+    from custom_components.dimplex.sensor import DimplexBoostRemainingSensor
+
+    coordinator, config_entry, row = _status_row(modes=2)
+    sensor = DimplexBoostRemainingSensor(coordinator, config_entry, row)
+
+    assert sensor.native_value is None
+
+
+async def test_boost_remaining_counts_down_and_reaches_zero():
+    """A boost started by Home Assistant counts down, then reports zero (#302)."""
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+
+    from custom_components.dimplex.sensor import DimplexBoostRemainingSensor
+
+    coordinator, config_entry, row = _status_row(modes=2)
+    started = dt_util.utcnow() - timedelta(minutes=50)
+    config_entry.runtime_data.boost_starts["appliance-1"] = {
+        "started_at": started.isoformat(),
+        "duration_minutes": 60,
+    }
+    sensor = DimplexBoostRemainingSensor(coordinator, config_entry, row)
+
+    remaining = sensor.native_value
+    assert remaining is not None and 9.0 < remaining < 11.0
+
+    # Past the duration with the boost bit still set: reached zero.
+    config_entry.runtime_data.boost_starts["appliance-1"] = {
+        "started_at": (dt_util.utcnow() - timedelta(minutes=70)).isoformat(),
+        "duration_minutes": 60,
+    }
+    assert sensor.native_value == 0.0
+
+
+async def test_boost_remaining_retires_once_the_cloud_confirms_the_end():
+    """After the boost bit clears, a spent countdown reads unknown (#302)."""
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+
+    from custom_components.dimplex.sensor import DimplexBoostRemainingSensor
+
+    coordinator, config_entry, row = _status_row(modes=1)
+    config_entry.runtime_data.boost_starts["appliance-1"] = {
+        "started_at": (dt_util.utcnow() - timedelta(minutes=70)).isoformat(),
+        "duration_minutes": 60,
+    }
+    sensor = DimplexBoostRemainingSensor(coordinator, config_entry, row)
+
+    assert sensor.native_value is None
+    assert "appliance-1" not in config_entry.runtime_data.boost_starts
+
+
+async def test_new_state_sensors_are_registered(hass):
+    """Operating mode, StatusTwo, element powers and boost countdown all exist."""
+    from homeassistant.helpers import entity_registry as er
+
+    payload = _mock_coordinator_payload(appliance_modes=1)
+    row = payload["appliances"][0]
+    row["appliance"].ApplianceType = "QRad"
+    row["status"].StatusTwo = 0
+    row["appliance"].automatic_provisioning = SimpleNamespace(
+        rated_power=2.0, top_element_power_rating=1.66, bottom_element_power_rating=0.34
+    )
+    await _setup_payload(hass, payload)
+
+    registry = er.async_get(hass)
+    for key in (
+        "operating_mode",
+        "status_two",
+        "top_element_power",
+        "bottom_element_power",
+        "boost_remaining",
+    ):
+        assert registry.async_get_entity_id("sensor", DOMAIN, f"test_appliance-1_{key}") is not None, key

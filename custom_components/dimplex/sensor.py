@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from dimplex_controller import summarise_energy
+from dimplex_controller import ApplianceModeFlag, summarise_energy
 from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
@@ -28,6 +28,7 @@ from homeassistant.util import dt as dt_util
 
 from .capabilities import capabilities_for_row
 from .const import (
+    BOOST_FLAG,
     DOMAIN,
     HEAT_DEMAND_FLAGS,
     HOT_WATER_MODES,
@@ -58,6 +59,22 @@ class _PeakExtraStoredData(SensorExtraStoredData):
     def as_dict(self) -> dict[str, Any]:
         """Serialise the state and the peak together."""
         return {**super().as_dict(), "peak_total": self.peak_total}
+
+
+@dataclass
+class _BoostExtraStoredData(SensorExtraStoredData):
+    """Restore data for the boost countdown: the state plus the engage record."""
+
+    started_at: str | None = None
+    duration_minutes: int | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Serialise the state and the engage record together."""
+        return {
+            **super().as_dict(),
+            "started_at": self.started_at,
+            "duration_minutes": self.duration_minutes,
+        }
 
 
 def _restored_peak(last_extra: Any | None) -> float | None:
@@ -132,9 +149,39 @@ def _provisioning_attr(attr: str) -> Callable[[Any, Any], Any]:
 
 
 def _last_telem(status: Any, appliance: Any) -> Any:
-    if status is not None and getattr(status, "LastTelemDate", None) is not None:
-        return status.LastTelemDate
-    return getattr(appliance, "LastTelemDate", None)
+    """Return the appliance's ``LastTelemDate`` — the last cloud contact.
+
+    Read from the appliance, which is the field the library defines
+    (``ApplianceStatus`` carries no ``LastTelemDate``). The cloud's .NET
+    "unset" value (``0001-01-01T00:00:00``, year 1) maps to unknown rather
+    than rendering as year 1 — the library maps it to ``None`` on current
+    versions, and this filters it defensively for older ones (#301).
+    """
+    value = getattr(appliance, "LastTelemDate", None)
+    if isinstance(value, datetime) and value.year == 1:
+        return None
+    return value
+
+
+def _operating_mode_names(modes: Any) -> list[str] | None:
+    """Decode a raw ``ApplianceModes`` bitfield into flag names.
+
+    Returns ``None`` when modes are unknown. Bit 64 intentionally maps to
+    ``ECO`` here exactly as the library does — firmware 28 reports 64 while
+    the app shows Manual, but that mapping is corrected only by a hardware
+    probe, never by guessing in code (#298).
+    """
+    if modes is None:
+        return None
+    try:
+        raw = int(modes)
+    except (TypeError, ValueError):
+        return None
+    try:
+        flags = ApplianceModeFlag(raw)
+    except ValueError:
+        return None
+    return [member.name for member in ApplianceModeFlag if member.value and member in flags and member.name]
 
 
 def _estimated_power_kw(status: Any, appliance: Any) -> float | None:
@@ -217,9 +264,14 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         translation_key="last_telem",
         device_class=SensorDeviceClass.TIMESTAMP,
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
         value_fn=_last_telem,
         available_when_no_status=True,
+    ),
+    DimplexSensorEntityDescription(
+        key="status_two",
+        translation_key="status_two",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_status_attr("StatusTwo"),
     ),
     DimplexSensorEntityDescription(
         key="rated_power",
@@ -230,6 +282,28 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=_provisioning_attr("rated_power"),
+        available_when_no_status=True,
+    ),
+    DimplexSensorEntityDescription(
+        key="top_element_power",
+        translation_key="top_element_power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_provisioning_attr("top_element_power_rating"),
+        available_when_no_status=True,
+    ),
+    DimplexSensorEntityDescription(
+        key="bottom_element_power",
+        translation_key="bottom_element_power",
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.KILO_WATT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_provisioning_attr("bottom_element_power_rating"),
         available_when_no_status=True,
     ),
     DimplexSensorEntityDescription(
@@ -389,6 +463,13 @@ async def async_setup_entry(
             for description in STATUS_SENSORS
             if description.capability is None or getattr(caps, description.capability, False)
         )
+        # Live mode decoding needs no capability: every overview carries the
+        # bitfield, and the unknown-bit path reports the raw integer (#298).
+        devices.append(DimplexOperatingModeSensor(status, entry, appliance_row))
+        # Countdown only exists where a boost can be started; a boost begun
+        # outside Home Assistant reads unknown by design (#302).
+        if getattr(caps, "boost", False):
+            devices.append(DimplexBoostRemainingSensor(status, entry, appliance_row))
         # Energy history only exists for appliances the cloud meters. Other
         # appliances would get four permanently unavailable entities, two
         # enabled by default, recreated on every reload (#280).
@@ -435,6 +516,180 @@ class DimplexSensor(DimplexEntity, SensorEntity):
     def native_value(self) -> Any:
         """Return the sensor value."""
         return self.entity_description.value_fn(self._status, self._appliance)
+
+
+class DimplexOperatingModeSensor(DimplexEntity, SensorEntity):
+    """Live operating mode decoded from the ``ApplianceModes`` bitfield.
+
+    The schedule sensor reports the stored timer mode, which is the mode the
+    user left behind — not what the appliance is doing. This sensor reports
+    the live bitfield instead: flag names as the state, with the raw integer
+    and the decoded list as attributes so a mapping surprise (like firmware
+    28 reporting ECO/64 while the app shows Manual) stays visible rather
+    than being guessed away in code (#298).
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "operating_mode"
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+    ) -> None:
+        super().__init__(
+            coordinator,
+            config_entry,
+            appliance_row,
+            SensorEntityDescription(
+                key="operating_mode",
+                translation_key="operating_mode",
+            ),
+            unique_id_suffix="operating_mode",
+        )
+        self._attr_unique_id = f"{config_entry.entry_id}_{self._appliance.ApplianceId}_operating_mode"
+
+    @property
+    def native_value(self) -> str | None:
+        """Comma-joined flag names, the raw integer for unknown bits, else unknown."""
+        status = self._status
+        if status is None:
+            return None
+        raw = getattr(status, "ApplianceModes", None)
+        if raw is None:
+            return None
+        try:
+            raw_int = int(raw)
+        except (TypeError, ValueError):
+            return None
+        names = _operating_mode_names(raw_int)
+        if names:
+            return ", ".join(names)
+        return str(raw_int)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Decoded list, raw integer and whether the field was known."""
+        status = self._status
+        raw = getattr(status, "ApplianceModes", None) if status is not None else None
+        try:
+            raw_int = int(raw) if raw is not None else None
+        except (TypeError, ValueError):
+            raw_int = None
+        names = _operating_mode_names(raw_int) if raw_int is not None else None
+        return {
+            "active_modes": names if names is not None else [],
+            "raw_modes": raw_int,
+            "appliance_modes_known": raw_int is not None,
+        }
+
+
+class DimplexBoostRemainingSensor(DimplexEntity, RestoreSensor):
+    """Minutes of HA-initiated boost left, synthesised from the engage time.
+
+    The cloud sends no expiry — ``BoostDuration`` is a configured length that
+    can outlive the boost itself — so when Home Assistant starts a boost the
+    start time and chosen duration are recorded (and restored across
+    restarts) and this counts down from there, reaching zero. A boost begun
+    on the heater or in the app has no recorded start and reads unknown;
+    guessing from ``LastTelemDate`` would invent precision the cloud never
+    sent (#302).
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "boost_remaining"
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+    ) -> None:
+        super().__init__(
+            coordinator,
+            config_entry,
+            appliance_row,
+            SensorEntityDescription(
+                key="boost_remaining",
+                translation_key="boost_remaining",
+            ),
+            unique_id_suffix="boost_remaining",
+        )
+        self._attr_unique_id = f"{config_entry.entry_id}_{self._appliance.ApplianceId}_boost_remaining"
+
+    @property
+    def _record(self) -> dict[str, Any] | None:
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        starts = getattr(runtime, "boost_starts", None) if runtime is not None else None
+        if not isinstance(starts, dict):
+            return None
+        record = starts.get(self._appliance.ApplianceId)
+        return record if isinstance(record, dict) else None
+
+    @property
+    def native_value(self) -> float | None:
+        """Minutes remaining, 0.0 once reached, unknown without a recorded start."""
+        record = self._record
+        if record is None:
+            return None
+        try:
+            duration = float(record["duration_minutes"])
+            started_at = dt_util.parse_datetime(str(record["started_at"]))
+        except (KeyError, TypeError, ValueError):
+            return None
+        if started_at is None:
+            return None
+        elapsed = (dt_util.utcnow() - started_at).total_seconds() / 60
+        remaining = duration - elapsed
+        if remaining > 0:
+            return round(remaining, 1)
+        # Countdown reached zero: hold 0.0 while the boost bit is still set
+        # (or while the modes are unknown), and retire to unknown once the
+        # cloud confirms the boost ended so a stale 0.0 does not linger.
+        if has_any_mode(self._status, BOOST_FLAG):
+            return 0.0
+        if self._status is None or getattr(self._status, "ApplianceModes", None) is None:
+            return 0.0
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        starts = getattr(runtime, "boost_starts", None) if runtime is not None else None
+        if isinstance(starts, dict):
+            starts.pop(self._appliance.ApplianceId, None)
+        return None
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the recorded boost start across a restart."""
+        await super().async_added_to_hass()
+        runtime = getattr(self.config_entry, "runtime_data", None)
+        if runtime is None or self._appliance.ApplianceId in getattr(runtime, "boost_starts", {}):
+            return
+        last_extra = await self.async_get_last_extra_data()
+        if last_extra is None:
+            return
+        try:
+            saved = last_extra.as_dict()
+        except Exception:  # pragma: no cover - unexpected extra shape
+            return
+        if isinstance(saved, dict) and saved.get("started_at") and saved.get("duration_minutes"):
+            runtime.boost_starts[self._appliance.ApplianceId] = {
+                "started_at": str(saved["started_at"]),
+                "duration_minutes": int(saved["duration_minutes"]),
+            }
+
+    @property
+    def extra_restore_state_data(self) -> SensorExtraStoredData:
+        """Persist the recorded boost start itself, next to the state."""
+        record = self._record
+        started_at = str(record["started_at"]) if record else None
+        duration = int(record["duration_minutes"]) if record else None
+        return _BoostExtraStoredData(
+            self.native_value,
+            self.native_unit_of_measurement,
+            started_at,
+            duration,
+        )
 
 
 _TIMER_MODE_NAMES = {

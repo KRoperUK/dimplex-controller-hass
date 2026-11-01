@@ -180,6 +180,25 @@ async def test_service_resolves_by_entity_id(hass: HomeAssistant) -> None:
     runtime.api.async_set_boost.assert_awaited_once()
 
 
+async def test_set_boost_records_the_engage_time_for_the_countdown(hass: HomeAssistant) -> None:
+    """dimplex.set_boost starts the countdown; clear_boost retires it (#302)."""
+    runtime = _make_runtime()
+    runtime.boost_starts = {}
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_SET_BOOST,
+        {"device_id": device_id, "temperature": 24.0, "duration": 30},
+        blocking=True,
+    )
+    assert runtime.boost_starts["app-1"]["duration_minutes"] == 30
+
+    await hass.services.async_call(DOMAIN, "clear_boost", {"device_id": device_id}, blocking=True)
+    assert "app-1" not in runtime.boost_starts
+
+
 async def test_service_unknown_appliance_raises(hass: HomeAssistant) -> None:
     """A device not present in coordinator data fails the call loudly (#293).
 
