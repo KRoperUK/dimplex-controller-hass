@@ -1,5 +1,39 @@
 # Changelog
 
+## [4.4.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.3.0...v4.4.0) (2026-11-01)
+
+
+### Features
+
+* add schedule-profile select for timer heaters ([2c8979e](https://github.com/KRoperUK/dimplex-controller-hass/commit/2c8979eead2e6d3dea1f399a16c85dc9ce2571cb))
+* add schedule-profile select for timer heaters ([6fec43e](https://github.com/KRoperUK/dimplex-controller-hass/commit/6fec43ebc09fb407452d5acbc10e4f664758bc43)), closes [#314](https://github.com/KRoperUK/dimplex-controller-hass/issues/314)
+* apply saved heating profiles to appliance timers ([#324](https://github.com/KRoperUK/dimplex-controller-hass/issues/324)) ([d91e945](https://github.com/KRoperUK/dimplex-controller-hass/commit/d91e945a6f1b2d8a0570fdf13577dfee4271daef))
+* include per-appliance timer schedule in diagnostics ([764733d](https://github.com/KRoperUK/dimplex-controller-hass/commit/764733d7dc2432a04ce3de5317308a07ed7c7a5e))
+* include per-appliance timer schedule in diagnostics ([db236ae](https://github.com/KRoperUK/dimplex-controller-hass/commit/db236ae18232845423c2a2920ce5fe24574be0de)), closes [#313](https://github.com/KRoperUK/dimplex-controller-hass/issues/313)
+* **tranche-6:** expose the state Home Assistant cannot see ([#321](https://github.com/KRoperUK/dimplex-controller-hass/issues/321)) ([de89050](https://github.com/KRoperUK/dimplex-controller-hass/commit/de89050976b36415a417c2e3f5777de0f567ae99))
+
+
+### Bug Fixes
+
+* a transient auth failure must not force a re-login ([be28cf2](https://github.com/KRoperUK/dimplex-controller-hass/commit/be28cf29926a7a034eafa64aada0607fb7e7dab1))
+* **deps:** require dimplex-controller 0.15.1 ([9ecc41f](https://github.com/KRoperUK/dimplex-controller-hass/commit/9ecc41fb1661cfc4899f9062284d57c547d4a59b))
+* **deps:** require dimplex-controller 0.15.1 ([08a0a00](https://github.com/KRoperUK/dimplex-controller-hass/commit/08a0a00ef28d8bde75d54656f904622181cf989e)), closes [#308](https://github.com/KRoperUK/dimplex-controller-hass/issues/308)
+* derive climate mode, action and preset from live ApplianceModes ([#319](https://github.com/KRoperUK/dimplex-controller-hass/issues/319)) ([51753df](https://github.com/KRoperUK/dimplex-controller-hass/commit/51753dff7aa1d7ec60a2cbdbab379076c75e4251))
+* do not auto-approve major Dependabot bumps ([c236cff](https://github.com/KRoperUK/dimplex-controller-hass/commit/c236cff21b0aaa26ef44057c872ae5d4f65ab2b1)), closes [#289](https://github.com/KRoperUK/dimplex-controller-hass/issues/289)
+* fail the CI gate when the changes job fails ([a095039](https://github.com/KRoperUK/dimplex-controller-hass/commit/a09503999ed488cd82a32e72aea29db1dfffc409)), closes [#286](https://github.com/KRoperUK/dimplex-controller-hass/issues/286)
+* fetch both ends of the commit range in CI ([801068b](https://github.com/KRoperUK/dimplex-controller-hass/commit/801068b0aad03dfe7456779d7964e64851bb86e0)), closes [#288](https://github.com/KRoperUK/dimplex-controller-hass/issues/288)
+* import platform enums from the package root ([#326](https://github.com/KRoperUK/dimplex-controller-hass/issues/326)) ([2384bef](https://github.com/KRoperUK/dimplex-controller-hass/commit/2384befbce493c9bcefec0fefc590bc70d872601))
+* include requirements_dev.txt in the component path filter ([9a5c83d](https://github.com/KRoperUK/dimplex-controller-hass/commit/9a5c83d949665c107ff1ad1a39eab111ef01fc9a)), closes [#287](https://github.com/KRoperUK/dimplex-controller-hass/issues/287)
+* lint-commits must fail on an empty commit range ([aec360f](https://github.com/KRoperUK/dimplex-controller-hass/commit/aec360f330eb5416f89daf4c7851a5fb7499df02)), closes [#288](https://github.com/KRoperUK/dimplex-controller-hass/issues/288)
+* make the CI and repository gates actually gate ([90b130a](https://github.com/KRoperUK/dimplex-controller-hass/commit/90b130a426cfd00e7829f8d324eb19e683b9bdf1))
+* migrate schema validation to probatio ([#305](https://github.com/KRoperUK/dimplex-controller-hass/issues/305)) ([ceaf299](https://github.com/KRoperUK/dimplex-controller-hass/commit/ceaf2995a56f7db5a8d95fa1c55b00f211c8b1ef)), closes [#304](https://github.com/KRoperUK/dimplex-controller-hass/issues/304)
+* persist refreshed tokens when the poll fails ([1d854c1](https://github.com/KRoperUK/dimplex-controller-hass/commit/1d854c1bca1613b6626dad7759bd38d5877e9b9d))
+* read Quantum schedule profile from StatusTwo ([90e1b88](https://github.com/KRoperUK/dimplex-controller-hass/commit/90e1b88d7def0e54596e000fe267f717a3a34617))
+* read Quantum schedule profile from StatusTwo ([2381800](https://github.com/KRoperUK/dimplex-controller-hass/commit/238180072b73eebff2c743124ef2ff7a13bf46b5)), closes [#312](https://github.com/KRoperUK/dimplex-controller-hass/issues/312)
+* survive a flaky cloud without losing credentials ([f5d6228](https://github.com/KRoperUK/dimplex-controller-hass/commit/f5d622864a15b63c31172e7d67652aeb27e8ae10))
+* **tranche-2:** energy data reflects reality ([#318](https://github.com/KRoperUK/dimplex-controller-hass/issues/318)) ([186ca38](https://github.com/KRoperUK/dimplex-controller-hass/commit/186ca3831beaa9ad08433138a0e015d5d3d5fcb3))
+* **tranche-5:** actions and entities stop lying ([#320](https://github.com/KRoperUK/dimplex-controller-hass/issues/320)) ([599cddf](https://github.com/KRoperUK/dimplex-controller-hass/commit/599cddf1397f1e43d5662b6ba39a547c3cc75251))
+
 ## [4.3.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.2.0...v4.3.0) (2026-10-18)
 
 
