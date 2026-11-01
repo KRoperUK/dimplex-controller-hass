@@ -16,6 +16,9 @@ from .capabilities import capabilities_for_row
 from .entity import DimplexEntity
 from .holiday import HolidayManager
 
+# Date writes hit the cloud one at a time.
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant,

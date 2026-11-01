@@ -40,6 +40,9 @@ from .const import (
 )
 from .entity import DimplexEntity, resolve_via_device_id
 
+# The coordinator fetches the data; entity updates need no limit.
+PARALLEL_UPDATES = 0
+
 _LOGGER = logging.getLogger(__name__)
 
 

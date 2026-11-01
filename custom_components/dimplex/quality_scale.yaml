@@ -1,0 +1,145 @@
+# Integration quality scale for the Dimplex integration.
+#
+# The manifest claims Silver. Every Bronze and Silver rule below is either
+# implemented (done) or genuinely exempt; Gold rules are listed individually so
+# the gap to Gold is explicit rather than implied.
+#
+# Rule keys and tiers follow script/hassfest/quality_scale.py in Home Assistant
+# core: 20 Bronze, 10 Silver, 21 Gold, 3 Platinum.
+rules:
+  # ── Bronze ──────────────────────────────────────────────────
+  action-setup: done
+  appropriate-polling:
+    status: done
+    comment: |
+      Status and energy poll on separate, user-configurable intervals. The
+      defaults (60 s status, 15 min energy) match the cloud's own refresh rate;
+      schedule reads are cached for 15 minutes.
+  brands:
+    status: done
+    comment: |
+      Brand assets ship in custom_components/dimplex/brand/ (icon and logo in
+      light and dark variants), which is where HACS custom integrations load
+      them from.
+  common-modules: done
+  config-flow: done
+  config-flow-test-coverage: done
+  dependency-transparency: done
+  docs-actions: done
+  docs-conditions:
+    status: exempt
+    comment: The integration provides no conditions.
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions:
+    status: done
+    comment: Documented under "Uninstalling" in docs/reference/options.md.
+  docs-triggers:
+    status: exempt
+    comment: The integration provides no triggers.
+  entity-event-setup:
+    status: done
+    comment: |
+      Coordinator entities subscribe in async_added_to_hass (via
+      CoordinatorEntity) and are removed through async_on_remove.
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry: done
+
+  # ── Silver ──────────────────────────────────────────────────
+  action-exceptions: done
+  config-entry-unloading: done
+  docs-configuration-parameters:
+    status: done
+    comment: Documented in docs/reference/options.md.
+  docs-installation-parameters:
+    status: done
+    comment: Documented in docs/start/connect.md.
+  entity-unavailable: done
+  integration-owner: done
+  log-when-unavailable:
+    status: done
+    comment: |
+      Both coordinators surface failures as UpdateFailed, so Home Assistant's
+      DataUpdateCoordinator logs once when the cloud becomes unreachable and
+      once when it recovers, without duplicate lines per entity.
+  parallel-updates: done
+  reauthentication-flow: done
+  test-coverage:
+    status: done
+    comment: |
+      Every module is above 95% line coverage; the suite currently reports
+      99% overall. pyproject.toml sets fail_under = 95 so a regression fails CI.
+
+  # ── Gold ────────────────────────────────────────────────────
+  devices: done
+  diagnostics: done
+  discovery:
+    status: exempt
+    comment: |
+      The Dimplex service is cloud-only. Appliances are reached through the
+      vendor's account API and expose no local discovery protocol (SSDP, mDNS,
+      DHCP, Zeroconf or USB), so there is nothing to discover.
+  discovery-update-info:
+    status: exempt
+    comment: Follows from discovery being exempt; the cloud endpoint is fixed.
+  docs-data-update:
+    status: done
+    comment: Polling behaviour is documented under "Polling" in docs/reference/options.md.
+  docs-examples:
+    status: done
+    comment: Automation examples and blueprints are in docs/use/automations.md.
+  docs-known-limitations:
+    status: done
+    comment: |
+      Limitations are documented in docs/use/temperature.md ("What the cloud
+      will not let you do"), docs/use/energy.md and docs/reference/appliances.md.
+  docs-supported-devices:
+    status: done
+    comment: Documented in docs/reference/appliances.md.
+  docs-supported-functions:
+    status: done
+    comment: Documented in docs/reference/entities.md.
+  docs-troubleshooting:
+    status: done
+    comment: Documented in docs/help/troubleshooting.md.
+  docs-use-cases:
+    status: done
+    comment: Covered by "What you get" in docs/index.md and the docs/use/ pages.
+  dynamic-devices:
+    status: todo
+    comment: |
+      Appliances are read on every poll, but entities are only created during
+      setup. An appliance added to the account after setup appears after a
+      reload rather than immediately.
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default: done
+  entity-translations:
+    status: done
+    comment: |
+      Every entity sets a translation_key and the names live in
+      translations/en.json, which is the file custom integrations load at
+      runtime (strings.json is the core-integration source file).
+  exception-translations: done
+  icon-translations: done
+  reconfiguration-flow:
+    status: exempt
+    comment: |
+      The only setup settings are the account credentials, which the
+      reauthentication flow already replaces in place. Everything else is an
+      option, editable from the options flow without removing the entry.
+  repair-issues: done
+  stale-devices: done
+
+  # ── Platinum ────────────────────────────────────────────────
+  async-dependency: done
+  inject-websession:
+    status: done
+    comment: The Home Assistant aiohttp session is passed into the library client.
+  strict-typing:
+    status: done
+    comment: mypy runs with strict = true over custom_components/dimplex in CI.

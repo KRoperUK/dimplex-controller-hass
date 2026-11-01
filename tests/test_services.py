@@ -212,7 +212,7 @@ async def test_service_unknown_appliance_raises(hass: HomeAssistant) -> None:
     entry = await _register_entry(hass, runtime)
     device_id = await _device_id(hass, entry)
 
-    with pytest.raises(HomeAssistantError, match="Could not resolve"):
+    with pytest.raises(HomeAssistantError, match="unknown_appliance"):
         await hass.services.async_call(
             DOMAIN,
             SERVICE_SET_BOOST,
@@ -357,9 +357,9 @@ async def test_advance_services(hass: HomeAssistant) -> None:
 @pytest.mark.parametrize(
     ("adapter_error", "expected_message"),
     [
-        ("ControlRejected", "rejected this control"),
-        ("CannotConnect", "Could not reach the Dimplex cloud"),
-        ("InvalidAuth", "authentication failed"),
+        ("ControlRejected", "control_rejected"),
+        ("CannotConnect", "cannot_connect"),
+        ("InvalidAuth", "invalid_auth"),
     ],
 )
 async def test_action_failures_surface_a_readable_error(
@@ -403,13 +403,16 @@ async def test_action_error_message_names_the_action(hass: HomeAssistant) -> Non
     entry = await _register_entry(hass, runtime)
     device_id = await _device_id(hass, entry)
 
-    with pytest.raises(HomeAssistantError, match=r"dimplex\.set_boost"):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await hass.services.async_call(
             DOMAIN,
             SERVICE_SET_BOOST,
             {"device_id": device_id},
             blocking=True,
         )
+
+    assert exc_info.value.translation_key == "control_rejected"
+    assert exc_info.value.translation_placeholders == {"target": "dimplex.set_boost"}
 
 
 def _make_schedule_runtime(*, hub_id: str = "hub-1", timer_mode=1):
@@ -499,7 +502,7 @@ async def test_copy_schedule_refuses_to_copy_to_only_some_targets(hass: HomeAssi
     source_device_id = await _device_id(hass, entry, "app-1")
     good_target = await _device_id(hass, entry, "app-2")
 
-    with pytest.raises(HomeAssistantError, match="no schedule was copied"):
+    with pytest.raises(HomeAssistantError, match="schedule_copy_unresolved"):
         await hass.services.async_call(
             DOMAIN,
             SERVICE_COPY_SCHEDULE,
@@ -522,7 +525,7 @@ async def test_copy_schedule_refuses_a_target_on_another_hub(hass: HomeAssistant
     other_entry = await _register_entry(hass, other_runtime, entry_id="svc-entry-2")
     remote_device_id = await _device_id(hass, other_entry, "app-2")
 
-    with pytest.raises(HomeAssistantError, match="same hub"):
+    with pytest.raises(HomeAssistantError, match="schedule_copy_different_hub"):
         await hass.services.async_call(
             DOMAIN,
             SERVICE_COPY_SCHEDULE,
@@ -567,7 +570,7 @@ async def test_set_period_setpoint_reports_a_missing_period_readably(hass: HomeA
     entry = await _register_entry(hass, runtime)
     device_id = await _device_id(hass, entry)
 
-    with pytest.raises(HomeAssistantError, match="Hallway Heater has no schedule period starting 06:00:00 on monday"):
+    with pytest.raises(HomeAssistantError, match="schedule_period_not_found"):
         await hass.services.async_call(
             DOMAIN,
             SERVICE_SET_PERIOD_SETPOINT,
@@ -631,7 +634,7 @@ async def test_hot_water_actions_refuse_an_appliance_that_is_not_a_cylinder(hass
             "custom_components.dimplex.services.capabilities_for_row",
             return_value=LocalCapabilities(hot_water=False),
         ),
-        pytest.raises(HomeAssistantError, match="does not support this control"),
+        pytest.raises(HomeAssistantError, match="unsupported_control"),
     ):
         await hass.services.async_call(
             DOMAIN,
@@ -687,7 +690,7 @@ async def test_hot_water_hygiene_refuses_an_appliance_without_hygiene(hass: Home
             "custom_components.dimplex.services.capabilities_for_row",
             return_value=LocalCapabilities(hot_water=True, hygiene=False),
         ),
-        pytest.raises(HomeAssistantError, match="does not support this control"),
+        pytest.raises(HomeAssistantError, match="unsupported_control"),
     ):
         await hass.services.async_call(
             DOMAIN,
@@ -715,7 +718,7 @@ async def test_advance_is_refused_for_an_appliance_without_one(hass: HomeAssista
             "custom_components.dimplex.services.capabilities_for_row",
             return_value=LocalCapabilities(hot_water=True, climate=False, advance=False),
         ),
-        pytest.raises(HomeAssistantError, match="does not support this control"),
+        pytest.raises(HomeAssistantError, match="unsupported_control"),
     ):
         await hass.services.async_call(
             DOMAIN,
@@ -798,7 +801,7 @@ async def test_refresh_unknown_target_raises(hass: HomeAssistant) -> None:
     entry = await _register_entry(hass, runtime)
     device_id = await _device_id(hass, entry)
 
-    with pytest.raises(HomeAssistantError, match="Could not resolve"):
+    with pytest.raises(HomeAssistantError, match="unknown_appliance"):
         await hass.services.async_call(DOMAIN, SERVICE_REFRESH, {"device_id": device_id}, blocking=True)
 
     runtime.status.async_refresh.assert_not_awaited()
@@ -867,7 +870,7 @@ async def test_apply_heating_profile_unknown_name_lists_what_exists(hass: HomeAs
     entry = await _register_entry(hass, runtime)
     device_id = await _device_id(hass, entry)
 
-    with pytest.raises(HomeAssistantError, match='No saved heating profile named "Missing"'):
+    with pytest.raises(HomeAssistantError, match="profile_not_found"):
         await hass.services.async_call(
             DOMAIN,
             SERVICE_APPLY_HEATING_PROFILE,
@@ -887,11 +890,217 @@ async def test_apply_heating_profile_needs_exactly_one_identifier(hass: HomeAssi
     entry = await _register_entry(hass, runtime)
     device_id = await _device_id(hass, entry)
 
-    with pytest.raises(HomeAssistantError, match="exactly one"):
+    with pytest.raises(HomeAssistantError, match="profile_target_required"):
         await hass.services.async_call(
             DOMAIN,
             SERVICE_APPLY_HEATING_PROFILE,
             {"device_id": device_id, **data},
+            blocking=True,
+        )
+
+    runtime.api.async_apply_heating_profile.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Remaining target-resolution branches
+# ---------------------------------------------------------------------------
+
+
+def test_parse_unique_id_rejects_unusable_values() -> None:
+    """An absent, foreign or suffix-less unique id yields no appliance."""
+    assert _appliance_id_from_unique_id("entry1", None) is None
+    assert _appliance_id_from_unique_id("entry1", "other_app") is None
+    assert _appliance_id_from_unique_id("entry1", "entry1_app") == "app"
+
+
+async def test_helpers_without_a_loaded_entry(hass: HomeAssistant) -> None:
+    """Every helper reports "no entry" instead of raising when the entry is gone."""
+    from homeassistant.exceptions import ServiceValidationError
+
+    from custom_components.dimplex.const import TIMER_USER
+    from custom_components.dimplex.services import (
+        _capabilities_for,
+        _force_refresh,
+        _invalidate_schedules,
+        _resolve_appliance_id,
+        _runtime_for,
+        _source_timer_mode,
+    )
+
+    assert _runtime_for(hass, "missing") is None
+    assert _capabilities_for(hass, "missing", "app") is None
+    assert await _force_refresh(hass, "missing") is False
+    _invalidate_schedules(hass, "missing")
+    assert _source_timer_mode(hass, "missing", "app") == TIMER_USER
+
+    with pytest.raises(ServiceValidationError) as caught:
+        _resolve_appliance_id(hass, "missing", "app")
+    assert caught.value.translation_key == "no_loaded_entry"
+
+
+async def test_capabilities_for_an_appliance_that_is_not_in_the_snapshot(hass: HomeAssistant) -> None:
+    """A loaded entry whose snapshot has no matching row resolves no capabilities."""
+    from custom_components.dimplex.services import _capabilities_for
+
+    runtime = _make_runtime()
+    await _register_entry(hass, runtime)
+
+    assert _capabilities_for(hass, "svc-entry", "not-there") is None
+
+
+async def test_resolve_device_id_falls_back_to_config_entries(hass: HomeAssistant) -> None:
+    """A device without ``config_entry_id`` still resolves through ``config_entries``."""
+    from homeassistant.exceptions import ServiceValidationError
+
+    from custom_components.dimplex.services import _resolve_device_id
+
+    device = SimpleNamespace(
+        config_entry_id=None,
+        config_entries={"missing"},
+        identifiers={(DOMAIN, "app-1")},
+    )
+    registry = SimpleNamespace(async_get=lambda device_id: device)
+
+    with (
+        patch("custom_components.dimplex.services.dr.async_get", return_value=registry),
+        pytest.raises(ServiceValidationError) as caught,
+    ):
+        _resolve_device_id(hass, "device-1")
+
+    assert caught.value.translation_key == "no_loaded_entry"
+
+
+async def test_resolve_device_id_without_any_config_entry(hass: HomeAssistant) -> None:
+    """A device with neither entry field is reported as unknown."""
+    from homeassistant.exceptions import ServiceValidationError
+
+    from custom_components.dimplex.services import _resolve_device_id
+
+    device = SimpleNamespace(config_entry_id=None, config_entries=set(), identifiers=set())
+    registry = SimpleNamespace(async_get=lambda device_id: device)
+
+    with (
+        patch("custom_components.dimplex.services.dr.async_get", return_value=registry),
+        pytest.raises(ServiceValidationError) as caught,
+    ):
+        _resolve_device_id(hass, "device-1")
+
+    assert caught.value.translation_key == "unknown_device"
+
+
+async def test_resolve_device_id_without_a_dimplex_identifier(hass: HomeAssistant) -> None:
+    """A device belonging to another integration has no appliance id."""
+    from homeassistant.exceptions import ServiceValidationError
+
+    from custom_components.dimplex.services import _resolve_device_id
+
+    device = SimpleNamespace(
+        config_entry_id="entry-1",
+        config_entries=None,
+        identifiers={("other_integration", "thing")},
+    )
+    registry = SimpleNamespace(async_get=lambda device_id: device)
+
+    with (
+        patch("custom_components.dimplex.services.dr.async_get", return_value=registry),
+        pytest.raises(ServiceValidationError) as caught,
+    ):
+        _resolve_device_id(hass, "device-1")
+
+    assert caught.value.translation_key == "no_appliance_on_device"
+
+
+async def test_resolve_appliance_from_an_entity_without_a_device(hass: HomeAssistant) -> None:
+    """An entity with no device resolves its appliance from the unique id."""
+    from homeassistant.exceptions import ServiceValidationError
+
+    from custom_components.dimplex.services import _resolve_appliance
+
+    # Unknown entity id.
+    registry = SimpleNamespace(async_get=lambda entity_id: None)
+    with (
+        patch("custom_components.dimplex.services.er.async_get", return_value=registry),
+        pytest.raises(ServiceValidationError) as caught,
+    ):
+        await _resolve_appliance(hass, SimpleNamespace(data={"entity_id": "sensor.nope"}))
+    assert caught.value.translation_key == "unknown_entity"
+
+    # Known entity, no device, parseable unique id: reaches the entry lookup.
+    entity = SimpleNamespace(config_entry_id="missing", device_id=None, unique_id="missing_app-1_climate")
+    registry = SimpleNamespace(async_get=lambda entity_id: entity)
+    with (
+        patch("custom_components.dimplex.services.er.async_get", return_value=registry),
+        pytest.raises(ServiceValidationError) as caught,
+    ):
+        await _resolve_appliance(hass, SimpleNamespace(data={"entity_id": "sensor.x"}))
+    assert caught.value.translation_key == "no_loaded_entry"
+
+    # Known entity whose unique id says nothing about an appliance.
+    entity = SimpleNamespace(config_entry_id="missing", device_id=None, unique_id="unrelated")
+    with (
+        patch("custom_components.dimplex.services.er.async_get", return_value=registry),
+        pytest.raises(ServiceValidationError) as caught,
+    ):
+        await _resolve_appliance(hass, SimpleNamespace(data={"entity_id": "sensor.x"}))
+    assert caught.value.translation_key == "no_appliance_on_entity"
+
+    # No target at all.
+    with pytest.raises(ServiceValidationError) as caught:
+        await _resolve_appliance(hass, SimpleNamespace(data={}))
+    assert caught.value.translation_key == "missing_target"
+
+
+async def test_source_timer_mode_falls_back_when_it_is_unparseable(hass: HomeAssistant) -> None:
+    """A non-numeric TimerMode falls back to the user timer."""
+    from custom_components.dimplex.const import TIMER_USER
+    from custom_components.dimplex.services import _source_timer_mode
+
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="source-entry")
+    entry.add_to_hass(hass)
+    entry.runtime_data = SimpleNamespace(
+        status=SimpleNamespace(data={"schedules": {"app-1": SimpleNamespace(TimerMode="weekly")}})
+    )
+
+    assert _source_timer_mode(hass, entry.entry_id, "app-1") == TIMER_USER
+
+
+async def test_apply_heating_profile_ignores_an_unresolved_target(hass: HomeAssistant) -> None:
+    """A resolver that yields nothing ends the action without a write."""
+    runtime = _make_profile_runtime()
+    await _register_entry(hass, runtime)
+
+    with patch("custom_components.dimplex.services._resolve_appliance", AsyncMock(return_value=None)):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_APPLY_HEATING_PROFILE,
+            {"device_id": "device-1", "profile_id": "profile-1"},
+            blocking=True,
+        )
+
+    runtime.api.async_apply_heating_profile.assert_not_awaited()
+
+
+async def test_apply_heating_profile_is_refused_on_a_cylinder(hass: HomeAssistant) -> None:
+    """A cylinder's programme lives on its own endpoint, so this action is refused."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    runtime = _make_profile_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with (
+        patch(
+            "custom_components.dimplex.services.capabilities_for_row",
+            return_value=LocalCapabilities(hot_water=True),
+        ),
+        pytest.raises(HomeAssistantError, match="profile_on_cylinder"),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_APPLY_HEATING_PROFILE,
+            {"device_id": device_id, "profile_id": "profile-1"},
             blocking=True,
         )
 
@@ -913,7 +1122,7 @@ async def test_apply_heating_profile_is_refused_without_a_timer(hass: HomeAssist
             "custom_components.dimplex.services.capabilities_for_row",
             return_value=LocalCapabilities(timer=False),
         ),
-        pytest.raises(HomeAssistantError, match="does not support this control"),
+        pytest.raises(HomeAssistantError, match="unsupported_control"),
     ):
         await hass.services.async_call(
             DOMAIN,

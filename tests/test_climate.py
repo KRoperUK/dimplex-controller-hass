@@ -1328,3 +1328,301 @@ async def test_boost_duration_falls_back_to_the_appliance_default(hass):
         )
 
     assert set_boost.await_args.kwargs["duration_minutes"] == 120
+
+
+# ---------------------------------------------------------------------------
+# Remaining helper and property branches
+# ---------------------------------------------------------------------------
+
+
+def _bare_entity(*, status=None, schedule=None, options=None, boost_minutes=None):
+    """Build a climate entity without the full integration, for property tests."""
+    from custom_components.dimplex.climate import DimplexClimate
+
+    appliance = SimpleNamespace(ApplianceId="appliance-1", FriendlyName="Living Room Heater")
+    row = {
+        "appliance": appliance,
+        "hub": SimpleNamespace(HubId="hub-1"),
+        "zone": SimpleNamespace(ZoneName="Living Room"),
+        "status": status,
+    }
+    entity = object.__new__(DimplexClimate)
+    entity.coordinator = SimpleNamespace(
+        data={
+            "appliances": [row],
+            "schedules": {"appliance-1": schedule} if schedule is not None else {},
+        },
+        async_request_refresh=AsyncMock(),
+    )
+    entity._appliance = appliance
+    entity._hub = row["hub"]
+    entity._product = None
+    entity._optimistic = {}
+    entity._optimistic_updates_left = 0
+    entity._api = AsyncMock()
+    entity.config_entry = SimpleNamespace(
+        entry_id="test",
+        runtime_data=SimpleNamespace(boost_minutes=boost_minutes or {}),
+        options=options or {},
+    )
+    entity.async_write_ha_state = lambda: None
+    entity._hold_optimistic = lambda **fields: None
+    return entity
+
+
+def _status(**overrides):
+    """A minimal status namespace with the fields the climate properties read."""
+    values = {
+        "ApplianceModes": 0,
+        "BoostDuration": 0,
+        "AwayDateTime": None,
+        "EcoStartEnabled": False,
+        "RoomTemperature": 20.0,
+        "ActiveSetPointTemperature": 20.0,
+        "NormalTemperature": 20.0,
+        "BoostTemperature": 25.0,
+        "AwayTemperature": 15.0,
+        "ComfortStatus": False,
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def test_mode_helpers_tolerate_unparseable_values():
+    """A non-numeric mode field or timer mode is "unknown", not a crash."""
+    assert _is_boost_active(SimpleNamespace(ApplianceModes="not-a-number", BoostDuration=0)) is False
+    assert _is_away_active(SimpleNamespace(ApplianceModes="not-a-number", AwayDateTime=None)) is False
+    assert _is_frost_protect_active(SimpleNamespace(ApplianceModes="not-a-number")) is False
+    assert _timer_mode_from_schedule(SimpleNamespace(TimerMode="weekly")) is None
+    assert _timer_mode_from_schedule(SimpleNamespace()) is None
+
+
+def test_mode_helpers_prefer_the_library_property():
+    """A library model that exposes the active property is believed over raw bits."""
+
+    class BoostStatus:
+        ApplianceModes = 0
+        BoostDuration = 0
+
+        @property
+        def is_boost_active(self):
+            return True
+
+    class AwayStatus:
+        ApplianceModes = 0
+        AwayDateTime = None
+
+        @property
+        def is_away_active(self):
+            return True
+
+    class FrostStatus:
+        ApplianceModes = 0
+
+        @property
+        def is_frost_protect_active(self):
+            return True
+
+    assert _is_boost_active(BoostStatus()) is True
+    assert _is_away_active(AwayStatus()) is True
+    assert _is_frost_protect_active(FrostStatus()) is True
+
+
+def test_live_modes_tolerates_missing_and_unparseable_values():
+    """``_live_modes`` reports None when there is nothing usable to read."""
+    from custom_components.dimplex.climate import _live_modes
+
+    assert _live_modes(None) is None
+    assert _live_modes(SimpleNamespace(ApplianceModes=None)) is None
+    assert _live_modes(SimpleNamespace(ApplianceModes="manual")) is None
+    assert _live_modes(SimpleNamespace(ApplianceModes=3)) == 3
+
+
+def test_climate_properties_are_safe_without_a_status():
+    """A missing status frame yields sensible defaults instead of raising."""
+    from homeassistant.components.climate import HVACAction, HVACMode
+
+    entity = _bare_entity(status=None)
+
+    assert entity.current_temperature is None
+    assert entity.target_temperature is None
+    assert entity.hvac_mode is HVACMode.OFF
+    assert entity.hvac_action is HVACAction.OFF
+    assert entity.preset_mode is None
+
+
+def test_hvac_action_is_idle_when_not_calling_for_heat():
+    """A live heater that is not calling for heat reports idle."""
+    from homeassistant.components.climate import HVACAction
+
+    entity = _bare_entity(status=_status(ComfortStatus=False))
+
+    assert entity.hvac_action is HVACAction.IDLE
+
+
+def test_hvac_mode_falls_back_to_the_cached_schedule_without_live_modes():
+    """Legacy appliances without mode bits read heat unless both temperatures are absent."""
+    from homeassistant.components.climate import HVACMode
+
+    heat = _bare_entity(
+        status=SimpleNamespace(ApplianceModes=None, RoomTemperature=20.0, ActiveSetPointTemperature=20.0),
+        schedule=SimpleNamespace(TimerMode=1),
+    )
+    off = _bare_entity(
+        status=SimpleNamespace(ApplianceModes=None, RoomTemperature=None, ActiveSetPointTemperature=None),
+        schedule=SimpleNamespace(TimerMode=1),
+    )
+
+    assert heat.hvac_mode is HVACMode.HEAT
+    assert off.hvac_mode is HVACMode.OFF
+
+
+def test_boost_minutes_falls_back_when_the_option_is_unusable():
+    """A non-numeric boost option does not break the preset write."""
+    from custom_components.dimplex.climate import DEFAULT_BOOST_MINUTES
+
+    entity = _bare_entity(status=_status(), options={"boost_duration": "not-a-number"})
+
+    assert entity._boost_minutes == DEFAULT_BOOST_MINUTES
+
+
+@pytest.mark.asyncio
+async def test_set_temperature_without_a_value_is_a_no_op():
+    """A service call carrying no temperature returns before any write."""
+    entity = _bare_entity(status=_status())
+
+    await entity.async_set_temperature()
+
+    entity._api.async_set_appliance_setpoint.assert_not_awaited()
+    entity._api.async_set_target_temperature.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_hvac_mode_uses_the_normal_temperature_when_the_setpoint_is_missing():
+    """A write still carries a temperature when the active setpoint is absent."""
+    from homeassistant.components.climate import HVACMode
+
+    entity = _bare_entity(
+        status=_status(ActiveSetPointTemperature=None, NormalTemperature=19.0),
+        schedule=SimpleNamespace(TimerMode=1),
+    )
+
+    await entity.async_set_hvac_mode(HVACMode.HEAT)
+
+    entity.coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_hvac_mode_off_uses_the_default_when_no_temperature_is_known():
+    """Turning off with no temperatures at all falls back to the away default."""
+    from homeassistant.components.climate import HVACMode
+
+    entity = _bare_entity(
+        status=_status(ActiveSetPointTemperature=None, NormalTemperature=None),
+        schedule=SimpleNamespace(TimerMode=1),
+    )
+
+    await entity.async_set_hvac_mode(HVACMode.OFF)
+
+    entity._api.async_set_frost_protect.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_preset_not_offered_is_refused(hass, caplog):
+    """A preset the appliance does not advertise is logged and skipped."""
+    import logging
+
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    entity = _bare_entity(status=_status())
+    caps = LocalCapabilities(boost=False)
+
+    with (
+        caplog.at_level(logging.WARNING, logger="custom_components.dimplex.climate"),
+        patch("custom_components.dimplex.climate.capabilities_for_row", return_value=caps),
+    ):
+        await entity.async_set_preset_mode("boost")
+
+    assert "not supported for Living Room Heater" in caplog.text
+    entity._api.async_set_boost.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unknown_preset_mode_is_refused(caplog):
+    """A preset that is advertised but unknown is logged and skipped."""
+    import logging
+    from unittest.mock import PropertyMock
+
+    from custom_components.dimplex.climate import DimplexClimate
+
+    entity = _bare_entity(status=_status())
+
+    with (
+        caplog.at_level(logging.WARNING, logger="custom_components.dimplex.climate"),
+        patch.object(DimplexClimate, "preset_modes", new_callable=PropertyMock, return_value=["nonsense"]),
+    ):
+        await entity.async_set_preset_mode("nonsense")
+
+    assert "Unsupported preset mode: nonsense" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_preset_falls_back_to_the_normal_temperature():
+    """Clearing a mode sends the normal setpoint when the active one is missing."""
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    entity = _bare_entity(
+        status=_status(ActiveSetPointTemperature=None, NormalTemperature=19.0, EcoStartEnabled=True),
+        schedule=SimpleNamespace(TimerMode=1),
+    )
+
+    with patch(
+        "custom_components.dimplex.climate.capabilities_for_row",
+        return_value=LocalCapabilities(),
+    ):
+        await entity.async_set_preset_mode("away")
+
+    # Away is engaged at the appliance's away temperature, and EcoStart cleared.
+    entity._api.async_set_eco_start.assert_awaited_once_with("hub-1", "appliance-1", False)
+    entity._api.async_set_away.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_preset_falls_back_to_a_fixed_temperature():
+    """With no known setpoint at all, clearing a mode still sends 21 °C."""
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    entity = _bare_entity(
+        status=_status(ActiveSetPointTemperature=None, NormalTemperature=None, EcoStartEnabled=True),
+        schedule=SimpleNamespace(TimerMode=1),
+    )
+
+    with patch(
+        "custom_components.dimplex.climate.capabilities_for_row",
+        return_value=LocalCapabilities(),
+    ):
+        await entity.async_set_preset_mode("away")
+
+    entity._api.async_set_eco_start.assert_awaited_once_with("hub-1", "appliance-1", False)
+
+
+@pytest.mark.asyncio
+async def test_setup_skips_an_appliance_the_capabilities_say_is_not_climate(hass):
+    """A non-room appliance gets no thermostat entity."""
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    payload = _payload()
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    with (
+        _api_data(payload),
+        patch(
+            "custom_components.dimplex.climate.capabilities_for_row",
+            return_value=LocalCapabilities(climate=False),
+        ),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert _climate_entity(hass) is None

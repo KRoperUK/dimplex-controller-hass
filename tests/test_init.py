@@ -318,3 +318,141 @@ async def test_token_expiry_drift_is_persisted(hass):
     assert entry.data["expires_at"] == 1234567890
     # The tokens themselves are unchanged, so nothing else was disturbed.
     assert entry.data["refresh_token"] == "refresh_token"
+
+
+# ---------------------------------------------------------------------------
+# Remaining setup, helper and reload branches
+# ---------------------------------------------------------------------------
+
+
+async def test_preload_platforms_with_nothing_to_import():
+    """An empty platform list returns without scheduling an import job."""
+    from custom_components.dimplex import _preload_platforms
+
+    assert await _preload_platforms([]) is None
+
+
+async def test_interval_from_options_ignores_unusable_values():
+    """A missing, malformed or too-short interval falls back to the default."""
+    from datetime import timedelta
+
+    from custom_components.dimplex import _interval_from_options
+    from custom_components.dimplex.const import DEFAULT_STATUS_INTERVAL
+
+    default = DEFAULT_STATUS_INTERVAL
+    assert _interval_from_options({}, "status_interval", default) == default
+    assert _interval_from_options({"status_interval": None}, "status_interval", default) == default
+    assert _interval_from_options({"status_interval": "soon"}, "status_interval", default) == default
+    assert _interval_from_options({"status_interval": []}, "status_interval", default) == default
+    assert _interval_from_options({"status_interval": 5}, "status_interval", default) == default
+    assert _interval_from_options({"status_interval": 60}, "status_interval", default) == timedelta(seconds=60)
+
+
+async def test_ensure_parent_devices_skips_rows_without_a_zone_and_duplicate_zones(hass):
+    """A zone-less row is skipped and a repeated zone is registered only once."""
+    from types import SimpleNamespace
+
+    from homeassistant.helpers import device_registry as dr
+
+    from custom_components.dimplex import _ensure_parent_devices
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    hub = SimpleNamespace(HubId="hub-1", HubName="Hub")
+    zone = SimpleNamespace(ZoneId="z-1", ZoneName="Living", ZoneType="Heating")
+    rows = [
+        {"hub": hub, "zone": None, "appliance": SimpleNamespace(ApplianceId="app-1")},
+        {"hub": hub, "zone": zone, "appliance": SimpleNamespace(ApplianceId="app-2")},
+        {"hub": hub, "zone": zone, "appliance": SimpleNamespace(ApplianceId="app-3")},
+    ]
+
+    _ensure_parent_devices(hass, config_entry, {"appliances": rows})
+
+    registry = dr.async_get(hass)
+    assert registry.async_get_device_by_identifier((DOMAIN, "hub-1"), config_entry.entry_id) is not None
+    assert registry.async_get_device_by_identifier((DOMAIN, "zone_z-1"), config_entry.entry_id) is not None
+
+
+async def test_setup_entry_cannot_connect(hass):
+    """A connectivity failure during initialization retries instead of failing auth."""
+    from unittest.mock import patch
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize", side_effect=CannotConnect),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_status_data",
+            return_value={"appliances": [], "hubs": []},
+        ),
+        patch(
+            "custom_components.dimplex.DimplexApiClient.async_get_energy_for_hubs",
+            return_value={"energy": {}},
+        ),
+    ):
+        assert not await hass.config_entries.async_setup(config_entry.entry_id)
+
+    assert config_entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_setup_entry_retries_when_the_first_poll_reports_failure(hass):
+    """A first refresh that fails without raising still retries setup."""
+    from unittest.mock import patch
+
+    from custom_components.dimplex import DimplexStatusCoordinator
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data=MOCK_ENTRY_DATA, entry_id="test")
+    config_entry.add_to_hass(hass)
+
+    async def _mark_failed(coordinator):
+        coordinator.last_update_success = False
+
+    with (
+        patch("custom_components.dimplex.DimplexApiClient.async_initialize"),
+        patch.object(DimplexStatusCoordinator, "async_config_entry_first_refresh", _mark_failed),
+    ):
+        assert not await hass.config_entries.async_setup(config_entry.entry_id)
+
+    assert config_entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_reload_entry_is_a_no_op_when_only_tokens_changed(hass):
+    """A token write that leaves options untouched does not reload the entry."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    from custom_components.dimplex import async_reload_entry
+
+    config_entry = SimpleNamespace(
+        entry_id="test",
+        options={},
+        runtime_data=SimpleNamespace(options_snapshot={}),
+    )
+
+    with patch.object(hass.config_entries, "async_reload", AsyncMock()) as reload:
+        await async_reload_entry(hass, config_entry)
+
+    reload.assert_not_awaited()
+
+    config_entry.options = {"status_interval": 60}
+    with patch.object(hass.config_entries, "async_reload", AsyncMock()) as reload:
+        await async_reload_entry(hass, config_entry)
+
+    reload.assert_awaited_once_with("test")
+
+
+async def test_reload_entry_without_runtime_still_reloads(hass):
+    """An entry that lost its runtime (unloaded) reloads unconditionally."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
+
+    from custom_components.dimplex import async_reload_entry
+
+    config_entry = SimpleNamespace(entry_id="test", options={}, runtime_data=None)
+
+    with patch.object(hass.config_entries, "async_reload", AsyncMock()) as reload:
+        await async_reload_entry(hass, config_entry)
+
+    reload.assert_awaited_once_with("test")

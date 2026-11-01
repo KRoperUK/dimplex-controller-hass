@@ -346,3 +346,79 @@ async def test_operating_mode_select_created_for_heaters(hass):
 
     assert _select_entity_id(hass, "schedule_profile") is not None
     assert _select_entity_id(hass, "operating_mode") is not None
+
+
+# ---------------------------------------------------------------------------
+# Remaining operating-mode branches
+# ---------------------------------------------------------------------------
+
+
+async def test_operating_mode_reports_unknown_without_a_status():
+    """No status frame means the mode is unknown, not a crash."""
+    from custom_components.dimplex.select import DimplexOperatingModeSelect
+
+    payload = _payload()
+    payload["appliances"][0]["status"] = None
+    coordinator = SimpleNamespace(data=payload, async_add_listener=lambda *a, **k: lambda: None)
+    config_entry = SimpleNamespace(entry_id="test", runtime_data=SimpleNamespace())
+    api = SimpleNamespace(async_set_manual=MagicMock(), async_set_schedule_profile=MagicMock())
+
+    select = DimplexOperatingModeSelect(coordinator, config_entry, payload["appliances"][0], api)
+
+    assert select.current_option is None
+
+
+async def test_pending_operating_mode_is_retired_once_confirmed():
+    """A poll that agrees with the write clears the optimistic hold."""
+    select = _operating_mode_select(128)
+    select._pending = "manual"
+    select._pending_updates_left = 3
+
+    with patch.object(select, "async_write_ha_state", MagicMock()):
+        select._handle_coordinator_update()
+
+    assert select._pending is None
+
+
+async def test_pending_operating_mode_expires_when_never_confirmed(caplog):
+    """A write the appliance ignores is dropped after the bounded wait."""
+    import logging
+
+    select = _operating_mode_select(1)  # timer
+    select._pending = "manual"
+    select._pending_updates_left = 1
+
+    with (
+        caplog.at_level(logging.DEBUG, logger="custom_components.dimplex.select"),
+        patch.object(select, "async_write_ha_state", MagicMock()),
+    ):
+        select._handle_coordinator_update()
+
+    assert select._pending is None
+    assert "never confirmed the operating mode manual" in caplog.text
+
+
+async def test_manual_mode_falls_back_to_the_normal_temperature():
+    """With no active setpoint, the Manual write carries the normal setpoint."""
+    select = _operating_mode_select(1)
+    status = select._appliance_row["status"]
+    status.ActiveSetPointTemperature = None
+    status.NormalTemperature = 19.0
+
+    with patch.object(select, "async_write_ha_state", MagicMock()):
+        await select.async_select_option("manual")
+
+    select._api.async_set_manual.assert_awaited_once_with("hub-1", "appliance-1", temperature=19.0)
+
+
+async def test_manual_mode_falls_back_to_a_fixed_temperature():
+    """With no setpoint at all, the Manual write still carries a usable value."""
+    select = _operating_mode_select(1)
+    status = select._appliance_row["status"]
+    status.ActiveSetPointTemperature = None
+    status.NormalTemperature = None
+
+    with patch.object(select, "async_write_ha_state", MagicMock()):
+        await select.async_select_option("manual")
+
+    select._api.async_set_manual.assert_awaited_once_with("hub-1", "appliance-1", temperature=21.0)

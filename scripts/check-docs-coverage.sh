@@ -11,7 +11,8 @@
 #   1. every action in custom_components/dimplex/services.yaml appears in
 #      docs/reference/actions.md
 #   2. every entity translation_key in the platform modules appears in
-#      docs/reference/entities.md
+#      docs/reference/entities.md (exception messages are skipped: they are not
+#      entities, and check-translation-parity.sh covers their keys)
 #   3. every CONF_* option constant appears in docs/reference/options.md
 #
 # This cannot tell whether the documentation is *correct*, only whether it is
@@ -113,7 +114,27 @@ for module in "$component"/*.py; do
   entity_modules+=("$module")
 done
 keys=$(grep -hoE '_?_?attr_?_?translation_key *= *"[a-z0-9_]+"|translation_key="[a-z0-9_]+"' \
-  "${entity_modules[@]}" 2>/dev/null | grep -oE '"[a-z0-9_]+"' | tr -d '"' | sort -u)
+  "${entity_modules[@]}" 2>/dev/null | grep -oE '"[a-z0-9_]+"' | tr -d '"' | tr -d '\r' | sort -u)
+
+# Exceptions raised by services.py and holiday.py also use translation_key=, but
+# they are messages, not entities: their keys live in the "exceptions" block of
+# translations/en.json and are covered by check-translation-parity.sh. Without
+# this filter every raised key would be demanded on the entity reference page.
+exception_keys=$(python3 - "$component/translations/en.json" <<'PY'
+import json, sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    data = json.load(fh)
+
+for key in data.get("exceptions") or {}:
+    print(key)
+PY
+)
+exception_keys=$(printf '%s\n' "$exception_keys" | tr -d '\r')
+for exception_key in $exception_keys; do
+  keys=$(printf '%s\n' "$keys" | grep -vx -- "$exception_key" || true)
+done
+
 if [[ -z "$keys" ]]; then
   echo "::error file=$component::found no entity translation keys — has the format changed?"
   status=1

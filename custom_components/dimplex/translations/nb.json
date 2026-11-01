@@ -277,5 +277,64 @@
       "title": "Alle apparater er utilgjengelige",
       "description": "Huben ble funnet, men oversikten over apparater er tom. Sjekk strøm, nettverk og den offisielle Dimplex-appen."
     }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Kunne ikke nå Dimplex-skyen for å styre {target}. Tjenesten kan være midlertidig utilgjengelig; ingenting ble endret."
+    },
+    "control_rejected": {
+      "message": "Dimplex-skyen avviste denne styringen for {target}. Apparatet støtter den kanskje ikke eksternt – enkelte Quantum-lagringsvarmere avviser av/på- eller settpunktendringer – så det hjelper ikke å prøve igjen."
+    },
+    "cylinder_unavailable": {
+      "message": "Den varmtvannsberederen er ikke tilgjengelig akkurat nå."
+    },
+    "holiday_end_in_past": {
+      "message": "Slutten på ferien må være i fremtiden."
+    },
+    "invalid_auth": {
+      "message": "Dimplex-autentisering mislyktes under styring av {target}."
+    },
+    "missing_target": {
+      "message": "dimplex-handlingen krever en device_id eller entity_id."
+    },
+    "no_appliance_on_device": {
+      "message": "Kunne ikke utlede en apparat-ID fra enheten {device_id}."
+    },
+    "no_appliance_on_entity": {
+      "message": "Kunne ikke utlede en apparat-ID fra tjenestemålet {entity_id}."
+    },
+    "no_loaded_entry": {
+      "message": "Ingen lastet Dimplex-oppføring for {entry_id}; kan ikke slå opp apparatet {appliance_id}."
+    },
+    "profile_not_found": {
+      "message": "Ingen lagret varmeprofil med navnet «{profile_name}» (tilgjengelige: {available})."
+    },
+    "profile_on_cylinder": {
+      "message": "{name} er en varmtvannsbereder; varmeprofiler gjelder tidsurprogrammer for romvarmere, så {target} ble ikke sendt."
+    },
+    "profile_target_required": {
+      "message": "Oppgi nøyaktig én av {id_key} eller {name_key} til {target}."
+    },
+    "schedule_copy_different_hub": {
+      "message": "Alle målenheter må være på samme hub som kilden; ingen tidsplan ble kopiert."
+    },
+    "schedule_copy_unresolved": {
+      "message": "Kunne ikke slå opp {target_device_id} som et Dimplex-apparat; ingen tidsplan ble kopiert."
+    },
+    "schedule_period_not_found": {
+      "message": "{name} har ingen tidsplanperiode som starter {start_time} på {day}. Se Schedule-sensoren for det apparatet for å finne de faktiske periodene – denne handlingen endrer en eksisterende periode, den oppretter ikke en ny."
+    },
+    "unknown_appliance": {
+      "message": "Kunne ikke slå opp apparatet {appliance_id} som et Dimplex-apparat; kontroller målet og prøv igjen."
+    },
+    "unknown_device": {
+      "message": "Ukjent device_id for dimplex-tjenesten: {device_id}."
+    },
+    "unknown_entity": {
+      "message": "Ukjent entity_id for dimplex-tjenesten: {entity_id}."
+    },
+    "unsupported_control": {
+      "message": "{name} støtter ikke denne styringen ({capability} er false for det), så {target} ble ikke sendt."
+    }
   }
 }

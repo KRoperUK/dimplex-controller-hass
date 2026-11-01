@@ -27,7 +27,7 @@ def async_update_empty_energy_issue(
             is_fixable=False,
             severity=ir.IssueSeverity.WARNING,
             translation_key=ISSUE_EMPTY_ENERGY,
-            learn_more_url=f"{DOCS_URL}/blob/main/docs/entities.md",
+            learn_more_url=f"{DOCS_URL}/blob/main/docs/reference/entities.md",
         )
     else:
         ir.async_delete_issue(hass, DOMAIN, issue_id)
@@ -49,7 +49,7 @@ def async_update_empty_overview_issue(
             is_fixable=False,
             severity=ir.IssueSeverity.WARNING,
             translation_key=ISSUE_EMPTY_OVERVIEW,
-            learn_more_url=f"{DOCS_URL}/blob/main/docs/troubleshooting.md",
+            learn_more_url=f"{DOCS_URL}/blob/main/docs/help/troubleshooting.md",
         )
     else:
         ir.async_delete_issue(hass, DOMAIN, issue_id)

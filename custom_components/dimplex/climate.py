@@ -39,6 +39,9 @@ from .const import (
 from .entity import DimplexEntity
 from .errors import control_errors
 
+# Climate writes hit the cloud one at a time.
+PARALLEL_UPDATES = 1
+
 _LOGGER = logging.getLogger(__name__)
 
 PRESET_COMFORT = "comfort"

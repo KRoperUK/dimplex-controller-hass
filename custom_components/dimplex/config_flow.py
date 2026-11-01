@@ -216,7 +216,9 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
-        return DimplexOptionsFlowHandler(config_entry)
+        # The framework attaches the entry to the flow; passing it to the
+        # constructor is deprecated since Home Assistant 2024.12.
+        return DimplexOptionsFlowHandler()
 
     # ══ reauthentication ════════════════════════════════════════
 
@@ -351,13 +353,11 @@ class DimplexFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 class DimplexOptionsFlowHandler(config_entries.OptionsFlow):
     """Config flow options handler for dimplex."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        self._config_entry = config_entry
-        self.options: dict[str, Any] = dict(config_entry.options)
+    options: dict[str, Any]
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the options."""
+        self.options = dict(self.config_entry.options)
         return await self.async_step_user()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -396,4 +396,4 @@ class DimplexOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def _update_options(self) -> ConfigFlowResult:
         """Update config entry options."""
-        return self.async_create_entry(title=self._config_entry.title, data=self.options)
+        return self.async_create_entry(title=self.config_entry.title, data=self.options)

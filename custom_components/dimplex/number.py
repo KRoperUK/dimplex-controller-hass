@@ -19,6 +19,9 @@ from .const import OPTIMISTIC_UPDATES, sane_temperature
 from .entity import DimplexEntity
 from .errors import control_errors
 
+# Number writes hit the cloud one at a time.
+PARALLEL_UPDATES = 1
+
 
 @dataclass(frozen=True, kw_only=True)
 class DimplexNumberEntityDescription(NumberEntityDescription):

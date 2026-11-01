@@ -19,6 +19,9 @@ from .capabilities import capabilities_for_row
 from .const import HOT_WATER_MODES, hot_water_mode, sane_temperature
 from .entity import DimplexEntity
 
+# Read-only platform; the coordinator fetches the data.
+PARALLEL_UPDATES = 0
+
 # Cylinder water temperatures; the wide physical band is for room sensors.
 WATER_TEMP_MIN = 10.0
 WATER_TEMP_MAX = 75.0

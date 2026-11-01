@@ -9,7 +9,7 @@ from typing import Any
 import probatio as vol
 from dimplex_controller import HygieneFrequency
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -203,13 +203,17 @@ def _resolve_appliance_id(
     """Return (entry_id, hub_id, appliance_id, api) for a known appliance id."""
     runtime = _runtime_for(hass, config_entry_id)
     if runtime is None:
-        raise HomeAssistantError(
-            f"No loaded Dimplex entry for {config_entry_id}; cannot resolve appliance {appliance_id}."
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="no_loaded_entry",
+            translation_placeholders={"entry_id": config_entry_id, "appliance_id": appliance_id},
         )
     hub_id = _hub_for_appliance(runtime, appliance_id)
     if not hub_id:
-        raise HomeAssistantError(
-            f"Could not resolve appliance {appliance_id} as a Dimplex appliance; check the target and try again."
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="unknown_appliance",
+            translation_placeholders={"appliance_id": appliance_id},
         )
     return config_entry_id, hub_id, appliance_id, runtime.api
 
@@ -219,14 +223,22 @@ def _resolve_device_id(hass: HomeAssistant, device_id: str) -> tuple[str, str, s
     dev_reg = dr.async_get(hass)
     device = dev_reg.async_get(device_id)
     if device is None:
-        raise HomeAssistantError(f"Unknown device_id for dimplex service: {device_id}.")
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="unknown_device",
+            translation_placeholders={"device_id": device_id},
+        )
     # A device belongs to a single config entry; config_entries is deprecated
     # (and removed in a future Home Assistant), so prefer config_entry_id.
     config_entry_id = getattr(device, "config_entry_id", None)
     if not config_entry_id:
         entries = getattr(device, "config_entries", None) or set()
         if not entries:
-            raise HomeAssistantError(f"Unknown device_id for dimplex service: {device_id}.")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_device",
+                translation_placeholders={"device_id": device_id},
+            )
         config_entry_id = next(iter(entries))
     appliance_id: str | None = None
     for domain, ident in device.identifiers:
@@ -234,7 +246,11 @@ def _resolve_device_id(hass: HomeAssistant, device_id: str) -> tuple[str, str, s
             appliance_id = ident
             break
     if not appliance_id:
-        raise HomeAssistantError(f"Could not resolve an appliance id from device {device_id}.")
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="no_appliance_on_device",
+            translation_placeholders={"device_id": device_id},
+        )
     return _resolve_appliance_id(hass, config_entry_id, appliance_id)
 
 
@@ -247,18 +263,29 @@ async def _resolve_appliance(hass: HomeAssistant, call: ServiceCall) -> tuple[st
         ent_reg = er.async_get(hass)
         entry = ent_reg.async_get(entity_id)
         if entry is None or entry.config_entry_id is None:
-            raise HomeAssistantError(f"Unknown entity_id for dimplex service: {entity_id}.")
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_entity",
+                translation_placeholders={"entity_id": entity_id},
+            )
         config_entry_id = entry.config_entry_id
         if entry.device_id:
             device_id = entry.device_id
         else:
             appliance_id = _appliance_id_from_unique_id(config_entry_id, entry.unique_id)
             if not appliance_id:
-                raise HomeAssistantError(f"Could not resolve appliance id from service target {entity_id}.")
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="no_appliance_on_entity",
+                    translation_placeholders={"entity_id": entity_id},
+                )
             return _resolve_appliance_id(hass, config_entry_id, appliance_id)
 
     if not device_id:
-        raise HomeAssistantError("dimplex service requires device_id or entity_id.")
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="missing_target",
+        )
 
     return _resolve_device_id(hass, device_id)
 
@@ -345,9 +372,14 @@ def _require_capability(
     """
     caps = _capabilities_for(hass, config_entry_id, appliance_id)
     if caps is not None and not getattr(caps, capability, False):
-        raise HomeAssistantError(
-            f"{_appliance_name(hass, config_entry_id, appliance_id)} does not support this "
-            f"control ({capability} is false for it), so {target} was not sent."
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="unsupported_control",
+            translation_placeholders={
+                "name": _appliance_name(hass, config_entry_id, appliance_id),
+                "capability": capability,
+                "target": target,
+            },
         )
     return caps
 
@@ -548,14 +580,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             except HomeAssistantError:
                 # Named individually: a silent partial copy would leave some heaters
                 # on the old programme with nothing saying which.
-                raise HomeAssistantError(
-                    f"Could not resolve {target_device_id} as a Dimplex appliance; no schedule was copied."
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="schedule_copy_unresolved",
+                    translation_placeholders={"target_device_id": target_device_id},
                 ) from None
             target_hub, target_appliance = target[1], target[2]
             if target_hub != hub_id:
                 # One API call carries one HubId, so a cross-hub target cannot work.
-                raise HomeAssistantError(
-                    "Every target appliance must be on the same hub as the source; no schedule was copied."
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="schedule_copy_different_hub",
                 )
             if target_appliance != appliance_id:
                 targets.append(target_appliance)
@@ -584,22 +619,36 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         _require_capability(hass, entry_id, appliance_id, "timer", f"{DOMAIN}.{call.service}")
         caps = _capabilities_for(hass, entry_id, appliance_id)
         if caps is not None and getattr(caps, "hot_water", False):
-            raise HomeAssistantError(
-                f"{_appliance_name(hass, entry_id, appliance_id)} is a hot-water cylinder; "
-                f"heating profiles apply to room-heater timer schedules, so {DOMAIN}.{call.service} was not sent."
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="profile_on_cylinder",
+                translation_placeholders={
+                    "name": _appliance_name(hass, entry_id, appliance_id),
+                    "target": f"{DOMAIN}.{call.service}",
+                },
             )
         profile_id = call.data.get(ATTR_PROFILE_ID)
         profile_name = call.data.get(ATTR_PROFILE_NAME)
         if bool(profile_id) == bool(profile_name):
-            raise HomeAssistantError(
-                f"Give exactly one of {ATTR_PROFILE_ID} or {ATTR_PROFILE_NAME} to {DOMAIN}.{call.service}."
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="profile_target_required",
+                translation_placeholders={
+                    "id_key": ATTR_PROFILE_ID,
+                    "name_key": ATTR_PROFILE_NAME,
+                    "target": f"{DOMAIN}.{call.service}",
+                },
             )
         if profile_name and not profile_id:
             profiles = await api.async_get_heating_profiles()
             match = next((p for p in profiles if p.ProfileName == profile_name), None)
             if match is None:
                 available = ", ".join(sorted({p.ProfileName for p in profiles})) or "none saved"
-                raise HomeAssistantError(f'No saved heating profile named "{profile_name}" (available: {available}).')
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="profile_not_found",
+                    translation_placeholders={"profile_name": profile_name, "available": available},
+                )
             profile_id = match.Id
         await api.async_apply_heating_profile(
             hub_id,
@@ -629,10 +678,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             # The library matches periods on day + start time and raises ValueError
             # when nothing matches. Uncaught that is an opaque traceback; the useful
             # answer is "there is no such period", with what to check.
-            raise HomeAssistantError(
-                f"{_appliance_name(hass, entry_id, appliance_id)} has no schedule period starting "
-                f"{start_time} on {call.data[ATTR_DAY]}. Check that appliance's Schedule sensor for "
-                "its actual periods — this action edits an existing period, it does not create one."
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="schedule_period_not_found",
+                translation_placeholders={
+                    "name": _appliance_name(hass, entry_id, appliance_id),
+                    "start_time": start_time,
+                    "day": str(call.data[ATTR_DAY]),
+                },
             ) from err
         _invalidate_schedules(hass, entry_id)
         await _refresh_status(hass, entry_id)
@@ -747,41 +800,3 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         handle_refresh,
         schema=_target_schema(),
     )
-
-
-async def async_unload_services(hass: HomeAssistant, unloading_entry_id: str | None = None) -> None:
-    """Remove domain services once the last config entry has unloaded.
-
-    ``unloading_entry_id`` names the entry being unloaded right now: its
-    ``runtime_data`` is still attached at this point, because Home Assistant only
-    deletes it after ``async_unload_entry`` returns. Without excluding it the
-    "no entries left" test would never be true and the services would be
-    registered forever.
-    """
-    still_loaded = any(
-        candidate.entry_id != unloading_entry_id and getattr(candidate, "runtime_data", None) is not None
-        for candidate in hass.config_entries.async_entries(DOMAIN)
-    )
-    if still_loaded:
-        return
-    if not hass.data.get(f"{DOMAIN}_services"):
-        return
-    for service in (
-        SERVICE_SET_BOOST,
-        SERVICE_CLEAR_BOOST,
-        SERVICE_SET_AWAY,
-        SERVICE_CLEAR_AWAY,
-        SERVICE_SET_ADVANCE,
-        SERVICE_CLEAR_ADVANCE,
-        SERVICE_SET_ECO_START,
-        SERVICE_SET_OPEN_WINDOW,
-        SERVICE_COPY_SCHEDULE,
-        SERVICE_APPLY_HEATING_PROFILE,
-        SERVICE_SET_PERIOD_SETPOINT,
-        SERVICE_SET_HOT_WATER_TEMPERATURE,
-        SERVICE_SET_HOT_WATER_HYGIENE,
-        SERVICE_REFRESH,
-    ):
-        if hass.services.has_service(DOMAIN, service):
-            hass.services.async_remove(DOMAIN, service)
-    hass.data.pop(f"{DOMAIN}_services", None)
