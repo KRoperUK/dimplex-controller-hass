@@ -53,10 +53,10 @@ read path, so the cloud's 255 "no target" sentinel becomes the default boost tem
 rather than a 255 °C write.
 
 !!! warning "7 °C in Manual can drop a QRAD into User Timer"
-    On observed QRAD firmware, setting exactly 7 °C while in Manual moves the heater
-    into User Timer on the next poll — where it then ignores setpoints and boost until
-    Manual is set again (in the app, or via the **Operating mode** select). Prefer 8 °C
-    and above for a low Manual hold.
+On observed QRAD firmware, setting exactly 7 °C while in Manual moves the heater
+into User Timer on the next poll — where it then ignores setpoints and boost until
+Manual is set again (in the app, or via the **Operating mode** select). Prefer 8 °C
+and above for a low Manual hold.
 
 ## Why "off" reports 7 °C
 
