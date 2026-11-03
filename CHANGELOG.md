@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.4.1](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.4.0...v4.4.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* APK-parity schedule and hot-water improvements ([#337](https://github.com/KRoperUK/dimplex-controller-hass/issues/337)) ([e89bdc9](https://github.com/KRoperUK/dimplex-controller-hass/commit/e89bdc9dfc65289203ac0e84bbe1892c9e727bfe))
+* fetch the active timer profile for schedule periods ([#329](https://github.com/KRoperUK/dimplex-controller-hass/issues/329)) ([d3fbcd6](https://github.com/KRoperUK/dimplex-controller-hass/commit/d3fbcd6bc2a09fac47b3d1a1c2f6b24de95c9063))
+
 ## [4.4.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.3.0...v4.4.0) (2026-11-01)
 
 
