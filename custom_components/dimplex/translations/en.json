@@ -185,6 +185,9 @@
       "holiday_days": {
         "name": "Holiday days"
       },
+      "hygiene_temperature": {
+        "name": "Hygiene temperature"
+      },
       "hot_water_schedule": {
         "name": "Hot water schedule"
       }

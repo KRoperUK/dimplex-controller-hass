@@ -182,6 +182,9 @@ class DimplexScheduleProfileSelect(DimplexEntity, SelectEntity):
             await self._api.async_set_schedule_profile(
                 self._hub.HubId, self._appliance.ApplianceId, SCHEDULE_PROFILES.index(option)
             )
+        invalidate = getattr(self.coordinator, "invalidate_schedules", None)
+        if callable(invalidate):
+            invalidate()
         await self.coordinator.async_request_refresh()
 
 

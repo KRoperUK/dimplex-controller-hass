@@ -171,6 +171,9 @@
       "holiday_days": {
         "name": "Feriedager"
       },
+      "hygiene_temperature": {
+        "name": "Hygienetemperatur"
+      },
       "hot_water_schedule": {
         "name": "Varmtvannsplan"
       }

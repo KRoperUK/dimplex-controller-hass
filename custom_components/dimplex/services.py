@@ -24,6 +24,7 @@ from .const import (
     SETPOINT_TEMP_MAX,
     SETPOINT_TEMP_MIN,
     TIMER_USER,
+    schedule_profile,
 )
 from .errors import control_errors
 
@@ -342,18 +343,28 @@ def _invalidate_schedules(hass: HomeAssistant, config_entry_id: str) -> None:
 
 
 def _source_timer_mode(hass: HomeAssistant, config_entry_id: str, appliance_id: str) -> int:
-    """Return the source appliance's timer mode, or user-timer when unknown."""
+    """Return the source appliance's active schedule profile.
+
+    The cached schedule echoes the profile it was fetched for, so prefer it;
+    when the cache has nothing usable, fall back to the live overview's
+    active profile rather than silently copying the user timer (#331).
+    """
     runtime = _runtime_for(hass, config_entry_id)
-    if runtime is None:
-        return TIMER_USER
-    schedules = (runtime.status.data or {}).get("schedules") or {}
-    mode = getattr(schedules.get(appliance_id), "TimerMode", None)
-    if mode is None:
-        return TIMER_USER
-    try:
-        return int(mode)
-    except (TypeError, ValueError):
-        return TIMER_USER
+    if runtime is not None:
+        schedules = (runtime.status.data or {}).get("schedules") or {}
+        mode = getattr(schedules.get(appliance_id), "TimerMode", None)
+        if mode is not None:
+            try:
+                return int(mode)
+            except (TypeError, ValueError):
+                pass
+        for row in (runtime.status.data or {}).get("appliances") or []:
+            if getattr(row.get("appliance"), "ApplianceId", None) == appliance_id:
+                named = schedule_profile(row.get("status"))
+                if named is not None:
+                    return SCHEDULE_PROFILES.index(named)
+                break
+    return TIMER_USER
 
 
 def _require_capability(
@@ -572,6 +583,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     @_translated
     async def handle_copy_schedule(call: ServiceCall) -> None:
         entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
+        # Room-heater programmes only: a cylinder's weekly programme lives on
+        # its own endpoint (#199).
+        _require_capability(hass, entry_id, appliance_id, "timer", f"{DOMAIN}.{call.service}")
 
         targets: list[str] = []
         for target_device_id in call.data[ATTR_TARGET_DEVICE_IDS]:
@@ -760,7 +774,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         schema=_target_schema().extend(
             {
                 vol.Required(ATTR_MODE): vol.In(list(HOT_WATER_MODES)),
-                vol.Required(ATTR_TEMPERATURE): vol.Coerce(float),
+                # App bounds from the 2.29.1 client constants (normal/boost
+                # 40-65C); the selector alone cannot enforce them (#332).
+                vol.Required(ATTR_TEMPERATURE): vol.All(vol.Coerce(float), vol.Range(min=40, max=65)),
                 vol.Optional(ATTR_ENABLE, default=True): cv.boolean,
             }
         ),
@@ -771,7 +787,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         handle_hot_water_hygiene,
         schema=_target_schema().extend(
             {
-                vol.Required(ATTR_TEMPERATURE): vol.Coerce(float),
+                # App bounds: hygiene 60-65C (#332).
+                vol.Required(ATTR_TEMPERATURE): vol.All(vol.Coerce(float), vol.Range(min=60, max=65)),
                 vol.Required(ATTR_FREQUENCY): vol.In(list(HYGIENE_FREQUENCIES)),
                 vol.Optional(ATTR_ENABLE, default=True): cv.boolean,
             }

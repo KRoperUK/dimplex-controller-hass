@@ -477,6 +477,25 @@ async def test_copy_schedule_uses_user_timer_when_no_schedule_is_cached(hass: Ho
     assert runtime.api.async_copy_schedule.await_args.kwargs["timer_mode"] == 0
 
 
+async def test_copy_schedule_falls_back_to_the_active_profile(hass: HomeAssistant) -> None:
+    """Without a cached schedule the live overview names the profile (#331)."""
+    runtime = _make_schedule_runtime()
+    runtime.status.data["schedules"] = {}
+    runtime.status.data["appliances"][0]["status"] = SimpleNamespace(ApplianceModes=1, StatusTwo=2)
+    entry = await _register_entry(hass, runtime)
+    source_device_id = await _device_id(hass, entry, "app-1")
+    target_device_id = await _device_id(hass, entry, "app-2")
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_COPY_SCHEDULE,
+        {"device_id": source_device_id, "target_device_ids": [target_device_id]},
+        blocking=True,
+    )
+
+    assert runtime.api.async_copy_schedule.await_args.kwargs["timer_mode"] == 2
+
+
 async def test_copy_schedule_ignores_the_source_in_its_own_target_list(hass: HomeAssistant) -> None:
     """Listing the source as a target is a no-op, not an error."""
     runtime = _make_schedule_runtime()
@@ -615,6 +634,43 @@ async def test_hot_water_temperature_writes_the_requested_mode(hass: HomeAssista
     runtime.status.async_request_refresh.assert_awaited_once()
 
 
+async def test_hot_water_temperatures_stay_inside_app_bounds(hass: HomeAssistant) -> None:
+    """Out-of-app-range writes never reach the cloud (#332).
+
+    The 2.29.1 client constants bound normal/boost to 40-65C and hygiene to
+    60-65C; the vol schema enforces what the UI selector alone cannot.
+    """
+    import voluptuous as vol
+
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    runtime = _make_hot_water_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with patch(
+        "custom_components.dimplex.services.capabilities_for_row",
+        return_value=LocalCapabilities(hot_water=True, hygiene=True),
+    ):
+        with pytest.raises(vol.Invalid):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SET_HOT_WATER_TEMPERATURE,
+                {"device_id": device_id, "mode": "normal", "temperature": 70},
+                blocking=True,
+            )
+        with pytest.raises(vol.Invalid):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SET_HOT_WATER_HYGIENE,
+                {"device_id": device_id, "temperature": 50, "frequency": "weekly"},
+                blocking=True,
+            )
+
+    runtime.api.async_set_hot_water_temperature.assert_not_awaited()
+    runtime.api.async_set_hot_water_hygiene.assert_not_awaited()
+
+
 async def test_hot_water_actions_refuse_an_appliance_that_is_not_a_cylinder(hass: HomeAssistant) -> None:
     """A cylinder write must not be sent to a panel heater at all.
 
@@ -700,6 +756,34 @@ async def test_hot_water_hygiene_refuses_an_appliance_without_hygiene(hass: Home
         )
 
     runtime.api.async_set_hot_water_hygiene.assert_not_awaited()
+
+
+async def test_copy_schedule_is_refused_for_a_cylinder(hass: HomeAssistant) -> None:
+    """Cylinder programmes live on their own endpoint, not the room-heater one (#334)."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    runtime = _make_schedule_runtime()
+    entry = await _register_entry(hass, runtime)
+    source_device_id = await _device_id(hass, entry, "app-1")
+    target_device_id = await _device_id(hass, entry, "app-2")
+
+    with (
+        patch(
+            "custom_components.dimplex.services.capabilities_for_row",
+            return_value=LocalCapabilities(hot_water=True, climate=False, timer=False),
+        ),
+        pytest.raises(HomeAssistantError, match="unsupported_control"),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_COPY_SCHEDULE,
+            {"device_id": source_device_id, "target_device_ids": [target_device_id]},
+            blocking=True,
+        )
+
+    runtime.api.async_copy_schedule.assert_not_awaited()
 
 
 async def test_advance_is_refused_for_an_appliance_without_one(hass: HomeAssistant) -> None:
