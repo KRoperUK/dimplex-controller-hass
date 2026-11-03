@@ -179,6 +179,67 @@ async def test_no_profile_select_without_timer(hass):
     assert _select_entity_id(hass, "schedule_profile") is None
 
 
+async def test_hygiene_frequency_select_follows_the_overview(hass):
+    """A hygiene-capable cylinder gets a select reflecting its cycle (#333)."""
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    payload = _payload()
+    payload["appliances"][0]["status"].HygieneFrequency = 7
+    payload["appliances"][0]["status"].HygieneTemperature = 60.0
+    await _setup(hass, payload, caps=LocalCapabilities(hygiene=True))
+
+    # The object id slugs the translated name, as with the sibling selects.
+    entity_id = _select_entity_id(hass, "hygiene_recurrence")
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state.attributes.get("options") == ["off", "daily", "weekly", "monthly"]
+    assert state.state == "weekly"
+
+
+async def test_hygiene_frequency_select_writes_temperature_and_frequency(hass):
+    """Choosing a cycle writes it with the overview's hygiene temperature (#333)."""
+    from unittest.mock import AsyncMock
+
+    from custom_components.dimplex.select import DimplexHygieneFrequencySelect
+
+    payload = _payload()
+    row = payload["appliances"][0]
+    row["status"].HygieneFrequency = 7
+    row["status"].HygieneTemperature = 62.0
+    api = SimpleNamespace(async_set_hot_water_hygiene=AsyncMock())
+    coordinator = SimpleNamespace(data=payload, async_request_refresh=AsyncMock())
+    config_entry = SimpleNamespace(entry_id="test", runtime_data=SimpleNamespace())
+    select = DimplexHygieneFrequencySelect(coordinator, config_entry, row, api, heat_pump=True)
+
+    assert select.current_option == "weekly"
+
+    await select.async_select_option("daily")
+
+    api.async_set_hot_water_hygiene.assert_awaited_once_with(
+        "hub-1", "appliance-1", temperature=62.0, frequency=1, enable=True, heat_pump=True
+    )
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+async def test_hygiene_frequency_select_rejects_unknown_options(hass):
+    """An unknown cycle is rejected before anything reaches the cloud."""
+    from unittest.mock import AsyncMock
+
+    from custom_components.dimplex.select import DimplexHygieneFrequencySelect
+
+    payload = _payload()
+    row = payload["appliances"][0]
+    api = SimpleNamespace(async_set_hot_water_hygiene=AsyncMock())
+    coordinator = SimpleNamespace(data=payload, async_request_refresh=AsyncMock())
+    config_entry = SimpleNamespace(entry_id="test", runtime_data=SimpleNamespace())
+    select = DimplexHygieneFrequencySelect(coordinator, config_entry, row, api)
+
+    with pytest.raises(ValueError, match="not a valid hygiene frequency"):
+        await select.async_select_option("fortnightly")
+
+    api.async_set_hot_water_hygiene.assert_not_awaited()
+
+
 async def test_profile_select_writes_the_chosen_profile(hass):
     """Choosing a profile writes it via the API and refreshes for readback."""
     from unittest.mock import AsyncMock

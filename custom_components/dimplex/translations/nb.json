@@ -247,6 +247,15 @@
           "home_all_day": "Hjemme hele dagen",
           "out_all_day": "Borte hele dagen"
         }
+      },
+      "hygiene_frequency": {
+        "name": "Hygienesyklus",
+        "state": {
+          "off": "Av",
+          "daily": "Daglig",
+          "weekly": "Ukentlig",
+          "monthly": "Månedlig"
+        }
       }
     },
     "water_heater": {
