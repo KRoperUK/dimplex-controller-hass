@@ -132,6 +132,68 @@ TIMER_OFF = int(TimerMode.OFF)
 TIMER_OFF_LIKE = frozenset({TIMER_FROST, TIMER_OFF})
 
 
+def schedule_slot(schedule: Any, status: Any) -> int:
+    """Return the timer slot a schedule write should target.
+
+    The cached schedule echoes the profile it was fetched for, so prefer it;
+    when the cache has nothing usable, fall back to the live overview's
+    active profile rather than silently writing the user timer (#331).
+    """
+    mode = getattr(schedule, "TimerMode", None) if schedule is not None else None
+    if mode is not None:
+        try:
+            return int(mode)
+        except (TypeError, ValueError):
+            pass
+    named = schedule_profile(status)
+    if named is not None:
+        return SCHEDULE_PROFILES.index(named)
+    return TIMER_USER
+
+
+def _period_key(period: Any) -> tuple[int, str, str, float] | None:
+    """Normalise one timer/profile period for set comparison, or ``None``."""
+    try:
+        return (
+            int(period.DayOfWeek),
+            str(period.StartTime),
+            str(period.EndTime),
+            float(period.Temperature),
+        )
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def matching_saved_profile(schedule: Any, profiles: Any) -> str | None:
+    """Return the saved profile whose periods equal the cached schedule.
+
+    The cloud keeps no link between a timer and the profile it was copied
+    from — applying a profile copies its periods onto the slot — so the only
+    honest "active saved profile" is an exact period-set match. The first
+    profile in list order wins when two saved profiles hold identical
+    periods. ``None`` means the timer was edited since (or nothing matches),
+    not that the cloud knows less (#336).
+    """
+    periods = getattr(schedule, "TimerPeriods", None) if schedule is not None else None
+    if not periods:
+        return None
+    wanted = {key for period in periods if (key := _period_key(period)) is not None}
+    if not wanted:
+        return None
+    for profile in profiles or []:
+        name = getattr(profile, "ProfileName", None)
+        if not name:
+            continue
+        have = {
+            key
+            for period in getattr(profile, "UserHeatingProfilePeriods", None) or []
+            if (key := _period_key(period)) is not None
+        }
+        if have and have == wanted:
+            return str(name)
+    return None
+
+
 def sane_temperature(
     value: Any,
     *,
