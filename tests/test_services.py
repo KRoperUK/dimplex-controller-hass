@@ -634,6 +634,43 @@ async def test_hot_water_temperature_writes_the_requested_mode(hass: HomeAssista
     runtime.status.async_request_refresh.assert_awaited_once()
 
 
+async def test_hot_water_temperatures_stay_inside_app_bounds(hass: HomeAssistant) -> None:
+    """Out-of-app-range writes never reach the cloud (#332).
+
+    The 2.29.1 client constants bound normal/boost to 40-65C and hygiene to
+    60-65C; the vol schema enforces what the UI selector alone cannot.
+    """
+    import voluptuous as vol
+
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    runtime = _make_hot_water_runtime()
+    entry = await _register_entry(hass, runtime)
+    device_id = await _device_id(hass, entry)
+
+    with patch(
+        "custom_components.dimplex.services.capabilities_for_row",
+        return_value=LocalCapabilities(hot_water=True, hygiene=True),
+    ):
+        with pytest.raises(vol.Invalid):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SET_HOT_WATER_TEMPERATURE,
+                {"device_id": device_id, "mode": "normal", "temperature": 70},
+                blocking=True,
+            )
+        with pytest.raises(vol.Invalid):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SET_HOT_WATER_HYGIENE,
+                {"device_id": device_id, "temperature": 50, "frequency": "weekly"},
+                blocking=True,
+            )
+
+    runtime.api.async_set_hot_water_temperature.assert_not_awaited()
+    runtime.api.async_set_hot_water_hygiene.assert_not_awaited()
+
+
 async def test_hot_water_actions_refuse_an_appliance_that_is_not_a_cylinder(hass: HomeAssistant) -> None:
     """A cylinder write must not be sent to a panel heater at all.
 

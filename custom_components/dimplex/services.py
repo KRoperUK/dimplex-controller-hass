@@ -769,7 +769,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         schema=_target_schema().extend(
             {
                 vol.Required(ATTR_MODE): vol.In(list(HOT_WATER_MODES)),
-                vol.Required(ATTR_TEMPERATURE): vol.Coerce(float),
+                # App bounds from the 2.29.1 client constants (normal/boost
+                # 40-65C); the selector alone cannot enforce them (#332).
+                vol.Required(ATTR_TEMPERATURE): vol.All(vol.Coerce(float), vol.Range(min=40, max=65)),
                 vol.Optional(ATTR_ENABLE, default=True): cv.boolean,
             }
         ),
@@ -780,7 +782,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         handle_hot_water_hygiene,
         schema=_target_schema().extend(
             {
-                vol.Required(ATTR_TEMPERATURE): vol.Coerce(float),
+                # App bounds: hygiene 60-65C (#332).
+                vol.Required(ATTR_TEMPERATURE): vol.All(vol.Coerce(float), vol.Range(min=60, max=65)),
                 vol.Required(ATTR_FREQUENCY): vol.In(list(HYGIENE_FREQUENCIES)),
                 vol.Optional(ATTR_ENABLE, default=True): cv.boolean,
             }
