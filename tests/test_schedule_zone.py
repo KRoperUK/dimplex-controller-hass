@@ -73,6 +73,33 @@ def test_schedule_sensor_falls_back_to_timer_mode_without_timer_bit():
     assert sensor.native_value == "manual"
 
 
+def test_schedule_sensor_periods_match_the_active_profile():
+    """State and periods name the same schedule (#328).
+
+    The coordinator fetches the active profile's periods, so a heater on Out
+    All Day reports that profile's setpoints — not the user-timer leftovers
+    the profile-0 endpoint used to return.
+    """
+    entry = MagicMock(spec=ConfigEntry)
+    entry.entry_id = "e1"
+    hub = SimpleNamespace(HubId="h1")
+    zone = SimpleNamespace(ZoneId="z1", ZoneName="Living")
+    appliance = SimpleNamespace(ApplianceId="a1", FriendlyName="Heater", ApplianceModel="X", ApplianceType="Q")
+    status = SimpleNamespace(ApplianceModes=1, StatusTwo=2)
+    period = SimpleNamespace(DayOfWeek=1, StartTime="06:00:00", EndTime="09:00:00", Temperature=21.5)
+    schedule = SimpleNamespace(TimerMode=2, TimerPeriods=[period])
+    row = {"hub": hub, "zone": zone, "appliance": appliance, "status": status}
+    coord = MagicMock()
+    coord.data = {"appliances": [row], "schedules": {"a1": schedule}}
+    coord.last_update_success = True
+    sensor = DimplexScheduleSensor(coord, entry, row)
+    assert sensor.native_value == "out_all_day"
+    attrs = sensor.extra_state_attributes
+    assert attrs["timer_mode"] == 2
+    assert attrs["period_count"] == 1
+    assert attrs["periods"][0]["temperature"] == 21.5
+
+
 def test_zone_sensor_goes_unavailable_when_the_zone_disappears():
     """A zone the cloud stops reporting must not keep a stale anchor alive.
 
