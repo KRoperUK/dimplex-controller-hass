@@ -191,6 +191,12 @@ says frost. Turning a heater back on restores `USER_TIMER`, but only for
 appliances that report no live mode bits: rewriting the schedule over a live
 Manual hold is what kept converting Manual heaters to user timers.
 
+The sensor always shows the **active** profile's periods, but periods refresh
+on a fifteen-minute cadence (plus immediately after a profile change or a
+Home Assistant-side edit). Editing the same profile's periods in the official
+app can therefore take up to fifteen minutes to appear here — the state name
+updates on the next status poll, while the period list waits out the cache.
+
 ## The bit-64 probe
 
 QRAD firmware 28 reports `ApplianceModes: 64` (`ECO`) while the official app
