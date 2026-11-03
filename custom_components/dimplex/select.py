@@ -229,8 +229,8 @@ class DimplexHygieneFrequencySelect(DimplexEntity, SelectEntity):
     def current_option(self) -> str | None:
         """The cycle the cylinder reports, if known."""
         try:
-            return HYGIENE_FREQUENCY_NAMES.get(int(getattr(self._status, "HygieneFrequency")))
-        except (TypeError, ValueError):
+            return HYGIENE_FREQUENCY_NAMES.get(int(self._status.HygieneFrequency))
+        except (AttributeError, TypeError, ValueError):
             return None
 
     async def async_select_option(self, option: str) -> None:
