@@ -17,5 +17,5 @@
   "requirements": [
     "dimplex-controller>=0.17.0"
   ],
-  "version": "4.6.0"
+  "version": "4.6.0-pr.343.76d5b35"
 }
