@@ -352,10 +352,12 @@ def _source_timer_mode(hass: HomeAssistant, config_entry_id: str, appliance_id: 
     runtime = _runtime_for(hass, config_entry_id)
     if runtime is not None:
         schedules = (runtime.status.data or {}).get("schedules") or {}
-        try:
-            return int(getattr(schedules.get(appliance_id), "TimerMode", None))
-        except (TypeError, ValueError):
-            pass
+        mode = getattr(schedules.get(appliance_id), "TimerMode", None)
+        if mode is not None:
+            try:
+                return int(mode)
+            except (TypeError, ValueError):
+                pass
         for row in (runtime.status.data or {}).get("appliances") or []:
             if getattr(row.get("appliance"), "ApplianceId", None) == appliance_id:
                 named = schedule_profile(row.get("status"))
@@ -581,6 +583,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     @_translated
     async def handle_copy_schedule(call: ServiceCall) -> None:
         entry_id, hub_id, appliance_id, api = await _resolve_appliance(hass, call)
+        # Room-heater programmes only: a cylinder's weekly programme lives on
+        # its own endpoint (#199).
+        _require_capability(hass, entry_id, appliance_id, "timer", f"{DOMAIN}.{call.service}")
 
         targets: list[str] = []
         for target_device_id in call.data[ATTR_TARGET_DEVICE_IDS]:

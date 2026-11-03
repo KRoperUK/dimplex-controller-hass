@@ -758,6 +758,34 @@ async def test_hot_water_hygiene_refuses_an_appliance_without_hygiene(hass: Home
     runtime.api.async_set_hot_water_hygiene.assert_not_awaited()
 
 
+async def test_copy_schedule_is_refused_for_a_cylinder(hass: HomeAssistant) -> None:
+    """Cylinder programmes live on their own endpoint, not the room-heater one (#334)."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.dimplex.capabilities import LocalCapabilities
+
+    runtime = _make_schedule_runtime()
+    entry = await _register_entry(hass, runtime)
+    source_device_id = await _device_id(hass, entry, "app-1")
+    target_device_id = await _device_id(hass, entry, "app-2")
+
+    with (
+        patch(
+            "custom_components.dimplex.services.capabilities_for_row",
+            return_value=LocalCapabilities(hot_water=True, climate=False, timer=False),
+        ),
+        pytest.raises(HomeAssistantError, match="unsupported_control"),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_COPY_SCHEDULE,
+            {"device_id": source_device_id, "target_device_ids": [target_device_id]},
+            blocking=True,
+        )
+
+    runtime.api.async_copy_schedule.assert_not_awaited()
+
+
 async def test_advance_is_refused_for_an_appliance_without_one(hass: HomeAssistant) -> None:
     """A cylinder has no next comfort period, and the matrix says so (#199)."""
     from homeassistant.exceptions import HomeAssistantError

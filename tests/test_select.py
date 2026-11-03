@@ -190,7 +190,11 @@ async def test_profile_select_writes_the_chosen_profile(hass):
     row["status"].ApplianceModes = 1
     row["status"].StatusTwo = 0
     api = SimpleNamespace(async_set_schedule_profile=AsyncMock())
-    coordinator = SimpleNamespace(data=payload, async_request_refresh=AsyncMock())
+    coordinator = SimpleNamespace(
+        data=payload,
+        async_request_refresh=AsyncMock(),
+        invalidate_schedules=MagicMock(),
+    )
     config_entry = SimpleNamespace(entry_id="test", runtime_data=SimpleNamespace())
     select = DimplexScheduleProfileSelect(coordinator, config_entry, row, api)
 
@@ -200,6 +204,8 @@ async def test_profile_select_writes_the_chosen_profile(hass):
     await select.async_select_option("home_all_day")
 
     api.async_set_schedule_profile.assert_awaited_once_with("hub-1", "appliance-1", 1)
+    # The cached schedule belongs to the old profile until re-fetched (#334).
+    coordinator.invalidate_schedules.assert_called_once()
     coordinator.async_request_refresh.assert_awaited_once()
 
 
