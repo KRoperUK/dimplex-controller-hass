@@ -171,6 +171,9 @@
       "holiday_days": {
         "name": "Jours de vacances"
       },
+      "hygiene_temperature": {
+        "name": "Température d'hygiène"
+      },
       "hot_water_schedule": {
         "name": "Programme eau chaude"
       }
