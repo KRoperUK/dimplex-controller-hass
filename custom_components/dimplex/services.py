@@ -24,6 +24,7 @@ from .const import (
     SETPOINT_TEMP_MAX,
     SETPOINT_TEMP_MIN,
     TIMER_USER,
+    schedule_profile,
 )
 from .errors import control_errors
 
@@ -342,18 +343,26 @@ def _invalidate_schedules(hass: HomeAssistant, config_entry_id: str) -> None:
 
 
 def _source_timer_mode(hass: HomeAssistant, config_entry_id: str, appliance_id: str) -> int:
-    """Return the source appliance's timer mode, or user-timer when unknown."""
+    """Return the source appliance's active schedule profile.
+
+    The cached schedule echoes the profile it was fetched for, so prefer it;
+    when the cache has nothing usable, fall back to the live overview's
+    active profile rather than silently copying the user timer (#331).
+    """
     runtime = _runtime_for(hass, config_entry_id)
-    if runtime is None:
-        return TIMER_USER
-    schedules = (runtime.status.data or {}).get("schedules") or {}
-    mode = getattr(schedules.get(appliance_id), "TimerMode", None)
-    if mode is None:
-        return TIMER_USER
-    try:
-        return int(mode)
-    except (TypeError, ValueError):
-        return TIMER_USER
+    if runtime is not None:
+        schedules = (runtime.status.data or {}).get("schedules") or {}
+        try:
+            return int(getattr(schedules.get(appliance_id), "TimerMode", None))
+        except (TypeError, ValueError):
+            pass
+        for row in (runtime.status.data or {}).get("appliances") or []:
+            if getattr(row.get("appliance"), "ApplianceId", None) == appliance_id:
+                named = schedule_profile(row.get("status"))
+                if named is not None:
+                    return SCHEDULE_PROFILES.index(named)
+                break
+    return TIMER_USER
 
 
 def _require_capability(

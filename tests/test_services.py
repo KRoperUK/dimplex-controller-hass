@@ -477,6 +477,25 @@ async def test_copy_schedule_uses_user_timer_when_no_schedule_is_cached(hass: Ho
     assert runtime.api.async_copy_schedule.await_args.kwargs["timer_mode"] == 0
 
 
+async def test_copy_schedule_falls_back_to_the_active_profile(hass: HomeAssistant) -> None:
+    """Without a cached schedule the live overview names the profile (#331)."""
+    runtime = _make_schedule_runtime()
+    runtime.status.data["schedules"] = {}
+    runtime.status.data["appliances"][0]["status"] = SimpleNamespace(ApplianceModes=1, StatusTwo=2)
+    entry = await _register_entry(hass, runtime)
+    source_device_id = await _device_id(hass, entry, "app-1")
+    target_device_id = await _device_id(hass, entry, "app-2")
+
+    await hass.services.async_call(
+        DOMAIN,
+        SERVICE_COPY_SCHEDULE,
+        {"device_id": source_device_id, "target_device_ids": [target_device_id]},
+        blocking=True,
+    )
+
+    assert runtime.api.async_copy_schedule.await_args.kwargs["timer_mode"] == 2
+
+
 async def test_copy_schedule_ignores_the_source_in_its_own_target_list(hass: HomeAssistant) -> None:
     """Listing the source as a target is a no-op, not an error."""
     runtime = _make_schedule_runtime()
