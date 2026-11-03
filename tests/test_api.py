@@ -1228,7 +1228,15 @@ async def test_get_schedule_falls_back_to_appliance_features(hass):
     api._client = SimpleNamespace(get_appliance_features=features)
 
     assert await api.async_get_schedule("h", "a") == {"TimerMode": 1}
-    features.assert_awaited_once_with("h", "a")
+    features.assert_awaited_once_with("h", "a", timer_mode=0)
+
+
+async def test_get_schedule_forwards_the_active_profile(hass):
+    """The requested profile reaches the library, which echoes it back (#328)."""
+    api = DimplexApiClient(session=async_get_clientsession(hass), refresh_token="token")
+    with patch.object(api._client, "get_schedule", new=AsyncMock(return_value="settings")) as get_schedule:
+        assert await api.async_get_schedule("h", "a", timer_mode=2) == "settings"
+    get_schedule.assert_awaited_once_with("h", "a", timer_mode=2)
 
 
 async def test_set_hot_water_temperature_picks_the_mode_endpoint(hass):

@@ -33,7 +33,9 @@ from .const import (
     DOMAIN,
     ENERGY_EMPTY_BACKOFF_THRESHOLD,
     HEAT_DEMAND_FLAGS,
+    SCHEDULE_PROFILES,
     has_any_mode,
+    schedule_profile,
 )
 from .repairs import (
     async_update_empty_energy_issue,
@@ -81,6 +83,10 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # every cycle. ``None`` timestamp forces a fetch on the first poll.
         self._schedules_cache: dict[str, Any] = {}
         self._schedules_fetched_at: float | None = None
+        # Profile each cached schedule was fetched for, by appliance id. The
+        # active profile can change between slow refreshes (picked in the app),
+        # so a change forces a targeted re-fetch (#328).
+        self._schedules_profile: dict[str, int] = {}
         super().__init__(
             hass,
             _LOGGER,
@@ -104,26 +110,60 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         self._schedules_fetched_at = None
 
-    async def _async_fetch_schedules(self, appliances: list[dict[str, Any]]) -> dict[str, Any]:
-        """Fetch timer schedules for all appliances concurrently (best-effort)."""
-        targets: list[tuple[str, str, bool]] = []
-        for row in appliances:
-            appliance = row.get("appliance")
-            hub = row.get("hub")
-            if appliance is None or hub is None:
-                continue
-            appliance_id = getattr(appliance, "ApplianceId", None)
-            hub_id = getattr(hub, "HubId", None)
-            if appliance_id and hub_id:
-                # Heat-pump cylinders have their own schedule endpoint; the
-                # room-heater one returns an empty schedule for them.
-                caps = capabilities_for_row(appliance, row.get("status"), row.get("product"))
-                targets.append((hub_id, appliance_id, caps.hot_water and caps.heat_pump))
+    def _schedule_request(self, row: dict[str, Any]) -> tuple[str, str, bool, int] | None:
+        """Return ``(hub_id, appliance_id, cylinder, profile)`` for a schedule fetch.
 
-        async def _one(hub_id: str, appliance_id: str, cylinder: bool) -> Any:
+        ``profile`` is the overview's active schedule profile for timer
+        heaters — profile 0 carries the user-timer periods even when another
+        profile is active, so the fetch must name the profile the status
+        frame does (#328). Anything else (manual, frost, legacy rows without
+        live modes, and cylinders on their own profile-less endpoint) keeps
+        the user-timer default, so a profile echo never reaches the legacy
+        climate fallback disguised as an operation mode.
+        """
+        appliance = row.get("appliance")
+        hub = row.get("hub")
+        if appliance is None or hub is None:
+            return None
+        appliance_id = getattr(appliance, "ApplianceId", None)
+        hub_id = getattr(hub, "HubId", None)
+        if not appliance_id or not hub_id:
+            return None
+        status = row.get("status")
+        caps = capabilities_for_row(appliance, status, row.get("product"))
+        # Heat-pump cylinders have their own schedule endpoint; the
+        # room-heater one returns an empty schedule for them.
+        cylinder = caps.hot_water and caps.heat_pump
+        profile = 0
+        if not cylinder:
+            named = schedule_profile(status)
+            if named is not None:
+                profile = SCHEDULE_PROFILES.index(named)
+        return (hub_id, appliance_id, cylinder, profile)
+
+    def _schedule_stale(self, row: dict[str, Any]) -> bool:
+        """True when the row needs a schedule (re-)fetch outside the cadence.
+
+        A missing entry or an active-profile change since the cached fetch
+        forces a targeted re-fetch; the fifteen-minute cadence otherwise
+        stands.
+        """
+        request = self._schedule_request(row)
+        if request is None:
+            return False
+        _, appliance_id, _, profile = request
+        if appliance_id not in self._schedules_cache:
+            return True
+        return self._schedules_profile.get(appliance_id) != profile
+
+    async def _async_fetch_schedules(self, appliances: list[dict[str, Any]]) -> dict[str, Any]:
+        """Fetch timer schedules for appliances concurrently (best-effort)."""
+        targets = [request for row in appliances if (request := self._schedule_request(row))]
+
+        async def _one(hub_id: str, appliance_id: str, cylinder: bool, profile: int) -> Any:
             if cylinder:
                 return await self.api.async_get_hot_water_schedule(hub_id, appliance_id)
-            return await self.api.async_get_schedule(hub_id, appliance_id)
+            return await self.api.async_get_schedule(hub_id, appliance_id, timer_mode=profile)
 
         results = await asyncio.gather(
             *(_one(*target) for target in targets),
@@ -131,12 +171,15 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         schedules: dict[str, Any] = {}
-        for (_, appliance_id, _cylinder), result in zip(targets, results, strict=False):
+        for (_, appliance_id, _, profile), result in zip(targets, results, strict=False):
             if isinstance(result, Exception):
                 _LOGGER.debug("Schedule unavailable for %s: %s", appliance_id, result)
                 schedules[appliance_id] = None
             else:
                 schedules[appliance_id] = result
+            # Record the attempted profile either way: a failed fetch retries
+            # on the slow cadence, not on every hot status poll.
+            self._schedules_profile[appliance_id] = profile
         return schedules
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -149,10 +192,20 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Timer schedules (read-only) are refreshed on a slow cadence and cached
         # in between so the hot status poll stays a single API call. A missing
         # schedule leaves the entry as ``None`` (schedule sensor unavailable).
+        # A changed active profile re-fetches that appliance at once, so the
+        # periods follow a schedule picked in the app without waiting out the
+        # cache (#328).
         appliances = data.get("appliances") or []
         if self._schedules_due():
             self._schedules_cache = await self._async_fetch_schedules(appliances)
             self._schedules_fetched_at = self.hass.loop.time()
+            for appliance_id in list(self._schedules_profile):
+                if appliance_id not in self._schedules_cache:
+                    del self._schedules_profile[appliance_id]
+        else:
+            changed = [row for row in appliances if self._schedule_stale(row)]
+            if changed:
+                self._schedules_cache.update(await self._async_fetch_schedules(changed))
         data["schedules"] = self._schedules_cache
 
         _persist_tokens(self.hass, self._entry, self.api)

@@ -498,12 +498,17 @@ class DimplexApiClient:
                 status=status,
             )
 
-    async def async_get_schedule(self, hub_id: str, appliance_id: str) -> Any:
-        """Return timer mode settings for an appliance (read-only schedule)."""
+    async def async_get_schedule(self, hub_id: str, appliance_id: str, timer_mode: int = 0) -> Any:
+        """Return one profile's timer periods for an appliance (read-only schedule).
+
+        ``timer_mode`` selects the profile (0 = user timer, 1 = home all day,
+        2 = out all day); the cloud echoes it back and it is not the active
+        schedule, which lives in the overview's ``StatusTwo`` (#328).
+        """
         with _translated_errors():
             if hasattr(self._client, "get_schedule"):
-                return await self._client.get_schedule(hub_id, appliance_id)
-            return await self._client.get_appliance_features(hub_id, appliance_id)
+                return await self._client.get_schedule(hub_id, appliance_id, timer_mode=timer_mode)
+            return await self._client.get_appliance_features(hub_id, appliance_id, timer_mode=timer_mode)
 
     async def async_get_hot_water_schedule(self, hub_id: str, appliance_id: str) -> dict[str, Any]:
         """Return an ASHW cylinder's weekly schedule as the cloud sends it.
