@@ -157,6 +157,9 @@
       "schedule": {
         "name": "Schedule"
       },
+      "saved_profile": {
+        "name": "Saved profile"
+      },
       "zone": {
         "name": "Zone"
       },
@@ -270,6 +273,9 @@
           "weekly": "Weekly",
           "monthly": "Monthly"
         }
+      },
+      "saved_profile": {
+        "name": "Saved profile"
       }
     },
     "water_heater": {

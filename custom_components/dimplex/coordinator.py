@@ -87,6 +87,12 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # active profile can change between slow refreshes (picked in the app),
         # so a change forces a targeted re-fetch (#328).
         self._schedules_profile: dict[str, int] = {}
+        # Saved heating profiles (``GetProfiles``) are account-wide and change
+        # only when the user edits them in the app, so they ride the same slow
+        # cadence as the schedules. A failed fetch keeps the previous list:
+        # profiles feed entity options, and wiping them on a blip would flap
+        # the saved-profile select in and out of availability.
+        self._heating_profiles_cache: list[Any] = []
         super().__init__(
             hass,
             _LOGGER,
@@ -182,6 +188,14 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._schedules_profile[appliance_id] = profile
         return schedules
 
+    async def _async_fetch_heating_profiles(self) -> list[Any]:
+        """Fetch saved heating profiles, keeping the previous list on failure."""
+        try:
+            return list(await self.api.async_get_heating_profiles() or [])
+        except Exception as exception:
+            _LOGGER.debug("Saved heating profiles unavailable: %s", exception)
+            return self._heating_profiles_cache
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Update status data via library."""
         try:
@@ -202,11 +216,13 @@ class DimplexStatusCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for appliance_id in list(self._schedules_profile):
                 if appliance_id not in self._schedules_cache:
                     del self._schedules_profile[appliance_id]
+            self._heating_profiles_cache = await self._async_fetch_heating_profiles()
         else:
             changed = [row for row in appliances if self._schedule_stale(row)]
             if changed:
                 self._schedules_cache.update(await self._async_fetch_schedules(changed))
         data["schedules"] = self._schedules_cache
+        data["heating_profiles"] = self._heating_profiles_cache
 
         _persist_tokens(self.hass, self._entry, self.api)
         has_status = any(row.get("status") is not None for row in appliances)

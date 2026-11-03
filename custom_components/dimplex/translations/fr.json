@@ -168,6 +168,9 @@
           "monthly": "Mensuel"
         }
       },
+      "saved_profile": {
+        "name": "Profil enregistré"
+      },
       "holiday_days": {
         "name": "Jours de vacances"
       },
@@ -256,6 +259,9 @@
           "weekly": "Hebdomadaire",
           "monthly": "Mensuel"
         }
+      },
+      "saved_profile": {
+        "name": "Profil enregistré"
       }
     },
     "water_heater": {

@@ -14,6 +14,11 @@ The schedule-profile select is a *control* entity: choosing a value applies
 that schedule profile (user timer / home all day / out all day) to the heater
 through the API, mirroring the official app's schedule picker (#314).
 
+The saved-profile select applies one of the account's named heating profiles
+to the heater's active timer slot. The cloud keeps no link between a timer
+and the profile it was copied from, so the current option is found by
+matching periods, not read back (#336).
+
 The operating-mode select is a *control* entity too: choosing ``manual`` holds
 a manual setpoint and choosing ``timer`` returns the heater to its user-timer
 schedule. In User Timer a QRAD ignores every setpoint and boost the
@@ -43,8 +48,10 @@ from .const import (
     SCHEDULE_PROFILES,
     TIMER_FLAG,
     has_any_mode,
+    matching_saved_profile,
     sane_temperature,
     schedule_profile,
+    schedule_slot,
 )
 from .entity import DimplexEntity
 from .errors import control_errors
@@ -58,6 +65,7 @@ BOOST_DURATION_KEY = "boost_duration"
 SCHEDULE_PROFILE_KEY = "schedule_profile"
 OPERATING_MODE_KEY = "operating_mode"
 HYGIENE_FREQUENCY_KEY = "hygiene_frequency"
+SAVED_PROFILE_KEY = "saved_profile"
 
 OPERATING_MODES: tuple[str, ...] = ("manual", "timer")
 
@@ -85,6 +93,9 @@ async def async_setup_entry(
             # only the app could — which left QRADs stuck ignoring setpoints
             # in User Timer (#272, #299). Same gate: a heater, not a cylinder.
             entities.append(DimplexOperatingModeSelect(runtime.status, entry, row, runtime.api))
+            # Saved profiles apply to that same heater timer slot, so the
+            # picker lives behind the same gate (#336).
+            entities.append(DimplexSavedProfileSelect(runtime.status, entry, row, runtime.api))
         # The anti-legionella cycle belongs to hot-water cylinders (#333).
         if getattr(caps, "hygiene", False):
             entities.append(
@@ -341,4 +352,80 @@ class DimplexOperatingModeSelect(DimplexEntity, SelectEntity):
         self._pending = option
         self._pending_updates_left = OPTIMISTIC_UPDATES
         self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
+
+
+class DimplexSavedProfileSelect(DimplexEntity, SelectEntity):
+    """Apply a saved heating profile to the heater's active timer slot.
+
+    The options are the account's saved profiles from the official app's
+    Profiles page. The current option is the profile whose periods exactly
+    match the cached schedule — the cloud keeps no link between a timer and
+    the profile it was copied from, so a timer edited since applying reads
+    unknown rather than a stale name (#336).
+    """
+
+    entity_description: SelectEntityDescription
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+        api: DimplexApiClient,
+    ) -> None:
+        super().__init__(
+            coordinator,
+            config_entry,
+            appliance_row,
+            SelectEntityDescription(key=SAVED_PROFILE_KEY, translation_key=SAVED_PROFILE_KEY),
+        )
+        self._api = api
+        self._attr_options = self._profile_names()
+
+    def _profile_names(self) -> list[str]:
+        """Saved profile names from the coordinator cache, in cloud order."""
+        profiles = (self.coordinator.data or {}).get("heating_profiles") or []
+        return [str(name) for profile in profiles if (name := getattr(profile, "ProfileName", None))]
+
+    def _handle_coordinator_update(self) -> None:
+        """Refresh the options when the slow profile cache turns over."""
+        self._attr_options = self._profile_names()
+        super()._handle_coordinator_update()
+
+    @property
+    def available(self) -> bool:
+        """Unavailable while no saved profiles are cached to pick from."""
+        if not super().available:
+            return False
+        return bool(self._profile_names())
+
+    @property
+    def current_option(self) -> str | None:
+        """The saved profile matching the cached schedule, if any."""
+        data = self.coordinator.data or {}
+        schedule = (data.get("schedules") or {}).get(self._appliance.ApplianceId)
+        return matching_saved_profile(schedule, data.get("heating_profiles"))
+
+    async def async_select_option(self, option: str) -> None:
+        """Apply the chosen saved profile to the heater's active timer slot."""
+        name = getattr(self._appliance, "FriendlyName", None) or "Dimplex appliance"
+        data = self.coordinator.data or {}
+        profiles = data.get("heating_profiles") or []
+        match = next((profile for profile in profiles if getattr(profile, "ProfileName", None) == option), None)
+        if match is None:
+            available = ", ".join(self._profile_names()) or "none saved"
+            raise ValueError(f"{option} is not a saved heating profile for {name} (available: {available})")
+        schedule = (data.get("schedules") or {}).get(self._appliance.ApplianceId)
+        slot = schedule_slot(schedule, self._status)
+        with control_errors(name):
+            await self._api.async_apply_heating_profile(
+                self._hub.HubId,
+                self._appliance.ApplianceId,
+                profile=slot,
+                profile_id=str(match.Id),
+            )
+        invalidate = getattr(self.coordinator, "invalidate_schedules", None)
+        if callable(invalidate):
+            invalidate()
         await self.coordinator.async_request_refresh()

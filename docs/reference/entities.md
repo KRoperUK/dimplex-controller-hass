@@ -189,6 +189,7 @@ app rather than measured — see [appliance support](appliances.md#temperature-r
 | Boost duration             | How long the `boost` **preset** runs for this appliance. The options are the discrete durations the appliance's capability matrix offers (`boost_durations`, e.g. 30/60/120/180 minutes), matching the official app's own picker. Translation key `boost_duration`.                                                                                      |
 | Operating mode             | A **control**: `manual` holds a manual setpoint through the dedicated Manual write, `timer` returns the heater to its user-timer schedule. Without this, Home Assistant could never put a QRAD back into Manual itself — in User Timer the heater ignores every setpoint and boost. A refused write surfaces an error. Translation key `operating_mode`. |
 | Schedule profile           | Which schedule programme the heater follows: `user_timer`, `home_all_day` or `out_all_day`. A **control** — choosing a value applies that profile through the API, mirroring the official app's schedule picker. Translation key `schedule_profile`.                                                                                                     |
+| Saved profile              | Which of the account's saved heating profiles the timer matches. A **control** — choosing a value applies that profile to the heater's active timer slot. The cloud keeps no link back, so the current value is found by matching periods and reads unknown when the timer was edited since. Translation key `saved_profile`.                            |
 | Hygiene recurrence control | A **control**: `off`, `daily`, `weekly` or `monthly` anti-legionella cycle for hot-water cylinders, written with the current hygiene temperature through the API. Translation key `hygiene_frequency`.                                                                                                                                                   |
 
 A configuration entity (not shown by default on the main card), created only for
@@ -208,6 +209,14 @@ attribute lists the programme as day / start / end / temperature.
 The sensor is read-only. The programme can be copied to other appliances, and one period's
 target edited, through actions — see
 [edit the weekly schedule](../use/temperature.md#editing-the-weekly-schedule).
+
+Heater timers also get a read-only **Saved profile** sensor (translation key
+`saved_profile`). The cloud keeps no link between a timer and the profile it
+was copied from, so this reports the saved profile whose periods exactly
+match the cached schedule — or unknown when the timer was edited since. Its
+`profiles` attribute lists the saved profile names available to match
+against. Choosing one of them through the **Saved profile** select applies it
+to the heater's active timer slot.
 
 ### Hot water schedule
 

@@ -168,6 +168,9 @@
           "monthly": "Månedlig"
         }
       },
+      "saved_profile": {
+        "name": "Lagret profil"
+      },
       "holiday_days": {
         "name": "Feriedager"
       },
@@ -256,6 +259,9 @@
           "weekly": "Ukentlig",
           "monthly": "Månedlig"
         }
+      },
+      "saved_profile": {
+        "name": "Lagret profil"
       }
     },
     "water_heater": {

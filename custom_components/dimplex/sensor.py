@@ -35,6 +35,7 @@ from .const import (
     HYGIENE_FREQUENCY_NAMES,
     has_any_mode,
     hot_water_mode,
+    matching_saved_profile,
     sane_temperature,
     schedule_profile,
 )
@@ -493,6 +494,11 @@ async def async_setup_entry(
             devices.append(DimplexHotWaterScheduleSensor(status, entry, appliance_row))
         else:
             devices.append(DimplexScheduleSensor(status, entry, appliance_row))
+        # The saved-profile readback only fits a heater timer slot — the same
+        # gate as the schedule-profile select — because a cylinder's weekly
+        # programme lives on its own endpoint (#336).
+        if getattr(caps, "timer", False) and not getattr(caps, "hot_water", False):
+            devices.append(DimplexSavedProfileSensor(status, entry, appliance_row))
         zone = appliance_row.get("zone")
         zone_id = getattr(zone, "ZoneId", None) if zone is not None else None
         if zone_id and zone_id not in seen_zones:
@@ -772,6 +778,50 @@ class DimplexScheduleSensor(DimplexEntity, SensorEntity):
             "period_count": len(periods_out),
             "periods": periods_out,
         }
+
+
+class DimplexSavedProfileSensor(DimplexEntity, SensorEntity):
+    """Saved heating profile matching the heater's cached schedule.
+
+    The cloud keeps no link between a timer and the profile it was copied
+    from — applying a profile copies its periods onto the slot — so this
+    reports the saved profile whose periods exactly match, or unknown when
+    the timer was edited since. A heater/picker pair with the saved-profile
+    select, which applies by the same match (#336).
+    """
+
+    _attr_translation_key = "saved_profile"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+    ) -> None:
+        super().__init__(coordinator, config_entry, appliance_row, unique_id_suffix="saved_profile")
+        self._attr_unique_id = f"{config_entry.entry_id}_{self._appliance.ApplianceId}_saved_profile"
+
+    @property
+    def available(self) -> bool:
+        """Unavailable while the cached schedule is missing."""
+        if not CoordinatorEntity.available.__get__(self, type(self)):
+            return False
+        schedules = (self.coordinator.data or {}).get("schedules") or {}
+        return schedules.get(self._appliance.ApplianceId) is not None
+
+    @property
+    def native_value(self) -> str | None:
+        """The matching saved profile name, or unknown when custom."""
+        data = self.coordinator.data or {}
+        schedule = (data.get("schedules") or {}).get(self._appliance.ApplianceId)
+        return matching_saved_profile(schedule, data.get("heating_profiles"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The saved profile names available to match against."""
+        profiles = (self.coordinator.data or {}).get("heating_profiles") or []
+        return {"profiles": [str(name) for profile in profiles if (name := getattr(profile, "ProfileName", None))]}
 
 
 # .NET DayOfWeek, as the cylinder schedule uses it: 0 = Sunday.
