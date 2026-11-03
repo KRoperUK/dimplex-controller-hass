@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.4.1...v4.5.0) (2026-11-03)
+
+
+### Features
+
+* add hygiene frequency select for cylinders ([#338](https://github.com/KRoperUK/dimplex-controller-hass/issues/338)) ([04c16d3](https://github.com/KRoperUK/dimplex-controller-hass/commit/04c16d3a88bbf8631bc66c2a5d8c0ac72de8c1c1))
+
 ## [4.4.1](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.4.0...v4.4.1) (2026-11-03)
 
 
