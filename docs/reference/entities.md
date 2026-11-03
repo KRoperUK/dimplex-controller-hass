@@ -138,6 +138,7 @@ Cylinder sensors (created only for hot water appliances):
 | Hot water capacity | L    | Tank size (_diagnostic_). Translation key `hot_water_capacity`.                                     |
 | Hot water mode     | —    | `standby` / `timer` / `holiday` / `boost` / `hygiene`. Translation key `hot_water_mode`.            |
 | Hygiene recurrence | —    | Anti-legionella cycle: `off`, `daily`, `weekly`, `monthly` (_diagnostic_). Key `hygiene_frequency`. |
+| Hygiene temp       | °C   | Anti-legionella target temperature (_diagnostic_). Translation key `hygiene_temperature`.            |
 | Holiday days       | d    | Days of holiday the cylinder has left (_diagnostic_). Translation key `holiday_days`.               |
 
 | Binary sensor | Description                                                                 |

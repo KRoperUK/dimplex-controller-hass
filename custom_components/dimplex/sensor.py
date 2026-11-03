@@ -375,6 +375,15 @@ STATUS_SENSORS: tuple[DimplexSensorEntityDescription, ...] = (
         capability="hot_water",
         value_fn=_status_attr("HolidayNumOfDays"),
     ),
+    DimplexSensorEntityDescription(
+        key="hygiene_temperature",
+        translation_key="hygiene_temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        capability="hygiene",
+        value_fn=_status_temp("HygieneTemperature"),
+    ),
 )
 
 

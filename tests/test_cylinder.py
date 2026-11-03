@@ -174,6 +174,7 @@ async def test_cylinder_entities(hass):
     assert hass.states.get("sensor.hot_water_hot_water_hot_water_capacity").state == "200"
     assert hass.states.get("sensor.hot_water_hot_water_hot_water_mode").state == "timer"
     assert hass.states.get("sensor.hot_water_hot_water_hygiene_recurrence").state == "weekly"
+    assert hass.states.get("sensor.hot_water_hot_water_hygiene_temperature").state == "unknown"
     assert hass.states.get("sensor.hot_water_hot_water_holiday_days").state == "0"
     assert hass.states.get("sensor.hot_water_hot_water_target_temperature").state == "45.0"
     assert hass.states.get("binary_sensor.hot_water_hot_water_green_energy").state == "on"
@@ -378,6 +379,18 @@ LIVE_SCHEDULE = {
     "ApplianceId": "cyl-1",
     "TimerPeriods": [{"DayOfWeek": d, "StartTime": 0, "Mode": 2} for d in (1, 2, 3, 4, 5, 6, 0)],
 }
+
+
+@pytest.mark.asyncio
+async def test_hygiene_temperature_sensor_reports_the_overview_value(hass):
+    """The overview's HygieneTemperature gets a diagnostic sensor (#333)."""
+    payload = _payload()
+    payload["appliances"][0]["status"].HygieneTemperature = 60.0
+    await _setup(hass, payload)
+
+    state = hass.states.get("sensor.hot_water_hot_water_hygiene_temperature")
+    assert state.state == "60.0"
+    assert state.attributes["unit_of_measurement"] == "°C"
 
 
 @pytest.mark.asyncio
