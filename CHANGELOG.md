@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.5.0...v4.6.0) (2026-11-03)
+
+
+### Features
+
+* add saved-profile picker and readback for heaters ([#341](https://github.com/KRoperUK/dimplex-controller-hass/issues/341)) ([0954cf4](https://github.com/KRoperUK/dimplex-controller-hass/commit/0954cf421b0250dcfe1ddcb6821f602c82cd48bc))
+
 ## [4.5.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.4.1...v4.5.0) (2026-11-03)
 
 
