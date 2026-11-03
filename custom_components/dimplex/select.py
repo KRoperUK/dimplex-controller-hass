@@ -37,6 +37,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .api import DimplexApiClient
 from .capabilities import capabilities_for_row
 from .const import (
+    HYGIENE_FREQUENCY_NAMES,
     MANUAL_FLAG,
     OPTIMISTIC_UPDATES,
     SCHEDULE_PROFILES,
@@ -56,6 +57,7 @@ _LOGGER = logging.getLogger(__name__)
 BOOST_DURATION_KEY = "boost_duration"
 SCHEDULE_PROFILE_KEY = "schedule_profile"
 OPERATING_MODE_KEY = "operating_mode"
+HYGIENE_FREQUENCY_KEY = "hygiene_frequency"
 
 OPERATING_MODES: tuple[str, ...] = ("manual", "timer")
 
@@ -83,6 +85,13 @@ async def async_setup_entry(
             # only the app could — which left QRADs stuck ignoring setpoints
             # in User Timer (#272, #299). Same gate: a heater, not a cylinder.
             entities.append(DimplexOperatingModeSelect(runtime.status, entry, row, runtime.api))
+        # The anti-legionella cycle belongs to hot-water cylinders (#333).
+        if getattr(caps, "hygiene", False):
+            entities.append(
+                DimplexHygieneFrequencySelect(
+                    runtime.status, entry, row, runtime.api, getattr(caps, "heat_pump", False)
+                )
+            )
     async_add_entities(entities)
 
 
@@ -185,6 +194,61 @@ class DimplexScheduleProfileSelect(DimplexEntity, SelectEntity):
         invalidate = getattr(self.coordinator, "invalidate_schedules", None)
         if callable(invalidate):
             invalidate()
+        await self.coordinator.async_request_refresh()
+
+
+class DimplexHygieneFrequencySelect(DimplexEntity, SelectEntity):
+    """Pick the cylinder's anti-legionella cycle frequency.
+
+    The write keeps the overview's hygiene temperature — the app always sends
+    a temperature with the frequency, and there is nothing else sensible to
+    send (#333).
+    """
+
+    entity_description: SelectEntityDescription
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator[dict[str, Any]],
+        config_entry: ConfigEntry,
+        appliance_row: dict[str, Any],
+        api: DimplexApiClient,
+        heat_pump: bool = False,
+    ) -> None:
+        super().__init__(
+            coordinator,
+            config_entry,
+            appliance_row,
+            SelectEntityDescription(key=HYGIENE_FREQUENCY_KEY, translation_key=HYGIENE_FREQUENCY_KEY),
+        )
+        self._attr_options = list(HYGIENE_FREQUENCY_NAMES.values())
+        self._api = api
+        self._heat_pump = heat_pump
+
+    @property
+    def current_option(self) -> str | None:
+        """The cycle the cylinder reports, if known."""
+        try:
+            return HYGIENE_FREQUENCY_NAMES.get(int(getattr(self._status, "HygieneFrequency")))
+        except (TypeError, ValueError):
+            return None
+
+    async def async_select_option(self, option: str) -> None:
+        """Write the chosen frequency, keeping the current hygiene temperature."""
+        name = getattr(self._appliance, "FriendlyName", None) or "Dimplex appliance"
+        if option not in HYGIENE_FREQUENCY_NAMES.values():
+            raise ValueError(f"{option} is not a valid hygiene frequency for {name}")
+        frequency = next(code for code, label in HYGIENE_FREQUENCY_NAMES.items() if label == option)
+        temperature = sane_temperature(getattr(self._status, "HygieneTemperature", None)) or 60.0
+        with control_errors(name):
+            await self._api.async_set_hot_water_hygiene(
+                self._hub.HubId,
+                self._appliance.ApplianceId,
+                temperature=temperature,
+                frequency=frequency,
+                enable=option != "off",
+                heat_pump=self._heat_pump,
+            )
         await self.coordinator.async_request_refresh()
 
 

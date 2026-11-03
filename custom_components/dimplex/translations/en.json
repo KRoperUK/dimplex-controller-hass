@@ -261,6 +261,15 @@
           "home_all_day": "Home all day",
           "out_all_day": "Out all day"
         }
+      },
+      "hygiene_frequency": {
+        "name": "Hygiene recurrence",
+        "state": {
+          "off": "Off",
+          "daily": "Daily",
+          "weekly": "Weekly",
+          "monthly": "Monthly"
+        }
       }
     },
     "water_heater": {

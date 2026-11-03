@@ -247,6 +247,15 @@
           "home_all_day": "Présent toute la journée",
           "out_all_day": "Absent toute la journée"
         }
+      },
+      "hygiene_frequency": {
+        "name": "Cycle d'hygiène",
+        "state": {
+          "off": "Désactivé",
+          "daily": "Quotidien",
+          "weekly": "Hebdomadaire",
+          "monthly": "Mensuel"
+        }
       }
     },
     "water_heater": {
