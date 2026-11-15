@@ -220,7 +220,9 @@ async def async_get_config_entry_diagnostics(
         "versions": {
             "integration": VERSION,
             "manifest": entry.domain,
-            "dimplex_controller": _lib_version(),
+            # ``importlib.metadata.version`` hits the disk (dist-info lookup),
+            # so it runs in the executor rather than blocking the loop (#349).
+            "dimplex_controller": await hass.async_add_executor_job(_lib_version),
         },
         "coordinators": {
             "status": {

@@ -267,6 +267,55 @@ async def test_lib_version_none_when_package_missing() -> None:
         assert _lib_version() is None
 
 
+async def test_lib_version_lookup_runs_off_the_event_loop(hass: HomeAssistant) -> None:
+    """The blocking ``importlib.metadata`` lookup must not run on the loop (#349).
+
+    Downloading diagnostics logged ``Detected blocking call ... at
+    diagnostics.py:121`` because ``_lib_version()`` does dist-info file I/O.
+    The spy records its thread: on the old direct call it matches the loop
+    thread and this fails.
+    """
+    import threading
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=MOCK_ENTRY_DATA,
+        options={"status_interval": 30, "energy_interval": 1800},
+        entry_id="diag-offloop",
+    )
+    entry.add_to_hass(hass)
+
+    status_coord = MagicMock()
+    status_coord.data = {"hubs": [], "appliances": []}
+    status_coord.last_update_success = True
+    status_coord.last_exception = None
+    status_coord.update_interval = "0:00:30"
+    energy_coord = MagicMock()
+    energy_coord.data = {"energy": {}}
+    energy_coord.last_update_success = True
+    energy_coord.last_exception = None
+    energy_coord.update_interval = "0:30:00"
+    entry.runtime_data = SimpleNamespace(status=status_coord, energy=energy_coord)
+
+    from custom_components.dimplex import diagnostics as diag_mod
+
+    loop_thread = threading.get_ident()
+    seen: dict[str, int] = {}
+    real = diag_mod._lib_version
+
+    def spy() -> str | None:
+        seen["thread"] = threading.get_ident()
+        return real()
+
+    # Plain-function replacement, deliberately not a MagicMock: HA detects a
+    # mock as a callback job and would run it on the loop, hiding the bug.
+    with patch("custom_components.dimplex.diagnostics._lib_version", spy):
+        data = await async_get_config_entry_diagnostics(hass, entry)
+
+    assert seen.get("thread") not in (None, loop_thread)
+    assert data["versions"]["dimplex_controller"] is not None
+
+
 async def test_diagnostics_provisioning_property_branch(hass: HomeAssistant) -> None:
     """Diagnostics resolve ``automatic_provisioning`` when it is a property.
 
