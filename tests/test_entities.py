@@ -411,13 +411,49 @@ async def test_element_power_sensors_read_provisioning(hass):
 
 
 async def test_boost_remaining_unknown_without_a_recorded_start():
-    """A boost begun outside Home Assistant reads unknown, by design (#302)."""
+    """No record and no live duration still reads unknown (#302).
+
+    ``_status_row`` reports ``BoostDuration: 0`` by default, so the cloud
+    fallback has nothing to use — the boost bit alone is not a countdown.
+    """
     from custom_components.dimplex.sensor import DimplexBoostRemainingSensor
 
     coordinator, config_entry, row = _status_row(modes=2)
     sensor = DimplexBoostRemainingSensor(coordinator, config_entry, row)
 
     assert sensor.native_value is None
+
+
+async def test_boost_remaining_uses_live_duration_for_external_boosts():
+    """A boost begun on the heater or in the app reads the live countdown (#347).
+
+    QRad firmware 28 reports ``BoostDuration`` as minutes remaining while a
+    boost is active; without a recorded HA start that is the best value, and
+    the exact HA-initiated countdown still wins when a record exists.
+    """
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+
+    from custom_components.dimplex.sensor import DimplexBoostRemainingSensor
+
+    coordinator, config_entry, row = _status_row(modes=2, status_extra={"BoostDuration": 51})
+    sensor = DimplexBoostRemainingSensor(coordinator, config_entry, row)
+
+    assert sensor.native_value == 51.0
+
+    # The recorded HA countdown takes precedence over the cloud field.
+    config_entry.runtime_data.boost_starts["appliance-1"] = {
+        "started_at": (dt_util.utcnow() - timedelta(minutes=50)).isoformat(),
+        "duration_minutes": 60,
+    }
+    remaining = sensor.native_value
+    assert remaining is not None and 9.0 < remaining < 11.0
+
+    # Boost bit cleared: the fallback retires instead of lingering.
+    idle_coordinator, idle_entry, idle_row = _status_row(modes=1, status_extra={"BoostDuration": 51})
+    idle = DimplexBoostRemainingSensor(idle_coordinator, idle_entry, idle_row)
+    assert idle.native_value is None
 
 
 async def test_boost_remaining_counts_down_and_reaches_zero():

@@ -5,7 +5,9 @@ length, not a countdown — so the boost-remaining sensor synthesises its
 countdown from the engage time and chosen duration recorded here. Recording
 happens at the two places a boost can start inside Home Assistant (the
 climate boost preset and the ``dimplex.set_boost`` action); a boost begun on
-the heater or in the app has no record and reads unknown by design (#302).
+the heater or in the app has no record, and then the sensor falls back to
+the live ``BoostDuration`` while the boost bit is set — a real countdown on
+at least QRad firmware 28 (dimplex-controller-hass#347).
 """
 
 from __future__ import annotations
