@@ -1,5 +1,6 @@
 """Test dimplex entity platforms."""
 
+from datetime import UTC
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -377,12 +378,21 @@ async def test_last_telem_reads_the_appliance_field_and_filters_year_one():
     """The appliance LastTelemDate renders; the .NET unset date reads unknown (#301)."""
     from datetime import datetime
 
+    from homeassistant.util import dt as dt_util
+
     from custom_components.dimplex.sensor import STATUS_SENSORS
 
     description = next(d for d in STATUS_SENSORS if d.key == "last_telem")
-    real = datetime(2026, 10, 20, 12, 0, 0)
-    _, _, row = _status_row(last_telem=real)
-    assert description.value_fn(row["status"], row["appliance"]) == real
+    aware = datetime(2026, 10, 20, 12, 0, 0, tzinfo=UTC)
+    _, _, row = _status_row(last_telem=aware)
+    assert description.value_fn(row["status"], row["appliance"]) == aware
+
+    # The cloud's bare wall-clock string arrives naive and timestamp sensors
+    # require tz-aware values — it renders as UTC, not unknown (#345).
+    _, _, row = _status_row(last_telem=datetime(2026, 11, 4, 20, 46, 26, 617000))
+    assert description.value_fn(row["status"], row["appliance"]) == datetime(
+        2026, 11, 4, 20, 46, 26, 617000, tzinfo=dt_util.UTC
+    )
 
     _, _, row = _status_row(last_telem=datetime(1, 1, 1))
     assert description.value_fn(row["status"], row["appliance"]) is None

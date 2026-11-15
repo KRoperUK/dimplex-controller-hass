@@ -160,10 +160,17 @@ def _last_telem(status: Any, appliance: Any) -> Any:
     "unset" value (``0001-01-01T00:00:00``, year 1) maps to unknown rather
     than rendering as year 1 — the library maps it to ``None`` on current
     versions, and this filters it defensively for older ones (#301).
+
+    A naive value is assumed UTC: timestamp sensors require tz-aware
+    datetimes, and the cloud sends the same field with a ``Z`` suffix when
+    it sends an offset at all (dimplex-controller-hass#345). Newer library
+    versions normalise this themselves; this covers older ones.
     """
     value = getattr(appliance, "LastTelemDate", None)
     if isinstance(value, datetime) and value.year == 1:
         return None
+    if isinstance(value, datetime) and value.tzinfo is None:
+        return value.replace(tzinfo=dt_util.UTC)
     return value
 
 
