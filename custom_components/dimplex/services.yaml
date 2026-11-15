@@ -285,6 +285,10 @@ set_period_setpoint:
     Change one existing schedule period's target temperature, without rewriting the
     rest of the programme. Matches on day and start time, so the period has to
     already exist — see the appliance's Schedule sensor for its periods.
+    Not every appliance accepts it: Quantum heaters refuse schedule-editor writes,
+    and at least one QRad firmware (QRAD200E, #348) does too. Where it is refused,
+    apply a saved profile with dimplex.apply_heating_profile or edit in the
+    Dimplex app instead.
   fields:
     device_id:
       name: Device

@@ -209,6 +209,12 @@ data:
 A day and start time that match no period raises an error naming the appliance and the time,
 rather than silently doing nothing.
 
+Not every appliance accepts this write: it goes through the `SetTimerMode`
+schedule editor, which Quantum heaters refuse (HTTP 403), and at least one QRad
+firmware does too (QRAD200E, dimplex-controller-hass#348). A refusal names the
+appliance and suggests `dimplex.apply_heating_profile` — applying a whole saved
+profile — or editing the period in the Dimplex app instead.
+
 ## `dimplex.refresh`
 
 Polls the Dimplex cloud straight away instead of waiting for the next scheduled status
