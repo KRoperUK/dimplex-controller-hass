@@ -728,3 +728,40 @@ async def test_a_held_drop_warns_once_per_rebase_not_every_poll(caplog):
             assert sensor.native_value == 100.0
         warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
         assert len(warnings) == 1, f"one ongoing rebase must warn once, got {len(warnings)}"
+
+
+async def test_a_jittering_drop_warns_once_and_recovery_re_arms(caplog):
+    """A moving suppressed total warns once; recovery re-arms the latch (#350).
+
+    The cloud total jitters between polls (live trickle, rounding), so
+    once-per-distinct-value still warned on every update. Only the first
+    poll of an episode warns; a return to peak clears the latch so a later
+    rebase warns again.
+    """
+    sensor = _energy_sensor("lifetime")
+
+    def summary(total: float):
+        return SimpleNamespace(
+            total_kwh=total,
+            point_count=3,
+            mode="lifetime",
+            start=None,
+            end=None,
+        )
+
+    with patch.object(sensor, "_summary", return_value=summary(100.0)):
+        assert sensor.native_value == 100.0
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.dimplex.sensor"):
+        for low in (60.0, 60.4, 59.7, 60.1):
+            with patch.object(sensor, "_summary", return_value=summary(low)):
+                assert sensor.native_value == 100.0
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 1, f"jittering rebase must warn once, got {len(warnings)}"
+
+        with patch.object(sensor, "_summary", return_value=summary(100.0)):
+            assert sensor.native_value == 100.0
+        with patch.object(sensor, "_summary", return_value=summary(50.0)):
+            assert sensor.native_value == 100.0
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 2, f"recovery must re-arm the latch, got {len(warnings)}"
