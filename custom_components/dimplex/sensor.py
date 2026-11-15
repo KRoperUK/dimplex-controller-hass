@@ -610,9 +610,13 @@ class DimplexBoostRemainingSensor(DimplexEntity, RestoreSensor):
     can outlive the boost itself — so when Home Assistant starts a boost the
     start time and chosen duration are recorded (and restored across
     restarts) and this counts down from there, reaching zero. A boost begun
-    on the heater or in the app has no recorded start and reads unknown;
-    guessing from ``LastTelemDate`` would invent precision the cloud never
-    sent (#302).
+    on the heater or in the app has no recorded start; then the live
+    ``BoostDuration`` is used while the boost bit is set — on at least QRad
+    firmware 28 it is a real minutes-remaining countdown that tracks the app
+    to within a poll (dimplex-controller-hass#347). On appliances where the
+    field is a configured length instead, the value is that length, not a
+    countdown; guessing from ``LastTelemDate`` would invent precision the
+    cloud never sent (#302).
     """
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -647,12 +651,31 @@ class DimplexBoostRemainingSensor(DimplexEntity, RestoreSensor):
         record = starts.get(self._appliance.ApplianceId)
         return record if isinstance(record, dict) else None
 
+    def _cloud_fallback_minutes(self) -> float | None:
+        """Live ``BoostDuration`` for boosts started outside Home Assistant.
+
+        Only while the boost bit is set and no recorded start exists, so the
+        exact HA-initiated countdown always wins. Returns ``None`` when the
+        field is absent or zero — including the common zero while no boost
+        runs — so an idle appliance never reports a phantom countdown.
+        """
+        if not has_any_mode(self._status, BOOST_FLAG):
+            return None
+        duration = getattr(self._status, "BoostDuration", None)
+        if duration is None:
+            return None
+        try:
+            minutes = float(duration)
+        except (TypeError, ValueError):
+            return None
+        return round(minutes, 1) if minutes > 0 else None
+
     @property
     def native_value(self) -> float | None:
-        """Minutes remaining, 0.0 once reached, unknown without a recorded start."""
+        """Minutes remaining, 0.0 once reached, else the cloud fallback."""
         record = self._record
         if record is None:
-            return None
+            return self._cloud_fallback_minutes()
         try:
             duration = float(record["duration_minutes"])
             started_at = dt_util.parse_datetime(str(record["started_at"]))
