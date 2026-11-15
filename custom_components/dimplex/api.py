@@ -672,8 +672,9 @@ class DimplexApiClient:
     async def async_set_timer_mode(self, hub_id: str, appliance_id: str, mode: int) -> None:
         """Set the appliance timer / operation mode (manual, frost, off, …).
 
-        Writes the schedule editor, which Quantum rejects with HTTP 403. Use
-        :meth:`async_set_frost_protect` to turn an appliance off.
+        Writes the schedule editor, which Quantum rejects with HTTP 403 — and
+        at least one QRad firmware (QRAD200E, dimplex-controller-hass#348) does
+        too. Use :meth:`async_set_frost_protect` to turn an appliance off.
         """
         with _translated_errors():
             await self._client.set_mode(hub_id, appliance_id, mode)

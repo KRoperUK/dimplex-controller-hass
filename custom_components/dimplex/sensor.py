@@ -1157,13 +1157,20 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
             self._peak_total = total
             self._last_suppressed_total = None
             return total
-        if total < peak and total != self._last_suppressed_total:
-            # A held value is re-read on every poll, so logging each time spams
-            # thousands of lines for one ongoing rebase. Warn once per distinct
-            # lower total instead (#234).
+        if total < peak:
+            # A held value is re-read on every poll, so logging each poll spams
+            # thousands of lines for one ongoing rebase. Warn once when the
+            # episode starts, then stay quiet while it continues — the cloud
+            # total jitters between polls (live trickle, rounding), so
+            # once-per-distinct-value still warned on every update (#350).
+            # Recovery (total back at or above peak) clears the latch above
+            # and in the fallthrough below, so a later rebase warns again.
+            first = self._last_suppressed_total is None
             self._last_suppressed_total = total
             drop_percent = round((peak - total) / peak * 100, 1) if peak else 0.0
-            log = _LOGGER.warning if drop_percent > 10 else _LOGGER.debug
+            log = _LOGGER.debug
+            if first and drop_percent > 10:
+                log = _LOGGER.warning
             log(
                 "%s reported %s kWh, below the %s kWh already seen (%s%% drop); holding the higher value. "
                 "Raw total is on the raw_total attribute",
@@ -1172,6 +1179,10 @@ class DimplexEnergySensor(CoordinatorEntity[DataUpdateCoordinator[dict[str, Any]
                 peak,
                 drop_percent,
             )
+            return peak
+        # total == peak: the cloud recovered, so a later rebase is a new
+        # episode and warns again.
+        self._last_suppressed_total = None
         return peak
 
     async def async_added_to_hass(self) -> None:
