@@ -1,5 +1,20 @@
 # Changelog
 
+## [4.7.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.6.0...v4.7.0) (2026-11-25)
+
+
+### Features
+
+* fall back to live BoostDuration for external boosts ([#358](https://github.com/KRoperUK/dimplex-controller-hass/issues/358)) ([f57cdb2](https://github.com/KRoperUK/dimplex-controller-hass/commit/f57cdb24fff6556582a2ce6e44457399fd0fed3e))
+
+
+### Bug Fixes
+
+* assume UTC for naive LastTelemDate ([#359](https://github.com/KRoperUK/dimplex-controller-hass/issues/359)) ([e6e2895](https://github.com/KRoperUK/dimplex-controller-hass/commit/e6e289536e082fab1bd2f282bbb46624f5e95463))
+* **deps:** require dimplex-controller 0.17.3 for tz-aware LastTelemDate ([#361](https://github.com/KRoperUK/dimplex-controller-hass/issues/361)) ([202c922](https://github.com/KRoperUK/dimplex-controller-hass/commit/202c922d0323abb0ccf2f7bba81351ae9431825f))
+* resolve lib version off the event loop ([#355](https://github.com/KRoperUK/dimplex-controller-hass/issues/355)) ([2fcdc15](https://github.com/KRoperUK/dimplex-controller-hass/commit/2fcdc1573422c990760116cd66a0c71efeb80f8a))
+* warn once per energy suppression episode ([#356](https://github.com/KRoperUK/dimplex-controller-hass/issues/356)) ([4e26f7b](https://github.com/KRoperUK/dimplex-controller-hass/commit/4e26f7b0860d4152e4398b25f5bc4e8e7cb4c1ed))
+
 ## [4.6.0](https://github.com/KRoperUK/dimplex-controller-hass/compare/v4.5.0...v4.6.0) (2026-11-03)
 
 
